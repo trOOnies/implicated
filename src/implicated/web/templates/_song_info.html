@@ -1,4 +1,10 @@
-<section id="song-info" class="card info">
+<section id="song-info" class="card info media-head">
+  {% if album %}
+  <a href="/albums/{{ album.id }}" title="{{ album.title }}">{% with size='big' %}{% include "_cover.html" %}{% endwith %}</a>
+  {% else %}
+  <span class="cover big none" aria-hidden="true">♪</span>
+  {% endif %}
+  <div>
   <div class="row">
     <h1>{{ s.song.title }}</h1>
     {% with kind='song', record_id=s.song.id, favorite=s.song.favorite %}{% include "_fav.html" %}{% endwith %}
@@ -26,4 +32,5 @@
   </div>
   <p class="small"><a href="https://www.youtube.com/watch?v={{ s.song.mv }}" target="_blank" rel="noopener noreferrer">Watch on YouTube ↗</a></p>
   {% endif %}
+  </div>
 </section>

@@ -693,3 +693,20 @@ def test_rating_stars(client: TestClient, client_lib: Library, web_sample: Sampl
     assert 'class="star on"' in client.get("/artists").text
     edit = client.post(f"/artists/{web_sample.artist_id}", data={"name": "Portishead"})
     assert edit.status_code == 200 and client_lib.get_artist(web_sample.artist_id).rating == 5
+
+
+def test_song_page_shows_the_album_cover(
+    client: TestClient, client_lib: Library, web_sample: Sample, image
+):
+    song_id = web_sample.song_ids[0]
+    page = client.get(f"/songs/{song_id}").text
+    cover_link = page.index(f'<a href="/albums/{web_sample.album_id}" title="Dummy">')
+    assert page.index('<span class="cover big none"', cover_link) < page.index("</a>", cover_link)
+    client_lib.set_cover(web_sample.album_id, image())
+    cover = client_lib.get_album(web_sample.album_id).cover
+    info = client.get(f"/fragments/songs/{song_id}/info").text
+    assert f'src="/api/albums/{web_sample.album_id}/cover?v={cover}"' in info
+    single = client_lib.create_song(SongIn(web_sample.artist_id, "Single"))
+    single_page = client.get(f"/songs/{single.id}").text
+    assert '<span class="cover big none" aria-hidden="true">♪</span>' in single_page
+    assert "/cover?v=" not in single_page
