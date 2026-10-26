@@ -232,6 +232,7 @@ button.later.on, button.later:hover { color: var(--accent); }
 .htmx-request button, button.htmx-request { opacity: .6; }
 
 /* Tables */
+.table-scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: .45rem .5rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
 th { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }

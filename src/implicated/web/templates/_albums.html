@@ -1,4 +1,5 @@
 {% if albums %}
+<div class="table-scroll">
 <table class="sortable">
   <thead><tr><th></th><th data-type="number">Year</th><th>Title</th>{% if show_artist %}<th>Artist</th>{% endif %}<th>Type</th><th data-type="number">Rating</th><th data-type="number">Songs</th><th data-type="number">Lyrics</th><th data-type="number">Length</th><th data-type="number">Plays</th><th>Formats</th><th></th></tr></thead>
   <tbody>
@@ -26,6 +27,7 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 {% else %}
 <p class="empty">No albums yet.</p>
 {% endif %}

@@ -6,16 +6,18 @@
 <p class="crumbs"><a href="/artists">Artists</a> /</p>
 {% include "_artist_info.html" %}
 
+{# Full width: the discography table has too many columns to share the page with the sidebar. #}
+<section class="card">
+  <h2>Discography</h2>
+  <div id="albums" hx-get="/fragments/artists/{{ artist.id }}/albums"
+       hx-trigger="albums-changed from:body" hx-swap="innerHTML">
+    {% set show_artist = False %}
+    {% include "_albums.html" %}
+  </div>
+</section>
+
 <div class="layout">
   <div>
-    <section class="card">
-      <h2>Discography</h2>
-      <div id="albums" hx-get="/fragments/artists/{{ artist.id }}/albums"
-           hx-trigger="albums-changed from:body" hx-swap="innerHTML">
-        {% set show_artist = False %}
-        {% include "_albums.html" %}
-      </div>
-    </section>
 
     <section class="card">
       <h2>Songs</h2>

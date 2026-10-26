@@ -710,3 +710,10 @@ def test_song_page_shows_the_album_cover(
     single_page = client.get(f"/songs/{single.id}").text
     assert '<span class="cover big none" aria-hidden="true">♪</span>' in single_page
     assert "/cover?v=" not in single_page
+
+
+def test_discography_is_full_width(client: TestClient, web_sample: Sample):
+    page = client.get(f"/artists/{web_sample.artist_id}").text
+    discography = page.index("<h2>Discography</h2>")
+    assert discography < page.index('<div class="layout">')
+    assert '<div class="table-scroll">' in page[discography:]

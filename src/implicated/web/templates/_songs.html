@@ -1,6 +1,7 @@
 {# ctx is "all", "artist", "album" or "playlist" (with `playlist_id`); it decides which columns
    and buttons rows show. #}
 {% if songs %}
+<div class="table-scroll">
 <table class="songs sortable">
   <thead>
     <tr>
@@ -17,6 +18,7 @@
     {% for s in songs %}{% include "_song_row.html" %}{% endfor %}
   </tbody>
 </table>
+</div>
 {% else %}
 <p class="empty">No songs here yet.</p>
 {% endif %}
