@@ -112,7 +112,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 2rem; }
   font-size: .8rem;
 }
 
-.tag.none { background: transparent; border: 1px solid var(--border); color: var(--muted); font-size: .72rem; }
+.tag.none, .tag.unreleased { background: transparent; border: 1px solid var(--border); color: var(--muted); font-size: .72rem; }
 .tag.missing { background: transparent; border: 1px dashed var(--muted); color: var(--muted); font-size: .72rem; }
 .tag.owned { background: var(--accent); color: var(--surface); }
 .tag.wanted, .tag.later { background: transparent; border: 1px dashed var(--accent); color: var(--accent); }

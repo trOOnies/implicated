@@ -236,6 +236,29 @@ def test_reimport_no_lyrics(lib: Library, info: Path):
     assert any("no_lyrics must be true or false" in w for w in report.warnings)
 
 
+def test_reimport_unreleased(lib: Library, info: Path):
+    albums = info / "bands" / "My Chemical Romance" / "albums.yaml"
+    albums.write_text(
+        albums.read_text()
+        + "The Paper Kingdom:\n  release_year: 2012\n  unreleased: true\n  songs: []\n"
+    )
+    import_dir(lib, info)
+    mcr = lib.find_artist("My Chemical Romance")
+    kingdom = lib.find_album(mcr.id, "The Paper Kingdom")
+    danger = lib.find_album(mcr.id, "Danger Days")
+    assert (kingdom.unreleased, danger.unreleased) == (True, False)
+    lib.update_album(danger.id, replace(danger, unreleased=True))  # set in the app
+    albums.write_text(albums.read_text().replace("unreleased: true", "unreleased: false"))
+
+    import_dir(lib, info)
+    assert not lib.get_album(kingdom.id).unreleased
+    assert lib.get_album(danger.id).unreleased  # no key in the file: the app's choice stays
+
+    albums.write_text(albums.read_text().replace("unreleased: false", "unreleased: soon"))
+    report = import_dir(lib, info)
+    assert any("unreleased must be true or false" in w for w in report.warnings)
+
+
 def test_reimport_updates_lyrics(lib: Library, info: Path):
     import_dir(lib, info)
     mcr = lib.find_artist("My Chemical Romance")

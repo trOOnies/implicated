@@ -10,6 +10,7 @@
       </select>
     </label>
   </div>
+  <label class="check"><input type="checkbox" name="unreleased" {% if form.get('unreleased') %}checked{% endif %}> Unreleased</label>
   <label>Rating
     <select name="rating">
       <option value="">–</option>

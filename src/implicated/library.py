@@ -74,7 +74,8 @@ CREATE TABLE IF NOT EXISTS albums (
     cover       TEXT,
     cd          TEXT,
     vinyl       TEXT,
-    listen_later INTEGER NOT NULL DEFAULT 0
+    listen_later INTEGER NOT NULL DEFAULT 0,
+    unreleased  INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS members (
     id         INTEGER PRIMARY KEY,
@@ -154,6 +155,7 @@ MIGRATIONS = [
     ("songs", "listen_later", "INTEGER NOT NULL DEFAULT 0"),
     ("playlists", "kind", "TEXT"),
     ("artists", "rating", "INTEGER"),
+    ("albums", "unreleased", "INTEGER NOT NULL DEFAULT 0"),
 ]
 # Columns that changed names: (table, old name, new name), renamed before ``MIGRATIONS`` run.
 RENAMES = [("songs", "youtube", "mv")]
@@ -211,6 +213,7 @@ def _album(row: sqlite3.Row) -> Album:
     data = dict(row)
     data["favorite"] = bool(data["favorite"])
     data["listen_later"] = bool(data["listen_later"])
+    data["unreleased"] = bool(data["unreleased"])
     return Album(**data)
 
 
@@ -542,10 +545,10 @@ class Library:
         values = self._album_values(data)
         with self.connect() as conn:
             cur = conn.execute(
-                """INSERT INTO albums (artist_id, title, year, kind, rating, notes, favorite,
-                                       cd, vinyl, listen_later, created_at)
-                   VALUES (:artist_id, :title, :year, :kind, :rating, :notes, :favorite,
-                           :cd, :vinyl, :listen_later, :now)""",
+                """INSERT INTO albums (artist_id, title, year, kind, unreleased, rating, notes,
+                                       favorite, cd, vinyl, listen_later, created_at)
+                   VALUES (:artist_id, :title, :year, :kind, :unreleased, :rating, :notes,
+                           :favorite, :cd, :vinyl, :listen_later, :now)""",
                 {**values, "now": _now()},
             )
         return self.get_album(cur.lastrowid)
@@ -555,8 +558,8 @@ class Library:
         with self.connect() as conn:
             conn.execute(
                 """UPDATE albums SET artist_id = :artist_id, title = :title, year = :year,
-                       kind = :kind, rating = :rating, notes = :notes, favorite = :favorite,
-                       cd = :cd, vinyl = :vinyl, listen_later = :listen_later
+                       kind = :kind, unreleased = :unreleased, rating = :rating, notes = :notes,
+                       favorite = :favorite, cd = :cd, vinyl = :vinyl, listen_later = :listen_later
                    WHERE id = :id""",
                 {**self._album_values(data), "id": album_id},
             )
@@ -622,6 +625,7 @@ class Library:
         values["title"] = data.title.strip()
         values["favorite"] = int(data.favorite)
         values["listen_later"] = int(data.listen_later)
+        values["unreleased"] = int(data.unreleased)
         return values
 
     def set_format(self, album_id: int, fmt: str, state: str | None) -> Album:

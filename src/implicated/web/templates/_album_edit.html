@@ -15,6 +15,7 @@
     <div class="row">
       <label class="check"><input type="checkbox" name="favorite" {% if album.favorite %}checked{% endif %}> Favorite</label>
       <label class="check"><input type="checkbox" name="listen_later" {% if album.listen_later %}checked{% endif %}> Listen later</label>
+      <label class="check"><input type="checkbox" name="unreleased" {% if album.unreleased %}checked{% endif %}> Unreleased</label>
     </div>
     <div class="row">
       <button type="submit">Save</button>

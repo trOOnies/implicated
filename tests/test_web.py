@@ -159,6 +159,10 @@ def test_album_forms(client: TestClient, client_lib: Library, web_sample: Sample
     response = client.post(url, data=update)
     assert response.status_code == 200 and response.text.count('class="star on"') == 4
     assert client_lib.get_album(third.id).rating == 4  # the stars rate, not the form
+    assert "tag unreleased" not in response.text
+    response = client.post(url, data={**update, "unreleased": "on"})
+    assert client_lib.get_album(third.id).unreleased and "tag unreleased" in response.text
+    assert "tag unreleased" in client.get(f"/artists/{web_sample.artist_id}").text
     assert client.post(url, data={**update, "title": " "}).status_code == 422
 
     deleted = client.post(f"{url}/delete")

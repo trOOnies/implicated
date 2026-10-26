@@ -119,6 +119,10 @@ def test_album_crud(lib: Library, sample: Sample):
         None,
     )
 
+    assert not updated.unreleased
+    scrapped = AlbumIn(sample.artist_id, "Third", 2008, "live", unreleased=True)
+    assert lib.update_album(album.id, scrapped).unreleased
+
     lib.delete_album(album.id)
     with pytest.raises(NotFound):
         lib.get_album(album.id)
@@ -745,7 +749,12 @@ def test_old_databases_get_new_columns(tmp_path):
     assert (lib.get_artist(1).notes, lib.get_artist(1).listen_later) == (None, False)
     assert lib.get_artist(1).rating is None
     album = lib.get_album(1)
-    assert (album.cd, album.vinyl, album.listen_later) == (None, None, False)
+    assert (album.cd, album.vinyl, album.listen_later, album.unreleased) == (
+        None,
+        None,
+        False,
+        False,
+    )
     assert (lib.get_song(1).mv, lib.get_song(1).listen_later) == (None, False)
     assert [p.playlist.kind for p in lib.list_playlists()] == ["favorites", "listen_later"]
     Library(path)  # opening again is a no-op

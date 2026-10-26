@@ -76,6 +76,8 @@ class AlbumIn:
     title: str
     year: int | None = None
     kind: str = "album"
+    # Never officially released (scrapped, shelved or leaked); its ``year`` is when it was made.
+    unreleased: bool = False
     rating: int | None = None
     notes: str | None = None
     favorite: bool = False

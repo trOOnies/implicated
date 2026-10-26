@@ -185,6 +185,7 @@ def album_from_form(form: FormData) -> AlbumIn:
         title=_text(form, "title") or "",
         year=_int(form, "year"),
         kind=_text(form, "kind") or "album",
+        unreleased="unreleased" in form,
         rating=_int(form, "rating"),
         notes=_text(form, "notes"),
         favorite="favorite" in form,

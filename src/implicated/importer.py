@@ -33,6 +33,7 @@ and the song lyrics::
     The Black Parade:
       release_year: 2006
       kind: album                 # optional, see ``ALBUM_KINDS``
+      unreleased: true            # optional; scrapped or leaked, release_year is when it was made
       cover: the_black_parade.jpg # optional; otherwise guessed from the file names
       songs:
       - name: The End.
@@ -77,7 +78,7 @@ BAND_KEYS = {
     "genres", "members",
 }  # fmt: skip
 MEMBER_KEYS = {"name", "roles", "from", "to"}
-ALBUM_KEYS = {"release_year", "kind", "cover", "songs"}
+ALBUM_KEYS = {"release_year", "kind", "unreleased", "cover", "songs"}
 SONG_KEYS = {"name", "duration", "no_lyrics"}
 
 # Words that say nothing about which album a cover file belongs to.
@@ -319,11 +320,19 @@ def _import_albums(
         data = _mapping(raw, where, ALBUM_KEYS, report)
 
         existing = lib.find_album(artist_id, title)
+        # Without the key, a choice made in the app stays.
+        unreleased = bool(existing and existing.unreleased)
+        if "unreleased" in data:
+            if isinstance(data["unreleased"], bool):
+                unreleased = data["unreleased"]
+            else:
+                report.warnings.append(f"{where}: unreleased must be true or false")
         album_in = AlbumIn(
             artist_id=artist_id,
             title=title,
             year=_year(data.get("release_year"), where) or (existing and existing.year),
             kind=data.get("kind") or (existing.kind if existing else "album"),
+            unreleased=unreleased,
             rating=existing and existing.rating,
             notes=existing and existing.notes,
             favorite=bool(existing and existing.favorite),

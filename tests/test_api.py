@@ -63,6 +63,9 @@ def test_album_routes(client: TestClient, web_sample: Sample):
     assert client.get(f"/api/albums/{album['id']}").json()["year"] == 2008
     body["kind"] = "live"
     assert client.put(f"/api/albums/{album['id']}", json=body).json()["kind"] == "live"
+    assert album["unreleased"] is False
+    body["unreleased"] = True
+    assert client.put(f"/api/albums/{album['id']}", json=body).json()["unreleased"] is True
     assert client.delete(f"/api/albums/{album['id']}").status_code == 204
     assert client.get(f"/api/albums/{album['id']}").status_code == 404
 
