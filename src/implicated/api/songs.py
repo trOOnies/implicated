@@ -16,6 +16,7 @@ def list_songs(
     q: str | None = None,
     favorites: bool = False,
     listen_later: bool = False,
+    missing_lyrics: bool = False,
 ) -> list[SongSummary]:
     return lib.list_songs(
         artist_id=artist_id,
@@ -23,6 +24,7 @@ def list_songs(
         q=q,
         favorites=favorites,
         listen_later=listen_later,
+        missing_lyrics=missing_lyrics,
     )
 
 

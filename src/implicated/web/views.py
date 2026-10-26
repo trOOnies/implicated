@@ -396,8 +396,19 @@ def delete_artist(lib: Lib, artist_id: int):
 # Albums
 
 
-def _albums_query(q: str | None, own: str | None, favorites: str | None, later: str | None) -> dict:
-    query = {"q": q or None, "favorites": bool(favorites), "listen_later": bool(later)}
+def _albums_query(
+    q: str | None,
+    own: str | None,
+    favorites: str | None,
+    later: str | None,
+    missing: str | None,
+) -> dict:
+    query = {
+        "q": q or None,
+        "favorites": bool(favorites),
+        "listen_later": bool(later),
+        "missing_lyrics": bool(missing),
+    }
     if own in FORMAT_FILTERS:
         fmt, state, _label = FORMAT_FILTERS[own]
         query[fmt] = state
@@ -412,15 +423,17 @@ def albums_page(
     own: str | None = None,
     favorites: str | None = None,
     later: str | None = None,
+    missing: str | None = None,
 ):
     return render(
         request,
         "albums.html",
-        albums=lib.list_albums(**_albums_query(q, own, favorites, later)),
+        albums=lib.list_albums(**_albums_query(q, own, favorites, later, missing)),
         q=q or "",
         own=own if own in FORMAT_FILTERS else "",
         favorites=bool(favorites),
         later=bool(later),
+        missing=bool(missing),
         format_filters=FORMAT_FILTERS,
     )
 
@@ -433,8 +446,9 @@ def albums_fragment(
     own: str | None = None,
     favorites: str | None = None,
     later: str | None = None,
+    missing: str | None = None,
 ):
-    albums = lib.list_albums(**_albums_query(q, own, favorites, later))
+    albums = lib.list_albums(**_albums_query(q, own, favorites, later, missing))
     return render(request, "_album_grid.html", albums=albums)
 
 
@@ -579,8 +593,15 @@ def delete_album(lib: Lib, album_id: int):
 # Songs
 
 
-def _songs_query(q: str | None, favorites: str | None, later: str | None) -> dict:
-    return {"q": q or None, "favorites": bool(favorites), "listen_later": bool(later)}
+def _songs_query(
+    q: str | None, favorites: str | None, later: str | None, missing: str | None
+) -> dict:
+    return {
+        "q": q or None,
+        "favorites": bool(favorites),
+        "listen_later": bool(later),
+        "missing_lyrics": bool(missing),
+    }
 
 
 @router.get("/songs")
@@ -590,10 +611,11 @@ def songs_page(
     q: str | None = None,
     favorites: str | None = None,
     later: str | None = None,
+    missing: str | None = None,
     order: str = "title",
 ):
     order = order if order in ("title", "plays", "recent") else "title"
-    songs = lib.list_songs(order=order, **_songs_query(q, favorites, later))
+    songs = lib.list_songs(order=order, **_songs_query(q, favorites, later, missing))
     return render(
         request,
         "songs.html",
@@ -601,6 +623,7 @@ def songs_page(
         q=q or "",
         favorites=bool(favorites),
         later=bool(later),
+        missing=bool(missing),
         order=order,
         ctx="all",
     )
@@ -613,10 +636,11 @@ def songs_fragment(
     q: str | None = None,
     favorites: str | None = None,
     later: str | None = None,
+    missing: str | None = None,
     order: str = "title",
 ):
     order = order if order in ("title", "plays", "recent") else "title"
-    songs = lib.list_songs(order=order, **_songs_query(q, favorites, later))
+    songs = lib.list_songs(order=order, **_songs_query(q, favorites, later, missing))
     return render(request, "_songs.html", songs=songs, ctx="all")
 
 

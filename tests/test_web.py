@@ -725,6 +725,18 @@ def test_artist_filters(client: TestClient, client_lib: Library, web_sample: Sam
     assert "No artists" in nobody.text
 
 
+def test_missing_lyrics_filters(client: TestClient, client_lib: Library, web_sample: Sample):
+    first, second = web_sample.song_ids
+    client_lib.set_lyrics(first, "Did you really want")
+    songs = client.get("/fragments/songs", params={"missing": "1"}).text
+    assert "Sour Times" in songs and "Mysterons" not in songs
+    assert 'name="missing" value="1" checked' in client.get("/songs?missing=1").text
+    assert "Dummy" in client.get("/fragments/albums", params={"missing": "1"}).text
+    client_lib.set_lyrics(second, "Nobody loves me")
+    assert "No albums here yet" in client.get("/fragments/albums", params={"missing": "1"}).text
+    assert 'name="missing" value="1" checked' in client.get("/albums?missing=1").text
+
+
 def test_discography_is_full_width(client: TestClient, web_sample: Sample):
     page = client.get(f"/artists/{web_sample.artist_id}").text
     discography = page.index("<h2>Discography</h2>")

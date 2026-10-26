@@ -466,9 +466,11 @@ class Library:
         cd: str | None = None,
         vinyl: str | None = None,
         listen_later: bool = False,
+        missing_lyrics: bool = False,
     ) -> list[AlbumSummary]:
         """Albums, optionally only those with the given CD or vinyl ownership (see
-        ``OWNERSHIP``), the favorites or the ones marked to listen to later."""
+        ``OWNERSHIP``), the favorites, the ones marked to listen to later or the ones with songs
+        still missing their lyrics."""
         sql = """
             SELECT al.*, ar.name AS x_artist,
                    (SELECT COUNT(*) FROM songs WHERE album_id = al.id) AS x_songs,
@@ -486,6 +488,8 @@ class Library:
                AND (:listen_later = 0 OR al.listen_later = 1)
                AND (:cd IS NULL OR al.cd = :cd)
                AND (:vinyl IS NULL OR al.vinyl = :vinyl)
+               AND (:missing_lyrics = 0 OR EXISTS (SELECT 1 FROM songs WHERE album_id = al.id
+                                                       AND lyrics IS NULL AND no_lyrics = 0))
                AND (:q IS NULL OR al.title LIKE '%' || :q || '%'
                     OR ar.name LIKE '%' || :q || '%')
              ORDER BY al.year IS NULL, al.year, al.title COLLATE NOCASE
@@ -496,6 +500,7 @@ class Library:
             "listen_later": int(listen_later),
             "cd": cd,
             "vinyl": vinyl,
+            "missing_lyrics": int(missing_lyrics),
             "q": q or None,
         }
         with self.connect() as conn:
@@ -640,11 +645,12 @@ class Library:
         q: str | None = None,
         favorites: bool = False,
         listen_later: bool = False,
+        missing_lyrics: bool = False,
         playlist_id: int | None = None,
         order: str = "title",
     ) -> list[SongSummary]:
-        """Songs matching every filter given; ``order="playlist"`` keeps the order of the songs
-        in ``playlist_id``."""
+        """Songs matching every filter given (``missing_lyrics``: songs with words but no lyrics
+        yet); ``order="playlist"`` keeps the order of the songs in ``playlist_id``."""
         order_by = {
             "title": "s.title COLLATE NOCASE",
             "track": "s.track_number IS NULL, s.track_number, s.title COLLATE NOCASE",
@@ -666,6 +672,7 @@ class Library:
                AND (:playlist_id IS NULL OR ps.playlist_id IS NOT NULL)
                AND (:favorites = 0 OR s.favorite = 1)
                AND (:listen_later = 0 OR s.listen_later = 1)
+               AND (:missing_lyrics = 0 OR (s.lyrics IS NULL AND s.no_lyrics = 0))
                AND (:q IS NULL OR s.title LIKE '%' || :q || '%'
                     OR ar.name LIKE '%' || :q || '%'
                     OR al.title LIKE '%' || :q || '%')
@@ -677,6 +684,7 @@ class Library:
             "playlist_id": playlist_id,
             "favorites": int(favorites),
             "listen_later": int(listen_later),
+            "missing_lyrics": int(missing_lyrics),
             "q": q or None,
         }
         with self.connect() as conn:

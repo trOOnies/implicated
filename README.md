@@ -44,7 +44,7 @@ missing (also for artists that are not in `bands.yaml`), and renaming a song ren
 Each song has its own page with its lyrics, read again from the file on every visit, and buttons
 to open the file in your default text editor (under WSL, the Windows one) and to reload it. Album
 pages mark the songs still missing lyrics, and album lists show the share of songs that have them.
-Songs with `no_lyrics` (set in `albums.yaml`, or with the No lyrics box when adding or editing a
+The Albums and Songs pages can show only the albums and songs still missing lyrics. Songs with `no_lyrics` (set in `albums.yaml`, or with the No lyrics box when adding or editing a
 song) have no words, so they are never missing lyrics and do not count in that share.
 
 ## Your own data

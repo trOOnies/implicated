@@ -838,3 +838,21 @@ def test_list_artists_by_origin_genre_and_language(lib: Library, sample: Sample)
     assert names(genre="Trip hop", country="France") == ["Air"]
     assert names(genre="Rock", language="English") == []
     assert names(country="", genre=None) == ["Air", "Portishead", "Soda Stereo"]
+
+
+def test_missing_lyrics_filters(lib: Library, sample: Sample):
+    first, second = sample.song_ids
+    other = lib.create_album(AlbumIn(sample.artist_id, "Third"))
+    lib.create_song(SongIn(sample.artist_id, "Threads", album_id=other.id, no_lyrics=True))
+
+    def songs():
+        return [s.song.title for s in lib.list_songs(missing_lyrics=True)]
+
+    def albums():
+        return [a.album.title for a in lib.list_albums(missing_lyrics=True)]
+
+    assert (songs(), albums()) == (["Mysterons", "Sour Times"], ["Dummy"])
+    lib.set_lyrics(first, "Did you really want")
+    assert (songs(), albums()) == (["Sour Times"], ["Dummy"])
+    lib.set_lyrics(second, "Nobody loves me")
+    assert (songs(), albums()) == ([], [])

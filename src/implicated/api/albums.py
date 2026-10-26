@@ -22,9 +22,18 @@ def list_albums(
     cd: Ownership | None = None,
     vinyl: Ownership | None = None,
     listen_later: bool = False,
+    missing_lyrics: bool = False,
 ) -> list[AlbumSummary]:
     """Filter by CD or vinyl ownership with ``cd`` and ``vinyl`` (``wanted`` or ``owned``)."""
-    return lib.list_albums(artist_id, favorites, q, cd=cd, vinyl=vinyl, listen_later=listen_later)
+    return lib.list_albums(
+        artist_id,
+        favorites,
+        q,
+        cd=cd,
+        vinyl=vinyl,
+        listen_later=listen_later,
+        missing_lyrics=missing_lyrics,
+    )
 
 
 @router.put("/{album_id}/formats/{fmt}")
