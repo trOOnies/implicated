@@ -3,6 +3,15 @@
 {% block title %}{{ s.song.title }}{% endblock %}
 {% block content %}
 <p class="crumbs"><a href="/artists">Artists</a> / <a href="/artists/{{ artist.id }}">{{ artist.name }}</a> /{% if s.song.album_id %} <a href="/albums/{{ s.song.album_id }}">{{ s.album_title }}</a> /{% endif %}</p>
-{% include "_song_info.html" %}
-{% include "_lyrics.html" %}
+{# Marks change when the song is added to or taken out of Favorites or Listen Later. #}
+<div id="song-info-slot" hx-get="/fragments/songs/{{ s.song.id }}/info"
+     hx-trigger="playlists-changed from:body" hx-swap="innerHTML">
+  {% include "_song_info.html" %}
+</div>
+<div class="layout">
+  <div>
+    {% include "_lyrics.html" %}
+  </div>
+  <aside>{% with error=None %}{% include "_playlist_add.html" %}{% endwith %}</aside>
+</div>
 {% endblock %}

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from implicated.api import albums, artists, members, plays, songs, stats
+from implicated.api import albums, artists, members, playlists, plays, songs, stats
 from implicated.api.deps import get_library
 
 __all__ = ["TAGS", "get_library", "router"]
@@ -19,6 +19,11 @@ TAGS = [
     {"name": "Albums", "description": "Albums, EPs, singles and more, with their cover."},
     {"name": "Songs", "description": "Songs, on an album or as singles, and their lyrics."},
     {
+        "name": "Playlists",
+        "description": "Lists of songs in your own order. Favorites and Listen Later are built in: "
+        "they hold exactly the songs with that mark, and adding or removing songs sets the mark.",
+    },
+    {
         "name": "Plays",
         "description": "Listening history; a play clears the song's listen later mark.",
     },
@@ -26,5 +31,5 @@ TAGS = [
 ]
 
 router = APIRouter(prefix="/api")
-for module in (artists, members, albums, songs, plays, stats):
+for module in (artists, members, albums, songs, playlists, plays, stats):
     router.include_router(module.router)

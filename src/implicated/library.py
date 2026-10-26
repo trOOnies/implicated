@@ -14,6 +14,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from implicated.models import (
+    SPECIAL_PLAYLISTS,
     Album,
     AlbumIn,
     AlbumSummary,
@@ -24,6 +25,10 @@ from implicated.models import (
     Member,
     MemberIn,
     Play,
+    Playlist,
+    PlaylistDetail,
+    PlaylistIn,
+    PlaylistSummary,
     Point,
     Song,
     SongIn,
@@ -97,11 +102,24 @@ CREATE TABLE IF NOT EXISTS plays (
     song_id   INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
     played_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS playlists (
+    id         INTEGER PRIMARY KEY,
+    name       TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    kind       TEXT
+);
+CREATE TABLE IF NOT EXISTS playlist_songs (
+    playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+    song_id     INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+    position    INTEGER NOT NULL,
+    PRIMARY KEY (playlist_id, song_id)
+);
 CREATE INDEX IF NOT EXISTS idx_albums_artist ON albums(artist_id);
 CREATE INDEX IF NOT EXISTS idx_members_artist ON members(artist_id);
 CREATE INDEX IF NOT EXISTS idx_songs_album ON songs(album_id);
 CREATE INDEX IF NOT EXISTS idx_songs_artist ON songs(artist_id);
 CREATE INDEX IF NOT EXISTS idx_plays_song ON plays(song_id);
+CREATE INDEX IF NOT EXISTS idx_playlist_songs_song ON playlist_songs(song_id);
 """
 
 # Columns added after the first release: (table, column, declaration). Older databases get them
@@ -120,6 +138,7 @@ MIGRATIONS = [
     ("albums", "listen_later", "INTEGER NOT NULL DEFAULT 0"),
     ("songs", "mv", "TEXT"),
     ("songs", "listen_later", "INTEGER NOT NULL DEFAULT 0"),
+    ("playlists", "kind", "TEXT"),
 ]
 # Columns that changed names: (table, old name, new name), renamed before ``MIGRATIONS`` run.
 RENAMES = [("songs", "youtube", "mv")]
@@ -213,6 +232,14 @@ class Library:
                 columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
                 if column not in columns:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_playlists_kind ON playlists(kind)")
+            for kind, (name, _field) in SPECIAL_PLAYLISTS.items():
+                conn.execute(
+                    """INSERT INTO playlists (name, created_at, kind) SELECT ?, ?, ?
+                        WHERE NOT EXISTS (SELECT 1 FROM playlists WHERE kind = ?)""",
+                    (name, _now(), kind, kind),
+                )
+        self._sync_marks()
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -569,13 +596,17 @@ class Library:
         q: str | None = None,
         favorites: bool = False,
         listen_later: bool = False,
+        playlist_id: int | None = None,
         order: str = "title",
     ) -> list[SongSummary]:
+        """Songs matching every filter given; ``order="playlist"`` keeps the order of the songs
+        in ``playlist_id``."""
         order_by = {
             "title": "s.title COLLATE NOCASE",
             "track": "s.track_number IS NULL, s.track_number, s.title COLLATE NOCASE",
             "plays": "x_plays DESC, s.title COLLATE NOCASE",
             "recent": "x_last_played IS NULL, x_last_played DESC",
+            "playlist": "ps.position",
         }[order]
         sql = f"""
             SELECT s.*, ar.name AS x_artist, al.title AS x_album,
@@ -584,8 +615,10 @@ class Library:
               FROM songs s
               JOIN artists ar ON ar.id = s.artist_id
               LEFT JOIN albums al ON al.id = s.album_id
+              LEFT JOIN playlist_songs ps ON ps.song_id = s.id AND ps.playlist_id = :playlist_id
              WHERE (:artist_id IS NULL OR s.artist_id = :artist_id)
                AND (:album_id IS NULL OR s.album_id = :album_id)
+               AND (:playlist_id IS NULL OR ps.playlist_id IS NOT NULL)
                AND (:favorites = 0 OR s.favorite = 1)
                AND (:listen_later = 0 OR s.listen_later = 1)
                AND (:q IS NULL OR s.title LIKE '%' || :q || '%'
@@ -596,6 +629,7 @@ class Library:
         params = {
             "artist_id": artist_id,
             "album_id": album_id,
+            "playlist_id": playlist_id,
             "favorites": int(favorites),
             "listen_later": int(listen_later),
             "q": q or None,
@@ -652,6 +686,7 @@ class Library:
                            :now)""",
                 {**values, "now": _now()},
             )
+        self._sync_marks(cur.lastrowid)
         song = self.get_song(cur.lastrowid)
         self.ensure_lyrics_file(song.id)
         return song
@@ -669,6 +704,7 @@ class Library:
                    WHERE id = :id""",
                 {**self._song_values(data), "id": song_id},
             )
+        self._sync_marks(song_id)
         # A renamed song takes its lyrics file along (a copy, if another song still uses it).
         new_path = self.lyrics_path(song_id)
         if old_path and new_path and old_path.is_file() and not new_path.exists():
@@ -779,6 +815,7 @@ class Library:
                 "INSERT INTO plays (song_id, played_at) VALUES (?, ?)", (song_id, played_at)
             )
             conn.execute("UPDATE songs SET listen_later = 0 WHERE id = ?", (song_id,))
+        self._sync_marks(song_id)
         return Play(cur.lastrowid, song_id, played_at)
 
     def recent_plays(self, limit: int = 10) -> list[tuple[Play, SongSummary]]:
@@ -787,6 +824,191 @@ class Library:
                 "SELECT * FROM plays ORDER BY played_at DESC LIMIT ?", (limit,)
             ).fetchall()
         return [(Play(**dict(row)), self.get_song_summary(row["song_id"])) for row in rows]
+
+    # Playlists
+
+    def list_playlists(self) -> list[PlaylistSummary]:
+        sql = """
+            SELECT pl.*, COUNT(s.id) AS x_songs,
+                   COALESCE(SUM(s.duration_seconds), 0) AS x_seconds
+              FROM playlists pl
+              LEFT JOIN playlist_songs ps ON ps.playlist_id = pl.id
+              LEFT JOIN songs s ON s.id = ps.song_id
+             GROUP BY pl.id
+             ORDER BY pl.kind IS NULL, pl.kind, pl.name COLLATE NOCASE, pl.id
+        """
+        with self.connect() as conn:
+            rows = conn.execute(sql).fetchall()
+        out = []
+        for row in rows:
+            own, extra = _split(row, "x_")
+            out.append(PlaylistSummary(Playlist(**own), extra["songs"], extra["seconds"]))
+        return out
+
+    def get_playlist(self, playlist_id: int) -> Playlist:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM playlists WHERE id = ?", (playlist_id,)).fetchone()
+        if row is None:
+            raise NotFound(f"playlist {playlist_id} not found")
+        return Playlist(**dict(row))
+
+    def get_playlist_detail(self, playlist_id: int) -> PlaylistDetail:
+        playlist = self.get_playlist(playlist_id)
+        return PlaylistDetail(playlist, self.list_songs(playlist_id=playlist_id, order="playlist"))
+
+    def create_playlist(self, data: PlaylistIn) -> Playlist:
+        name = self._playlist_name(data)
+        with self.connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO playlists (name, created_at) VALUES (?, ?)", (name, _now())
+            )
+        return self.get_playlist(cur.lastrowid)
+
+    def update_playlist(self, playlist_id: int, data: PlaylistIn) -> Playlist:
+        self._own_playlist(playlist_id, "renamed")
+        name = self._playlist_name(data)
+        with self.connect() as conn:
+            conn.execute("UPDATE playlists SET name = ? WHERE id = ?", (name, playlist_id))
+        return self.get_playlist(playlist_id)
+
+    def delete_playlist(self, playlist_id: int) -> None:
+        self._own_playlist(playlist_id, "deleted")
+        self._delete("playlists", playlist_id)
+
+    def special_playlist(self, kind: str) -> Playlist:
+        """The built-in playlist of one of ``SPECIAL_PLAYLISTS``."""
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM playlists WHERE kind = ?", (kind,)).fetchone()
+        return Playlist(**dict(row))
+
+    def _own_playlist(self, playlist_id: int, change: str) -> Playlist:
+        playlist = self.get_playlist(playlist_id)
+        if playlist.kind:
+            raise ValueError(f"{playlist.name} is a built-in playlist and cannot be {change}")
+        return playlist
+
+    def playlist_song_ids(self, playlist_id: int) -> list[int]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT song_id FROM playlist_songs WHERE playlist_id = ? ORDER BY position",
+                (playlist_id,),
+            ).fetchall()
+        return [song_id for (song_id,) in rows]
+
+    def playlists_with_song(self, song_id: int) -> list[Playlist]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT pl.* FROM playlists pl JOIN playlist_songs ps ON ps.playlist_id = pl.id
+                    WHERE ps.song_id = ?
+                    ORDER BY pl.kind IS NULL, pl.kind, pl.name COLLATE NOCASE, pl.id""",
+                (song_id,),
+            ).fetchall()
+        return [Playlist(**dict(row)) for row in rows]
+
+    def add_to_playlist(self, playlist_id: int, song_ids: list[int]) -> int:
+        """Append the songs to the end of the playlist, in order, and return how many were
+        added: songs already in it stay where they are."""
+        self.get_playlist(playlist_id)
+        for song_id in song_ids:
+            self.get_song(song_id)
+        current = self.playlist_song_ids(playlist_id)
+        new = [song_id for song_id in dict.fromkeys(song_ids) if song_id not in current]
+        self._write_playlist(playlist_id, current + new)
+        return len(new)
+
+    def add_album_to_playlist(self, playlist_id: int, album_id: int) -> int:
+        """Append the album's songs, in track order; see ``add_to_playlist``."""
+        self.get_album(album_id)
+        songs = self.list_songs(album_id=album_id, order="track")
+        return self.add_to_playlist(playlist_id, [s.song.id for s in songs])
+
+    def remove_from_playlist(self, playlist_id: int, song_id: int) -> None:
+        self.get_playlist(playlist_id)
+        with self.connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM playlist_songs WHERE playlist_id = ? AND song_id = ?",
+                (playlist_id, song_id),
+            )
+        if cur.rowcount == 0:
+            raise NotFound(f"song {song_id} is not in playlist {playlist_id}")
+        self._marks_from_playlist(playlist_id)
+
+    def set_playlist_songs(self, playlist_id: int, song_ids: list[int]) -> PlaylistDetail:
+        """Replace the playlist's songs with ``song_ids``, in that order."""
+        self.get_playlist(playlist_id)
+        if len(set(song_ids)) != len(song_ids):
+            raise ValueError("a song can only be once in a playlist")
+        for song_id in song_ids:
+            self.get_song(song_id)
+        self._write_playlist(playlist_id, song_ids)
+        return self.get_playlist_detail(playlist_id)
+
+    def move_in_playlist(self, playlist_id: int, song_id: int, offset: int) -> None:
+        """Move a song ``offset`` places later (earlier when negative), stopping at the ends."""
+        self.get_playlist(playlist_id)
+        song_ids = self.playlist_song_ids(playlist_id)
+        if song_id not in song_ids:
+            raise NotFound(f"song {song_id} is not in playlist {playlist_id}")
+        index = song_ids.index(song_id)
+        song_ids.insert(max(0, min(index + offset, len(song_ids) - 1)), song_ids.pop(index))
+        self._write_playlist(playlist_id, song_ids)
+
+    def _write_playlist(self, playlist_id: int, song_ids: list[int]) -> None:
+        with self.connect() as conn:
+            conn.execute("DELETE FROM playlist_songs WHERE playlist_id = ?", (playlist_id,))
+            conn.executemany(
+                "INSERT INTO playlist_songs (playlist_id, song_id, position) VALUES (?, ?, ?)",
+                [(playlist_id, song_id, position) for position, song_id in enumerate(song_ids)],
+            )
+        self._marks_from_playlist(playlist_id)
+
+    def _marks_from_playlist(self, playlist_id: int) -> None:
+        """After a built-in playlist changed, mark exactly the songs in it."""
+        kind = self.get_playlist(playlist_id).kind
+        if kind is None:
+            return
+        field = SPECIAL_PLAYLISTS[kind][1]
+        with self.connect() as conn:
+            conn.execute(
+                f"""UPDATE songs SET {field} = EXISTS (SELECT 1 FROM playlist_songs
+                        WHERE playlist_id = ? AND song_id = songs.id)""",
+                (playlist_id,),
+            )
+
+    def _sync_marks(self, song_id: int | None = None) -> None:
+        """After songs' marks changed, put the marked songs (all of them, or just ``song_id``)
+        at the end of their built-in playlist and take out the others."""
+        for kind, (_name, field) in SPECIAL_PLAYLISTS.items():
+            params = {"playlist_id": self.special_playlist(kind).id, "song_id": song_id}
+            with self.connect() as conn:
+                conn.execute(
+                    f"""DELETE FROM playlist_songs
+                         WHERE playlist_id = :playlist_id AND song_id IN (
+                               SELECT id FROM songs WHERE {field} = 0
+                                  AND (:song_id IS NULL OR id = :song_id))""",
+                    params,
+                )
+                conn.execute(
+                    f"""INSERT INTO playlist_songs (playlist_id, song_id, position)
+                        SELECT :playlist_id, s.id,
+                               (SELECT COALESCE(MAX(position), -1) FROM playlist_songs
+                                 WHERE playlist_id = :playlist_id)
+                               + ROW_NUMBER() OVER (ORDER BY s.id)
+                          FROM songs s
+                         WHERE s.{field} = 1 AND (:song_id IS NULL OR s.id = :song_id)
+                           AND s.id NOT IN (SELECT song_id FROM playlist_songs
+                                             WHERE playlist_id = :playlist_id)""",
+                    params,
+                )
+
+    @staticmethod
+    def _playlist_name(data: PlaylistIn) -> str:
+        name = data.name.strip()
+        if not name:
+            raise ValueError("name is required")
+        if name.casefold() in {n.casefold() for n, _field in SPECIAL_PLAYLISTS.values()}:
+            raise ValueError(f"{name} is the name of a built-in playlist")
+        return name
 
     # Shared
 
@@ -803,7 +1025,10 @@ class Library:
             if cur.rowcount == 0:
                 raise NotFound(f"{kind} {record_id} not found")
             row = conn.execute(f"SELECT {flag} FROM {table} WHERE id = ?", (record_id,))
-            return bool(row.fetchone()[0])
+            value = bool(row.fetchone()[0])
+        if kind == "song":
+            self._sync_marks(record_id)
+        return value
 
     def _delete(self, table: str, record_id: int) -> None:
         with self.connect() as conn:

@@ -29,7 +29,7 @@
       album page (and in an artist's discography) say whether you want or own it on each
       format; filter the albums by <em>Wanted (CD)</em>,
       <em>Owned (CD)</em>, <em>Wanted (Vinyl)</em> or <em>Owned (Vinyl)</em>, favorites or
-      listen later.</dd>
+      listen later. An album page can also add all its songs to a playlist.</dd>
       <dt><a href="/songs">Songs</a></dt>
       <dd>Search every song by title, artist or album, sort them, or show only favorites. The
       Missing lyrics column marks the songs that still need theirs. Open a song to read its
@@ -38,6 +38,13 @@
       notes and the song's music video: paste its YouTube link
       (<code>youtube.com/watch?v=…</code>, <code>youtu.be/…</code>, shorts, embeds) or just its
       11-character id, and the page plays it.</dd>
+      <dt><a href="/playlists">Playlists</a></dt>
+      <dd>Make playlists, then add songs to them from a song's page, or all of an album's songs
+      from the album's page (songs already in the playlist stay where they are). On a playlist,
+      move songs with ↑ and ↓, or take them out with <em>Remove</em>; they stay in your
+      library. <em>Favorites</em> and <em>Listen Later</em> are built in and cannot be renamed
+      or deleted: they always hold the songs marked ♥ and ⧗, and adding a song to them or
+      taking it out sets or clears that mark.</dd>
     </dl>
   </section>
 
@@ -74,14 +81,14 @@
     <code>/</code> in the title becomes <code>_</code>, and <code>&lt;&gt;:"\|?*</code> are left
     out). Every song gets one: songs you add without a file get an empty one. The server imports the folder every time it starts, so restart it after editing the
     files. Importing again updates what changed and keeps your ratings, notes, favorites,
-    CD and vinyl ownership, music videos, listen later marks and plays. Problems are listed in the server log.</p>
+    CD and vinyl ownership, music videos, listen later marks, playlists and plays. Problems are listed in the server log.</p>
   </section>
 
   <section class="card">
     <h2>API</h2>
     <p>Everything is also available as JSON under <code>/api</code>. The
     <a href="/docs">API page</a> lists every route, grouped by what it works on (artists,
-    members, albums, songs, plays and stats), and lets you try them in the browser.</p>
+    members, albums, songs, playlists, plays and stats), and lets you try them in the browser.</p>
   </section>
 </div>
 {% endblock %}

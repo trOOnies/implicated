@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% set active = 'playlists' %}
+{% block title %}{{ playlist.name }}{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/playlists">Playlists</a> /</p>
+<div id="playlist-info-slot" hx-get="/fragments/playlists/{{ playlist.id }}/info"
+     hx-trigger="playlists-changed from:body" hx-swap="innerHTML">
+  {% include "_playlist_info.html" %}
+</div>
+<section class="card">
+  <div id="songs" hx-get="/fragments/playlists/{{ playlist.id }}/songs"
+       hx-trigger="playlists-changed from:body" hx-swap="innerHTML">
+    {% set playlist_id = playlist.id %}
+    {% include "_songs.html" %}
+  </div>
+</section>
+{% endblock %}

@@ -6,7 +6,7 @@ import pytest
 from conftest import Sample, add_sample
 
 from implicated.library import Library, NotFound
-from implicated.models import AlbumIn, ArtistIn, MemberIn, SongIn
+from implicated.models import AlbumIn, ArtistIn, MemberIn, PlaylistIn, SongIn
 
 # Artists
 
@@ -431,6 +431,78 @@ def test_set_format(lib: Library, sample: Sample):
         lib.set_format(99, "cd", "owned")
 
 
+# Playlists
+
+
+def test_built_in_playlists(lib: Library, sample: Sample):
+    favorites = lib.special_playlist("favorites")
+    later = lib.special_playlist("listen_later")
+    assert (favorites.name, later.name) == ("Favorites", "Listen Later")
+    mine = lib.create_playlist(PlaylistIn("Mine"))
+    assert [p.playlist.id for p in lib.list_playlists()] == [favorites.id, later.id, mine.id]
+    for playlist in (favorites, later):
+        with pytest.raises(ValueError, match="built-in playlist and cannot be deleted"):
+            lib.delete_playlist(playlist.id)
+        with pytest.raises(ValueError, match="cannot be renamed"):
+            lib.update_playlist(playlist.id, PlaylistIn("Other"))
+    for name in ("favorites", " Listen later "):
+        with pytest.raises(ValueError, match="name of a built-in playlist"):
+            lib.create_playlist(PlaylistIn(name))
+    Library(lib.path)  # opening again keeps just the two
+    assert len(lib.list_playlists()) == 3
+
+
+def test_marks_fill_the_built_in_playlists(lib: Library, sample: Sample):
+    first, second = sample.song_ids
+    favorites = lib.special_playlist("favorites").id
+    later = lib.special_playlist("listen_later").id
+
+    lib.toggle_favorite("song", second)
+    lib.toggle_favorite("song", first)
+    lib.toggle_favorite("album", sample.album_id)  # only songs are in playlists
+    assert lib.playlist_song_ids(favorites) == [second, first]
+    lib.toggle_favorite("song", second)
+    assert lib.playlist_song_ids(favorites) == [first]
+
+    lib.update_song(second, replace(lib.get_song(second), listen_later=True))
+    song = lib.create_song(SongIn(sample.artist_id, "New", favorite=True, listen_later=True))
+    assert lib.playlist_song_ids(favorites) == [first, song.id]
+    assert lib.playlist_song_ids(later) == [second, song.id]
+    lib.record_play(second)
+    assert lib.playlist_song_ids(later) == [song.id]
+    lib.update_song(song.id, replace(lib.get_song(song.id), favorite=False))
+    assert lib.playlist_song_ids(favorites) == [first]
+
+
+def test_built_in_playlists_set_the_marks(lib: Library, sample: Sample):
+    first, second = sample.song_ids
+    favorites = lib.special_playlist("favorites").id
+    later = lib.special_playlist("listen_later").id
+
+    assert lib.add_to_playlist(favorites, [second]) == 1
+    assert lib.get_song(second).favorite and not lib.get_song(first).favorite
+    lib.add_album_to_playlist(later, sample.album_id)
+    assert lib.get_song(first).listen_later and lib.get_song(second).listen_later
+    lib.remove_from_playlist(later, first)
+    assert not lib.get_song(first).listen_later
+    lib.set_playlist_songs(favorites, [first])
+    assert lib.get_song(first).favorite and not lib.get_song(second).favorite
+    lib.move_in_playlist(favorites, first, 1)
+    assert lib.get_song(first).favorite
+    assert [s.song.id for s in lib.list_songs(favorites=True)] == [first]
+
+
+def test_old_marks_fill_the_built_in_playlists(tmp_path):
+    path = tmp_path / "library.db"
+    lib = Library(path)
+    sample = add_sample(lib)
+    with lib.connect() as conn:  # marks set before the playlists existed
+        conn.execute("UPDATE songs SET favorite = 1")
+        conn.execute("DELETE FROM playlist_songs")
+    lib = Library(path)
+    assert lib.playlist_song_ids(lib.special_playlist("favorites").id) == sample.song_ids
+
+
 def test_youtube_column_becomes_mv(tmp_path):
     path = tmp_path / "library.db"
     add_sample(Library(path))
@@ -439,6 +511,95 @@ def test_youtube_column_becomes_mv(tmp_path):
         conn.execute("UPDATE songs SET youtube = 'dQw4w9WgXcQ' WHERE id = 1")
     conn.close()
     assert Library(path).get_song(1).mv == "dQw4w9WgXcQ"
+
+
+def test_playlist_crud(lib: Library, sample: Sample):
+    playlist = lib.create_playlist(PlaylistIn("  Night drive "))
+    assert playlist.name == "Night drive"
+    assert playlist.created_at
+    assert lib.update_playlist(playlist.id, PlaylistIn("Late")).name == "Late"
+    with pytest.raises(ValueError, match="name is required"):
+        lib.create_playlist(PlaylistIn(" "))
+    with pytest.raises(ValueError, match="name is required"):
+        lib.update_playlist(playlist.id, PlaylistIn(""))
+    with pytest.raises(NotFound):
+        lib.update_playlist(99, PlaylistIn("X"))
+
+    lib.add_to_playlist(playlist.id, sample.song_ids)
+    lib.delete_playlist(playlist.id)
+    with pytest.raises(NotFound):
+        lib.get_playlist(playlist.id)
+    assert len(lib.list_songs()) == 2  # the songs stay
+    with pytest.raises(NotFound):
+        lib.delete_playlist(playlist.id)
+
+
+def test_playlist_songs(lib: Library, sample: Sample):
+    first, second = sample.song_ids
+    playlist = lib.create_playlist(PlaylistIn("Mix"))
+    assert lib.add_to_playlist(playlist.id, [second]) == 1
+    assert lib.add_to_playlist(playlist.id, [first, second, first]) == 1
+    assert lib.playlist_song_ids(playlist.id) == [second, first]
+
+    detail = lib.get_playlist_detail(playlist.id)
+    assert [s.song.title for s in detail.songs] == ["Sour Times", "Mysterons"]
+    assert detail.songs[0].artist_name == "Portishead"
+    summary = lib.list_playlists()[-1]
+    assert (summary.song_count, summary.total_seconds) == (2, 302 + 251)
+    assert [p.name for p in lib.playlists_with_song(first)] == ["Mix"]
+
+    lib.move_in_playlist(playlist.id, first, -1)
+    assert lib.playlist_song_ids(playlist.id) == [first, second]
+    lib.move_in_playlist(playlist.id, first, -5)  # stops at the top
+    assert lib.playlist_song_ids(playlist.id) == [first, second]
+    lib.move_in_playlist(playlist.id, first, 9)
+    assert lib.playlist_song_ids(playlist.id) == [second, first]
+
+    lib.remove_from_playlist(playlist.id, second)
+    assert lib.playlist_song_ids(playlist.id) == [first]
+    with pytest.raises(NotFound):
+        lib.remove_from_playlist(playlist.id, second)
+    with pytest.raises(NotFound):
+        lib.move_in_playlist(playlist.id, second, 1)
+    with pytest.raises(NotFound):
+        lib.add_to_playlist(playlist.id, [99])
+    with pytest.raises(NotFound):
+        lib.add_to_playlist(99, [first])
+    assert lib.playlist_song_ids(playlist.id) == [first]
+
+
+def test_set_playlist_songs(lib: Library, sample: Sample):
+    first, second = sample.song_ids
+    playlist = lib.create_playlist(PlaylistIn("Mix"))
+    detail = lib.set_playlist_songs(playlist.id, [second, first])
+    assert [s.song.id for s in detail.songs] == [second, first]
+    assert lib.set_playlist_songs(playlist.id, []).songs == []
+    with pytest.raises(ValueError, match="once"):
+        lib.set_playlist_songs(playlist.id, [first, first])
+    with pytest.raises(NotFound):
+        lib.set_playlist_songs(playlist.id, [99])
+
+
+def test_add_album_to_playlist(lib: Library, sample: Sample):
+    first, second = sample.song_ids
+    single = lib.create_song(SongIn(sample.artist_id, "Single"))
+    playlist = lib.create_playlist(PlaylistIn("Mix"))
+    lib.add_to_playlist(playlist.id, [single.id, second])
+    assert lib.add_album_to_playlist(playlist.id, sample.album_id) == 1
+    assert lib.playlist_song_ids(playlist.id) == [single.id, second, first]
+    assert lib.add_album_to_playlist(playlist.id, sample.album_id) == 0
+    with pytest.raises(NotFound):
+        lib.add_album_to_playlist(playlist.id, 99)
+
+
+def test_playlists_lose_deleted_songs(lib: Library, sample: Sample):
+    first, second = sample.song_ids
+    playlist = lib.create_playlist(PlaylistIn("Mix"))
+    lib.add_to_playlist(playlist.id, [first, second])
+    lib.delete_song(first)
+    assert lib.playlist_song_ids(playlist.id) == [second]
+    lib.delete_artist(sample.artist_id)
+    assert lib.get_playlist_detail(playlist.id).songs == []
 
 
 # Stats
@@ -525,6 +686,7 @@ def test_old_databases_get_new_columns(tmp_path):
     album = lib.get_album(1)
     assert (album.cd, album.vinyl, album.listen_later) == (None, None, False)
     assert (lib.get_song(1).mv, lib.get_song(1).listen_later) == (None, False)
+    assert [p.playlist.kind for p in lib.list_playlists()] == ["favorites", "listen_later"]
     Library(path)  # opening again is a no-op
 
 

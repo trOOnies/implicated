@@ -16,9 +16,12 @@
       {% include "_songs.html" %}
     </div>
   </section>
-  <aside class="card">
-    <h2>Add song</h2>
-    {% with form={'track_number': (songs | length) + 1}, artist_id=artist.id, album_id=album.id, fixed_album=True %}{% include "_song_form.html" %}{% endwith %}
+  <aside>
+    <div class="card">
+      <h2>Add song</h2>
+      {% with form={'track_number': (songs | length) + 1}, artist_id=artist.id, album_id=album.id, fixed_album=True %}{% include "_song_form.html" %}{% endwith %}
+    </div>
+    {% with action='/albums/%d/playlists' % album.id, album_wide=True %}{% include "_playlist_add.html" %}{% endwith %}
   </aside>
 </div>
 {% endblock %}

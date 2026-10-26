@@ -31,7 +31,7 @@ info/
 ```
 
 Re-importing updates what changed and keeps your ratings, notes, favorites, CD and vinyl
-ownership, music videos, listen later marks and plays; a broken
+ownership, music videos, listen later marks, playlists and plays; a broken
 file rolls the whole import back and is reported in the server log. `wiki` must be a link to a
 Wikipedia article (`https://<lang>.wikipedia.org/wiki/<title>`); any other link is ignored with a
 warning, and the API and forms refuse it. The full format is described
@@ -59,12 +59,16 @@ Besides what the import brings, the app keeps:
   Links from `youtube.com` (`watch?v=`, `/embed/`, `/shorts/`, `/live/`, `/v/`, also `m.` and
   `music.`), `youtu.be` and `youtube-nocookie.com` are accepted; anything else is refused, and
   only the id is stored. Song pages embed the video.
+- **Playlists** of songs, in your own order. Songs are added one by one from their page, or a
+  whole album at a time from the album page; a song is in a playlist at most once.
+  **Favorites** and **Listen Later** are built-in playlists that cannot be renamed or deleted:
+  they always hold the songs with that mark, and adding or removing songs sets or clears it.
 - **Listen later** marks on artists, albums and songs. A song's mark goes away when you log a play
   of it.
 
 ## Layout
 
-- `src/implicated/models.py`: dataclass models (`Artist`, `Member`, `Album`, `Song`, `Play`, and their `*In` inputs)
+- `src/implicated/models.py`: dataclass models (`Artist`, `Member`, `Album`, `Song`, `Play`, `Playlist`, and their `*In` inputs)
 - `src/implicated/library.py`: SQLite storage and stats
 - `src/implicated/importer.py`: YAML importer for artists, members, albums, songs, covers and lyrics
 - `src/implicated/api/`: JSON routes under `/api/...`, one router (and API page tag) per resource

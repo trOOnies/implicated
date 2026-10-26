@@ -1,0 +1,11 @@
+<section id="playlist-info" class="card info">
+  <form class="stack" hx-post="/playlists/{{ playlist.id }}" hx-target="#playlist-info" hx-swap="outerHTML">
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <label>Name <input name="name" required value="{{ playlist.name }}"></label>
+    <div class="row">
+      <button type="submit">Save</button>
+      <button type="button" class="secondary" hx-get="/fragments/playlists/{{ playlist.id }}/info"
+              hx-target="#playlist-info" hx-swap="outerHTML">Cancel</button>
+    </div>
+  </form>
+</section>

@@ -510,3 +510,105 @@ def test_song_notes_and_music_video(client: TestClient, client_lib: Library, web
     assert client.post("/songs", data=new).status_code == 200
     bad_new = client.post("/songs", data=new | {"title": "Glory Box", "mv": "nope"})
     assert bad_new.status_code == 422 and "YouTube" in bad_new.text
+
+
+def test_playlist_pages(client: TestClient, client_lib: Library, web_sample: Sample):
+    first, second = web_sample.song_ids
+    assert 'href="/playlists"' in client.get("/").text
+    listing = client.get("/playlists").text
+    assert "Favorites</a> <span" in listing and "Listen Later</a> <span" in listing
+    assert client.post("/playlists", data={"name": " "}).status_code == 422
+    assert client.post("/playlists", data={"name": "Favorites"}).status_code == 422
+    created = client.post("/playlists", data={"name": "Night drive"})
+    assert "playlists-changed" in created.headers["hx-trigger"]
+    pid = client_lib.list_playlists()[-1].playlist.id
+    assert "Night drive" in client.get("/fragments/playlists").text
+
+    page = client.get(f"/playlists/{pid}").text
+    assert "Night drive" in page and "No songs here yet" in page
+    assert 'aria-current="page">Playlists' in page
+
+    # Add one song from its page, then the whole album from the album page.
+    song_page = client.get(f"/songs/{second}").text
+    assert "Add to playlist" in song_page and "Night drive (0 songs)" in song_page
+    assert "In no playlist yet." in song_page
+    added = client.post(f"/songs/{second}/playlists", data={"playlist_id": pid})
+    assert (
+        "Added to Night drive." in added.text and "playlists-changed" in added.headers["hx-trigger"]
+    )
+    assert f'href="/playlists/{pid}">Night drive</a>' in added.text
+    member_of = client.get(f"/fragments/songs/{second}/member-of").text
+    assert f'href="/playlists/{pid}">Night drive</a>' in member_of
+    again = client.post(f"/songs/{second}/playlists", data={"playlist_id": pid}).text
+    assert "It is already in Night drive." in again
+    assert client.post(f"/songs/{second}/playlists", data={}).status_code == 422
+    assert client.post(f"/songs/{second}/playlists", data={"playlist_id": 99}).status_code == 404
+
+    album_url = f"/albums/{web_sample.album_id}/playlists"
+    assert "Add the album to a playlist" in client.get(f"/albums/{web_sample.album_id}").text
+    added = client.post(album_url, data={"playlist_id": pid}).text
+    assert "Added 1 song to Night drive. 1 of its 2 songs were already there." in added
+    assert "Added 0 songs" in client.post(album_url, data={"playlist_id": pid}).text
+    assert client.post(album_url, data={}).status_code == 422
+    assert client_lib.playlist_song_ids(pid) == [second, first]
+
+    songs = client.get(f"/fragments/playlists/{pid}/songs").text
+    assert f'"playlist_id": {pid}' in songs and "Remove" in songs and "Edit</button>" not in songs
+    moved = client.post(f"/playlists/{pid}/songs/{first}/move", data={"offset": "-1"})
+    assert "playlists-changed" in moved.headers["hx-trigger"]
+    assert client_lib.playlist_song_ids(pid) == [first, second]
+    assert (
+        client.post(f"/playlists/{pid}/songs/{first}/move", data={"offset": "x"}).status_code == 422
+    )
+    row = client.post(f"/songs/{first}/play", data={"ctx": "playlist", "playlist_id": pid}).text
+    assert f"/playlists/{pid}/songs/{first}/remove" in row
+    client.post(f"/playlists/{pid}/songs/{first}/remove")
+    assert client_lib.playlist_song_ids(pid) == [second]
+    assert client.post(f"/playlists/{pid}/songs/{first}/remove").status_code == 404
+
+    assert 'value="Night drive"' in client.get(f"/fragments/playlists/{pid}/edit").text
+    assert client.post(f"/playlists/{pid}", data={"name": ""}).status_code == 422
+    renamed = client.post(f"/playlists/{pid}", data={"name": "Late"}).text
+    assert "Late" in renamed and "1 songs" in renamed
+    assert "Late" in client.get(f"/fragments/playlists/{pid}/info").text
+    deleted = client.post(f"/playlists/{pid}/delete")
+    assert deleted.headers["hx-redirect"] == "/playlists"
+    assert client.get(f"/playlists/{pid}").status_code == 404
+    assert len(client_lib.list_songs()) == 2
+
+
+def test_built_in_playlist_pages(client: TestClient, client_lib: Library, web_sample: Sample):
+    first, second = web_sample.song_ids
+    favorites = client_lib.special_playlist("favorites").id
+    later = client_lib.special_playlist("listen_later").id
+    page = client.get(f"/playlists/{favorites}").text
+    assert "Every song marked ♥ is here" in page and "Rename</button>" not in page
+    assert "Delete</button>" not in page
+    assert client.post(f"/playlists/{favorites}/delete").status_code == 422
+    assert client.post(f"/playlists/{later}", data={"name": "Other"}).status_code == 422
+    assert client_lib.get_playlist(later).name == "Listen Later"
+
+    # Marks fill the playlists, and they say so to the playlist pages.
+    toggled = client.post(f"/favorite/song/{second}")
+    assert "playlists-changed" in toggled.headers["hx-trigger"]
+    assert (
+        "playlists-changed"
+        not in client.post(f"/favorite/album/{web_sample.album_id}").headers["hx-trigger"]
+    )
+    assert "Sour Times" in client.get(f"/fragments/playlists/{favorites}/songs").text
+    client.post(f"/later/song/{first}")
+    assert "Mysterons" in client.get(f"/fragments/playlists/{later}/songs").text
+    played = client.post(f"/songs/{first}/play", data={"ctx": "playlist", "playlist_id": later})
+    assert "playlists-changed" in played.headers["hx-trigger"]
+    assert "Mysterons" not in client.get(f"/fragments/playlists/{later}/songs").text
+
+    # Adding to and removing from the playlists sets the marks.
+    client.post(f"/songs/{first}/playlists", data={"playlist_id": favorites})
+    assert client_lib.get_song(first).favorite
+    assert 'aria-pressed="true"' in client.get(f"/fragments/songs/{first}/info").text
+    removed = client.post(f"/playlists/{favorites}/songs/{second}/remove")
+    assert "library-changed" in removed.headers["hx-trigger"]
+    assert not client_lib.get_song(second).favorite
+    client.post(f"/albums/{web_sample.album_id}/playlists", data={"playlist_id": later})
+    assert all(s.song.listen_later for s in client_lib.list_songs())
+    assert 'id="song-info-slot"' in client.get(f"/songs/{first}").text

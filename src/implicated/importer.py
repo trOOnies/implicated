@@ -46,7 +46,7 @@ is ``S_C_A_R_E_C_R_O_W.txt`` and "Question...?" is ``Question....txt``. Case doe
 empty file means the lyrics are still missing; songs without a file get an empty one.
 
 Importing again updates what changed and never touches ratings, notes, favorites, CD and vinyl
-ownership, music videos, listen later marks or plays.
+ownership, music videos, listen later marks, playlists or plays.
 """
 
 from __future__ import annotations

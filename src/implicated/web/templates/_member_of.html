@@ -1,0 +1,5 @@
+{# The playlists a song is in; reloads when any playlist changes. #}
+<p id="member-of" class="small" hx-get="/fragments/songs/{{ song_id }}/member-of"
+   hx-trigger="playlists-changed from:body" hx-swap="outerHTML">
+  {% if member_of %}In {% for p in member_of %}<a href="/playlists/{{ p.id }}">{{ p.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% else %}In no playlist yet.{% endif %}
+</p>

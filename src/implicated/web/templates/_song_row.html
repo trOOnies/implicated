@@ -6,7 +6,7 @@
   <td><button type="button" class="play" title="Log a listen" hx-post="/songs/{{ s.song.id }}/play"
               hx-target="closest tr" hx-swap="outerHTML">▶</button></td>
   <td data-sort="{{ s.song.title }}"><a href="/songs/{{ s.song.id }}">{{ s.song.title }}</a>{% if ctx == 'album' %}{% if s.song.no_lyrics %} {{ none_tag }}{% elif not s.song.lyrics %} {{ missing_tag }}{% endif %}{% endif %}{% if s.song.notes %} <small class="muted" title="{{ s.song.notes }}">✎</small>{% endif %}{% if s.song.mv %} <small class="muted" title="Has a music video">MV</small>{% endif %}</td>
-  {% if ctx == 'all' %}<td><a href="/artists/{{ s.song.artist_id }}">{{ s.artist_name }}</a></td>{% endif %}
+  {% if ctx in ('all', 'playlist') %}<td><a href="/artists/{{ s.song.artist_id }}">{{ s.artist_name }}</a></td>{% endif %}
   {% if ctx != 'album' %}<td>{% if s.song.album_id %}<a href="/albums/{{ s.song.album_id }}">{{ s.album_title }}</a>{% else %}<span class="muted">single</span>{% endif %}</td>{% endif %}
   {% if ctx == 'all' %}{% if s.song.no_lyrics %}<td data-sort="1">{{ none_tag }}</td>{% elif not s.song.lyrics %}<td data-sort="2">{{ missing_tag }}</td>{% else %}<td data-sort="0"></td>{% endif %}{% endif %}
   <td data-sort="{{ s.song.duration_seconds or '' }}">{{ s.song.duration_seconds | duration }}</td>
@@ -16,9 +16,18 @@
   <td class="actions">
     {% with kind='song', record_id=s.song.id, favorite=s.song.favorite %}{% include "_fav.html" %}{% endwith %}
     {% with kind='song', record_id=s.song.id, later=s.song.listen_later %}{% include "_later.html" %}{% endwith %}
+    {% if ctx == 'playlist' %}
+    <button type="button" class="link" hx-post="/playlists/{{ playlist_id }}/songs/{{ s.song.id }}/move"
+            hx-vals='{"offset": -1}' hx-swap="none" title="Move up" aria-label="Move up">↑</button>
+    <button type="button" class="link" hx-post="/playlists/{{ playlist_id }}/songs/{{ s.song.id }}/move"
+            hx-vals='{"offset": 1}' hx-swap="none" title="Move down" aria-label="Move down">↓</button>
+    <button type="button" class="link danger" hx-post="/playlists/{{ playlist_id }}/songs/{{ s.song.id }}/remove"
+            hx-swap="none" title="Take it out of this playlist; it stays in the library">Remove</button>
+    {% else %}
     <button type="button" class="link" hx-get="/fragments/songs/{{ s.song.id }}/edit"
             hx-target="closest tr" hx-swap="outerHTML">Edit</button>
     <button type="button" class="link danger" hx-post="/songs/{{ s.song.id }}/delete"
             hx-target="closest tr" hx-swap="outerHTML" hx-confirm="Delete “{{ s.song.title }}”?">Delete</button>
+    {% endif %}
   </td>
 </tr>

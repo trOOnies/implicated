@@ -1,18 +1,19 @@
-{# ctx is "all", "artist" or "album"; it decides which columns rows show. #}
+{# ctx is "all", "artist", "album" or "playlist" (with `playlist_id`); it decides which columns
+   and buttons rows show. #}
 {% if songs %}
 <table class="songs sortable">
   <thead>
     <tr>
       {% if ctx == 'album' %}<th data-type="number">#</th>{% endif %}
       <th></th><th>Title</th>
-      {% if ctx == 'all' %}<th>Artist</th>{% endif %}
+      {% if ctx in ('all', 'playlist') %}<th>Artist</th>{% endif %}
       {% if ctx != 'album' %}<th>Album</th>{% endif %}
       {% if ctx == 'all' %}<th data-type="number">Missing lyrics</th>{% endif %}
       <th data-type="number">Length</th><th data-type="number">Rating</th>
       <th data-type="number">Plays</th><th>Last played</th><th></th>
     </tr>
   </thead>
-  <tbody hx-vals='{"ctx": "{{ ctx }}"}'>
+  <tbody hx-vals='{"ctx": "{{ ctx }}"{% if ctx == 'playlist' %}, "playlist_id": {{ playlist_id }}{% endif %}}'>
     {% for s in songs %}{% include "_song_row.html" %}{% endfor %}
   </tbody>
 </table>

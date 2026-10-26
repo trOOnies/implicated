@@ -1,0 +1,5 @@
+<form class="stack" hx-post="/playlists" hx-swap="outerHTML">
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <label>Name <input name="name" required value="{{ form.get('name', '') }}"></label>
+  <button type="submit">Create playlist</button>
+</form>

@@ -1,0 +1,21 @@
+<section id="playlist-info" class="card info">
+  <div class="row">
+    <h1>{{ playlist.name }}</h1>
+    {% if playlist.kind %}<span class="tag">built in</span>{% endif %}
+    <span class="spacer"></span>
+    {% if not playlist.kind %}
+    <button type="button" class="secondary" hx-get="/fragments/playlists/{{ playlist.id }}/edit"
+            hx-target="#playlist-info" hx-swap="outerHTML">Rename</button>
+    <button type="button" class="danger" hx-post="/playlists/{{ playlist.id }}/delete"
+            hx-confirm="Delete the playlist {{ playlist.name }}? Its songs stay in the library.">Delete</button>
+    {% endif %}
+  </div>
+  <p class="muted">{{ songs | length }} songs · {{ total_seconds | duration }}</p>
+  {% if playlist.kind == 'favorites' %}
+  <p class="small">Every song marked ♥ is here. Adding a song to this playlist marks it as a favorite, and removing it (or its ♥) takes the mark off.</p>
+  {% elif playlist.kind == 'listen_later' %}
+  <p class="small">Every song marked ⧗ is here. Adding a song to this playlist marks it, and removing it (or its ⧗) takes the mark off. Songs leave once you log a listen of them.</p>
+  {% elif not songs %}
+  <p class="small">Add songs from a song's page, or all of an album's songs from the album's page.</p>
+  {% endif %}
+</section>

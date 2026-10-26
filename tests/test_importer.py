@@ -206,6 +206,7 @@ def test_reimport_keeps_personal_data(lib: Library, info: Path):
     assert (kept.cd, kept.vinyl, kept.listen_later) == ("owned", "wanted", True)
     assert lib.get_song(song.id).rating == 5
     assert (lib.get_song(song.id).mv, lib.get_song(song.id).listen_later) == (YT, True)
+    assert lib.playlist_song_ids(lib.special_playlist("listen_later").id) == [song.id]
     assert lib.get_song_summary(song.id).play_count == 1
     assert len(list(lib.covers_dir.iterdir())) == 2
     assert len(list(lib.images_dir.iterdir())) == 1

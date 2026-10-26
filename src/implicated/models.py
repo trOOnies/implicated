@@ -1,6 +1,7 @@
 """Domain models.
 
-Persisted records (``Artist``, ``Member``, ``Album``, ``Song``, ``Play``) carry their database id.
+Persisted records (``Artist``, ``Member``, ``Album``, ``Song``, ``Play``, ``Playlist``) carry their
+database id.
 The ``*In`` variants are the writable fields, used as API request bodies and for form input.
 """
 
@@ -18,6 +19,12 @@ OWNERSHIP = ("wanted", "owned")
 YOUTUBE_ID = re.compile(r"[A-Za-z0-9_-]{11}")
 YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"}
 YOUTUBE_PATHS = ("/embed/", "/shorts/", "/live/", "/v/")
+
+# Playlists that always hold the songs with a mark: ``kind`` -> (name, ``Song`` field).
+SPECIAL_PLAYLISTS = {
+    "favorites": ("Favorites", "favorite"),
+    "listen_later": ("Listen Later", "listen_later"),
+}
 
 # Any language edition, desktop or mobile: en.wikipedia.org, pt-br.m.wikipedia.org, ...
 WIKI_HOST = re.compile(r"[a-z]{2,3}(?:-[a-z0-9]{1,8})*(?:\.m)?\.wikipedia\.org")
@@ -134,6 +141,20 @@ class Play:
     played_at: str
 
 
+@dataclass
+class PlaylistIn:
+    name: str
+
+
+@dataclass
+class Playlist(PlaylistIn):
+    id: int = 0
+    created_at: str = ""
+    # One of ``SPECIAL_PLAYLISTS`` for the built-in playlists, which cannot be renamed or
+    # deleted; ``None`` for your own.
+    kind: str | None = None
+
+
 # Read-side views: records joined with the context a page needs.
 
 
@@ -164,6 +185,21 @@ class SongSummary:
     album_title: str | None = None
     play_count: int = 0
     last_played: str | None = None
+
+
+@dataclass
+class PlaylistSummary:
+    playlist: Playlist
+    song_count: int = 0
+    total_seconds: int = 0
+
+
+@dataclass
+class PlaylistDetail:
+    """A playlist with its songs, in order."""
+
+    playlist: Playlist
+    songs: list[SongSummary] = field(default_factory=list)
 
 
 @dataclass

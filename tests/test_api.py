@@ -125,7 +125,7 @@ def test_stats_route_clamps_days(client: TestClient, web_sample: Sample):
 def test_routes_are_grouped_by_tag(client: TestClient):
     schema = client.get("/openapi.json").json()
     assert [t["name"] for t in schema["tags"]] == [
-        "Artists", "Members", "Albums", "Songs", "Plays", "Stats"
+        "Artists", "Members", "Albums", "Songs", "Playlists", "Plays", "Stats"
     ]  # fmt: skip
     tags = {
         (method, path): op["tags"]
@@ -136,6 +136,7 @@ def test_routes_are_grouped_by_tag(client: TestClient):
     assert tags[("put", "/api/artists/{artist_id}/members")] == ["Members"]
     assert tags[("get", "/api/albums/{album_id}/cover")] == ["Albums"]
     assert tags[("post", "/api/songs/{song_id}/plays")] == ["Plays"]
+    assert tags[("put", "/api/playlists/{playlist_id}/songs")] == ["Playlists"]
     assert tags[("get", "/api/stats")] == ["Stats"]
     assert all(len(t) == 1 for t in tags.values())
     assert not any(path.startswith("/fragments") for path in schema["paths"])
@@ -188,3 +189,39 @@ def test_song_music_video_and_listen_later(client: TestClient, web_sample: Sampl
 
     client.post(f"/api/songs/{song_id}/plays")
     assert client.get(f"/api/songs/{song_id}").json()["listen_later"] is False
+
+
+def test_playlist_routes(client: TestClient, web_sample: Sample):
+    first, second = web_sample.song_ids
+    created = client.post("/api/playlists", json={"name": "Mix"})
+    assert created.status_code == 201
+    pid = created.json()["id"]
+    assert client.post("/api/playlists", json={"name": ""}).status_code == 422
+    assert client.put(f"/api/playlists/{pid}", json={"name": "Mix 2"}).json()["name"] == "Mix 2"
+
+    detail = client.post(f"/api/playlists/{pid}/songs/{second}").json()
+    assert [s["song"]["id"] for s in detail["songs"]] == [second]
+    detail = client.post(f"/api/albums/{web_sample.album_id}/playlists/{pid}").json()
+    assert [s["song"]["id"] for s in detail["songs"]] == [second, first]
+    detail = client.put(f"/api/playlists/{pid}/songs", json=[first, second]).json()
+    assert [s["song"]["id"] for s in detail["songs"]] == [first, second]
+    assert client.put(f"/api/playlists/{pid}/songs", json=[1, 1]).status_code == 422
+    detail = client.delete(f"/api/playlists/{pid}/songs/{first}").json()
+    assert [s["song"]["id"] for s in detail["songs"]] == [second]
+    assert client.delete(f"/api/playlists/{pid}/songs/{first}").status_code == 404
+    assert client.post(f"/api/playlists/{pid}/songs/99").status_code == 404
+
+    favorites, later, summary = client.get("/api/playlists").json()
+    assert (favorites["playlist"]["kind"], later["playlist"]["kind"]) == (
+        "favorites",
+        "listen_later",
+    )
+    assert (summary["playlist"]["name"], summary["song_count"]) == ("Mix 2", 1)
+    fav_id = favorites["playlist"]["id"]
+    assert client.delete(f"/api/playlists/{fav_id}").status_code == 422
+    assert client.put(f"/api/playlists/{fav_id}", json={"name": "X"}).status_code == 422
+    client.post(f"/api/playlists/{fav_id}/songs/{first}")
+    assert client.get(f"/api/songs/{first}").json()["favorite"] is True
+    assert client.get(f"/api/playlists/{pid}").json()["playlist"]["id"] == pid
+    assert client.delete(f"/api/playlists/{pid}").status_code == 204
+    assert client.get(f"/api/playlists/{pid}").status_code == 404

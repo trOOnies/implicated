@@ -1,0 +1,13 @@
+<table class="sortable">
+  <thead><tr><th>Name</th><th data-type="number">Songs</th><th data-type="number">Length</th></tr></thead>
+  <tbody>
+  {% for p in playlists %}
+    <tr>
+      <td><a href="/playlists/{{ p.playlist.id }}">{{ p.playlist.name }}</a>{% if p.playlist.kind %} <span class="tag">built in</span>{% endif %}</td>
+      <td>{{ p.song_count }}</td>
+      <td data-sort="{{ p.total_seconds or '' }}">{{ p.total_seconds | duration }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="small">Add songs to a playlist from a song's page, or a whole album from the album's page.</p>

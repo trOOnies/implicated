@@ -1,0 +1,13 @@
+{# Adds a song (or, with `album_wide`, all of an album's songs) to a playlist, posting to `action`. #}
+<section id="playlist-add" class="card">
+  <h2>{{ 'Add the album to a playlist' if album_wide else 'Add to playlist' }}</h2>
+  <form class="stack" hx-post="{{ action }}" hx-target="#playlist-add" hx-swap="outerHTML">
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    {% if message %}<p class="muted">{{ message }}</p>{% endif %}
+    <select name="playlist_id" aria-label="Playlist">
+      {% for p in playlists %}<option value="{{ p.playlist.id }}" {% if p.playlist.id == selected %}selected{% endif %}>{{ p.playlist.name }} ({{ p.song_count }} songs)</option>{% endfor %}
+    </select>
+    <button type="submit">{{ 'Add all its songs' if album_wide else 'Add song' }}</button>
+  </form>
+  {% if not album_wide %}{% include "_member_of.html" %}{% endif %}
+</section>

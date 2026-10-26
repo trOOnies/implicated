@@ -6,6 +6,8 @@ so they refresh themselves:
 
 * ``artists-changed``, ``albums-changed``, ``songs-changed``: a list needs reloading
 * ``plays-changed``: listening history changed
+* ``playlists-changed``: a playlist, or the songs in it, changed (also when a song's favorite or
+  listen later mark changes, since the built-in playlists follow them)
 * ``library-changed``: anything changed; the dashboard overview listens to it
 """
 
@@ -30,6 +32,7 @@ from implicated.models import (
     AlbumIn,
     ArtistIn,
     Member,
+    PlaylistIn,
     Point,
     Song,
     SongIn,
@@ -414,6 +417,7 @@ def _album_context(lib: Library, album_id: int) -> dict:
     album = found(lib.get_album, album_id)
     songs = lib.list_songs(album_id=album_id, order="track")
     return {
+        "playlists": lib.list_playlists(),
         "album": album,
         "artist": lib.get_artist(album.artist_id),
         "songs": songs,
@@ -484,6 +488,34 @@ async def set_album_format(request: Request, lib: Lib, album_id: int, fmt: str):
         album=album,
         fmt=fmt,
         compact="compact" in form,
+    )
+
+
+@router.post("/albums/{album_id}/playlists")
+async def add_album_to_playlist(request: Request, lib: Lib, album_id: int):
+    form = await request.form()
+    found(lib.get_album, album_id)
+    context = {"action": f"/albums/{album_id}/playlists", "album_wide": True}
+    playlist_id = _int(form, "playlist_id")
+    if playlist_id is None:
+        context["playlists"] = lib.list_playlists()
+        return render(
+            request, "_playlist_add.html", status_code=422, error="Pick a playlist.", **context
+        )
+    playlist = found(lib.get_playlist, playlist_id)
+    added = lib.add_album_to_playlist(playlist_id, album_id)
+    total = len(lib.list_songs(album_id=album_id))
+    message = f"Added {added} {'song' if added == 1 else 'songs'} to {playlist.name}."
+    if added < total:
+        message += f" {total - added} of its {total} songs were already there."
+    return render(
+        request,
+        "_playlist_add.html",
+        trigger=("playlists-changed",),
+        message=message,
+        selected=playlist_id,
+        playlists=lib.list_playlists(),
+        **context,
     )
 
 
@@ -565,9 +597,9 @@ async def create_song(request: Request, lib: Lib):
 
 
 def _ctx(form_or_query) -> str:
-    """Where a song row is shown; "page" is the song's own page."""
+    """Where a song row is shown; "page" is the song's own page, "playlist" a playlist's."""
     ctx = form_or_query.get("ctx") or "all"
-    return ctx if ctx in ("all", "artist", "album", "page") else "all"
+    return ctx if ctx in ("all", "artist", "album", "playlist", "page") else "all"
 
 
 def _lyrics_context(lib: Library, song_id: int, **extra) -> dict:
@@ -584,6 +616,15 @@ def _song_info_context(lib: Library, song_id: int) -> dict:
     return {"s": summary, "artist": lib.get_artist(summary.song.artist_id)}
 
 
+def _song_playlists_context(lib: Library, song_id: int, **extra) -> dict:
+    return {
+        "action": f"/songs/{song_id}/playlists",
+        "playlists": lib.list_playlists(),
+        "member_of": lib.playlists_with_song(song_id),
+        **extra,
+    }
+
+
 @router.get("/songs/{song_id}")
 def song_page(request: Request, lib: Lib, song_id: int):
     context = _lyrics_context(lib, song_id)
@@ -591,8 +632,20 @@ def song_page(request: Request, lib: Lib, song_id: int):
         request,
         "song.html",
         **_song_info_context(lib, song_id),
+        **_song_playlists_context(lib, song_id),
         lyrics_path=context["lyrics_path"],
         error=context.get("error"),
+    )
+
+
+@router.get("/fragments/songs/{song_id}/member-of")
+def song_member_of(request: Request, lib: Lib, song_id: int):
+    found(lib.get_song, song_id)
+    return render(
+        request,
+        "_member_of.html",
+        song_id=song_id,
+        member_of=lib.playlists_with_song(song_id),
     )
 
 
@@ -636,6 +689,25 @@ async def update_song_details(request: Request, lib: Lib, song_id: int):
         "_song_info.html",
         trigger=("library-changed",),
         **_song_info_context(lib, song_id),
+    )
+
+
+@router.post("/songs/{song_id}/playlists")
+async def add_song_to_playlist(request: Request, lib: Lib, song_id: int):
+    form = await request.form()
+    found(lib.get_song, song_id)
+    playlist_id = _int(form, "playlist_id")
+    if playlist_id is None:
+        context = _song_playlists_context(lib, song_id, error="Pick a playlist.")
+        return render(request, "_playlist_add.html", status_code=422, **context)
+    playlist = found(lib.get_playlist, playlist_id)
+    added = lib.add_to_playlist(playlist_id, [song_id])
+    message = f"Added to {playlist.name}." if added else f"It is already in {playlist.name}."
+    return render(
+        request,
+        "_playlist_add.html",
+        trigger=("playlists-changed", "library-changed"),
+        **_song_playlists_context(lib, song_id, message=message, selected=playlist_id),
     )
 
 
@@ -698,7 +770,7 @@ async def update_song(request: Request, lib: Lib, song_id: int):
     return render(
         request,
         "_song_row.html",
-        trigger=("library-changed",),
+        trigger=("playlists-changed", "library-changed"),
         s=lib.get_song_summary(song_id),
         ctx=_ctx(form),
     )
@@ -709,7 +781,7 @@ async def play_song(request: Request, lib: Lib, song_id: int):
     """Log a listen; this also clears the song's listen later mark."""
     form = await request.form()
     found(lib.record_play, song_id)
-    trigger = ("plays-changed", "library-changed")
+    trigger = ("plays-changed", "playlists-changed", "library-changed")
     ctx = _ctx(form)
     if ctx == "page":
         return render(
@@ -721,6 +793,7 @@ async def play_song(request: Request, lib: Lib, song_id: int):
         trigger=trigger,
         s=lib.get_song_summary(song_id),
         ctx=ctx,
+        playlist_id=_int(form, "playlist_id"),
     )
 
 
@@ -733,6 +806,11 @@ def delete_song(lib: Lib, song_id: int):
 # Favorites and listen later
 
 
+def _mark_trigger(kind: str) -> tuple[str, ...]:
+    # Songs' marks decide what the built-in playlists hold.
+    return ("playlists-changed", "library-changed") if kind == "song" else ("library-changed",)
+
+
 @router.post("/later/{kind}/{record_id}")
 def toggle_listen_later(request: Request, lib: Lib, kind: str, record_id: int):
     if kind not in ("artist", "album", "song"):
@@ -741,7 +819,7 @@ def toggle_listen_later(request: Request, lib: Lib, kind: str, record_id: int):
     return render(
         request,
         "_later.html",
-        trigger=("library-changed",),
+        trigger=_mark_trigger(kind),
         kind=kind,
         record_id=record_id,
         later=later,
@@ -756,8 +834,111 @@ def toggle_favorite(request: Request, lib: Lib, kind: str, record_id: int):
     return render(
         request,
         "_fav.html",
-        trigger=("library-changed",),
+        trigger=_mark_trigger(kind),
         kind=kind,
         record_id=record_id,
         favorite=favorite,
     )
+
+
+# Playlists
+
+
+@router.get("/playlists")
+def playlists_page(request: Request, lib: Lib):
+    return render(request, "playlists.html", playlists=lib.list_playlists(), form={})
+
+
+@router.get("/fragments/playlists")
+def playlists_fragment(request: Request, lib: Lib):
+    return render(request, "_playlists.html", playlists=lib.list_playlists())
+
+
+@router.post("/playlists")
+async def create_playlist(request: Request, lib: Lib):
+    form = await request.form()
+    try:
+        lib.create_playlist(PlaylistIn(_text(form, "name") or ""))
+    except ValueError as exc:
+        return render(request, "_playlist_form.html", status_code=422, error=str(exc), form=form)
+    return render(request, "_playlist_form.html", trigger=("playlists-changed",), form={})
+
+
+def _playlist_context(lib: Library, playlist_id: int) -> dict:
+    detail = found(lib.get_playlist_detail, playlist_id)
+    return {
+        "playlist": detail.playlist,
+        "songs": detail.songs,
+        "total_seconds": sum(s.song.duration_seconds or 0 for s in detail.songs),
+    }
+
+
+@router.get("/playlists/{playlist_id}")
+def playlist_page(request: Request, lib: Lib, playlist_id: int):
+    return render(request, "playlist.html", ctx="playlist", **_playlist_context(lib, playlist_id))
+
+
+@router.get("/fragments/playlists/{playlist_id}/info")
+def playlist_info(request: Request, lib: Lib, playlist_id: int):
+    return render(request, "_playlist_info.html", **_playlist_context(lib, playlist_id))
+
+
+@router.get("/fragments/playlists/{playlist_id}/edit")
+def playlist_edit(request: Request, lib: Lib, playlist_id: int):
+    return render(request, "_playlist_edit.html", playlist=found(lib.get_playlist, playlist_id))
+
+
+@router.get("/fragments/playlists/{playlist_id}/songs")
+def playlist_songs(request: Request, lib: Lib, playlist_id: int):
+    return render(
+        request,
+        "_songs.html",
+        ctx="playlist",
+        playlist_id=playlist_id,
+        songs=found(lib.get_playlist_detail, playlist_id).songs,
+    )
+
+
+@router.post("/playlists/{playlist_id}")
+async def update_playlist(request: Request, lib: Lib, playlist_id: int):
+    form = await request.form()
+    playlist = found(lib.get_playlist, playlist_id)
+    try:
+        lib.update_playlist(playlist_id, PlaylistIn(_text(form, "name") or ""))
+    except ValueError as exc:
+        return render(
+            request, "_playlist_edit.html", status_code=422, error=str(exc), playlist=playlist
+        )
+    return render(
+        request,
+        "_playlist_info.html",
+        trigger=("playlists-changed",),
+        **_playlist_context(lib, playlist_id),
+    )
+
+
+@router.post("/playlists/{playlist_id}/delete")
+def delete_playlist(lib: Lib, playlist_id: int):
+    try:
+        found(lib.delete_playlist, playlist_id)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return Response(headers={"HX-Redirect": "/playlists"})
+
+
+@router.post("/playlists/{playlist_id}/songs/{song_id}/remove")
+def remove_from_playlist(lib: Lib, playlist_id: int, song_id: int):
+    found(lib.remove_from_playlist, playlist_id, song_id)
+    # Taking a song out of Favorites or Listen Later also clears that mark.
+    return Response(headers={"HX-Trigger": "playlists-changed, library-changed"})
+
+
+@router.post("/playlists/{playlist_id}/songs/{song_id}/move")
+async def move_in_playlist(request: Request, lib: Lib, playlist_id: int, song_id: int):
+    form = await request.form()
+    try:
+        offset = _int(form, "offset") or 0
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    found(lib.move_in_playlist, playlist_id, song_id, offset)
+    return Response(headers={"HX-Trigger": "playlists-changed"})

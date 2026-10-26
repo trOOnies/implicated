@@ -6,7 +6,7 @@ from fastapi import APIRouter, Response
 from fastapi.responses import FileResponse
 
 from implicated.api.deps import Lib, call, image
-from implicated.models import Album, AlbumIn, AlbumSummary
+from implicated.models import Album, AlbumIn, AlbumSummary, PlaylistDetail
 
 router = APIRouter(prefix="/albums", tags=["Albums"])
 
@@ -33,6 +33,13 @@ def set_format(
 ) -> Album:
     """Say whether you want or own the album on CD or vinyl; leave ``state`` out for neither."""
     return call(lib.set_format, album_id, fmt, state)
+
+
+@router.post("/{album_id}/playlists/{playlist_id}")
+def add_album_to_playlist(lib: Lib, album_id: int, playlist_id: int) -> PlaylistDetail:
+    """Append the album's songs to the playlist, in track order; songs already there stay."""
+    call(lib.add_album_to_playlist, playlist_id, album_id)
+    return lib.get_playlist_detail(playlist_id)
 
 
 @router.post("", status_code=201)

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% set active = 'playlists' %}
+{% block title %}Playlists{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Playlists</h1></div>
+<div class="layout">
+  <section id="playlists" class="card" hx-get="/fragments/playlists"
+           hx-trigger="playlists-changed from:body" hx-swap="innerHTML">
+    {% include "_playlists.html" %}
+  </section>
+  <aside class="card">
+    <h2>New playlist</h2>
+    {% include "_playlist_form.html" %}
+  </aside>
+</div>
+{% endblock %}
