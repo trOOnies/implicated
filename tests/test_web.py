@@ -749,6 +749,12 @@ def test_song_rows_show_the_album_cover(
     assert f'<img class="cover mini" src="{src}"' in rows
 
 
+def test_help_mentions_the_license_and_repo(client: TestClient):
+    page = client.get("/help").text
+    assert "GNU General Public License v3.0" in page
+    assert 'href="https://github.com/trOOnies/implicated"' in page
+
+
 def test_discography_is_full_width(client: TestClient, web_sample: Sample):
     page = client.get(f"/artists/{web_sample.artist_id}").text
     discography = page.index("<h2>Discography</h2>")
