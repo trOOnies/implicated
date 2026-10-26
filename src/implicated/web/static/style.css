@@ -236,6 +236,21 @@ button.later.on, button.later:hover { color: var(--accent); }
 
 .htmx-request button, button.htmx-request { opacity: .6; }
 
+/* Previous and next song on the album */
+.song-nav { display: inline-flex; gap: .25rem; }
+.song-nav a, .song-nav span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--accent);
+}
+.song-nav a:hover { background: var(--accent); color: var(--surface); text-decoration: none; }
+.song-nav .disabled { border-color: var(--border); color: var(--muted); opacity: .45; cursor: not-allowed; }
+
 /* Tables */
 .table-scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }

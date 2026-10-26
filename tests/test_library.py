@@ -248,6 +248,22 @@ def test_deleting_removes_cover_files(lib: Library, sample: Sample, image):
 # Songs
 
 
+def test_song_neighbors(lib: Library, sample: Sample):
+    first, second = sample.song_ids
+    third = lib.create_song(SongIn(sample.artist_id, "Strangers", sample.album_id, 3)).id
+
+    def titles(pair):
+        return tuple(s and s.title for s in pair)
+
+    assert titles(lib.song_neighbors(first)) == (None, "Sour Times")
+    assert titles(lib.song_neighbors(second)) == ("Mysterons", "Strangers")
+    assert titles(lib.song_neighbors(third)) == ("Sour Times", None)
+    single = lib.create_song(SongIn(sample.artist_id, "Single")).id
+    assert lib.song_neighbors(single) == (None, None)
+    with pytest.raises(NotFound):
+        lib.song_neighbors(99)
+
+
 def test_song_crud(lib: Library, sample: Sample):
     song = lib.create_song(SongIn(sample.artist_id, " Glory Box ", sample.album_id, 3, 306))
     assert song.title == "Glory Box"

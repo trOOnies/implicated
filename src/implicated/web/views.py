@@ -689,10 +689,13 @@ def _lyrics_context(lib: Library, song_id: int, **extra) -> dict:
 def _song_info_context(lib: Library, song_id: int) -> dict:
     summary = found(lib.get_song_summary, song_id)
     album_id = summary.song.album_id
+    previous, following = lib.song_neighbors(song_id)
     return {
         "s": summary,
         "artist": lib.get_artist(summary.song.artist_id),
         "album": lib.get_album(album_id) if album_id else None,
+        "previous": previous,
+        "following": following,
     }
 
 

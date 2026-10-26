@@ -716,6 +716,24 @@ class Library:
             raise NotFound(f"song {song_id} not found")
         return _song(row)
 
+    def song_neighbors(self, song_id: int) -> tuple[Song | None, Song | None]:
+        """The songs before and after this one on its album, in track order; ``None`` past
+        either end of the album, and both ``None`` for songs without one."""
+        song = self.get_song(song_id)
+        if song.album_id is None:
+            return None, None
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT * FROM songs WHERE album_id = ?
+                    ORDER BY track_number IS NULL, track_number, title COLLATE NOCASE, id""",
+                (song.album_id,),
+            ).fetchall()
+        i = [row["id"] for row in rows].index(song_id)
+        return (
+            _song(rows[i - 1]) if i > 0 else None,
+            _song(rows[i + 1]) if i + 1 < len(rows) else None,
+        )
+
     def find_song(self, artist_id: int, album_id: int | None, title: str) -> Song | None:
         """Look a song up by title within an album (or the artist's singles), ignoring case."""
         with self.connect() as conn:

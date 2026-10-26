@@ -716,6 +716,20 @@ def test_song_page_shows_the_album_cover(
     assert "/cover?v=" not in single_page
 
 
+def test_song_page_steps_through_the_album(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    first, second = web_sample.song_ids
+    page = client.get(f"/songs/{first}").text
+    assert '<span class="disabled" title="First song on the album"' in page
+    assert f'<a href="/songs/{second}" rel="next" title="Next: Sour Times"' in page
+    info = client.get(f"/fragments/songs/{second}/info").text  # kept when the info reloads
+    assert f'<a href="/songs/{first}" rel="prev" title="Previous: Mysterons"' in info
+    assert '<span class="disabled" title="Last song on the album"' in info
+    single = client_lib.create_song(SongIn(web_sample.artist_id, "Single"))
+    assert "song-nav" not in client.get(f"/songs/{single.id}").text
+
+
 def test_artist_filters(client: TestClient, client_lib: Library, web_sample: Sample):
     client_lib.create_artist(ArtistIn("Soda Stereo", "Argentina", None, ["Rock"], ["Spanish"]))
     page = client.get("/artists", params={"genre": "rock"}).text
