@@ -5,7 +5,7 @@
   {% if ctx == 'album' %}<td class="muted">{{ s.song.track_number or '' }}</td>{% endif %}
   <td><button type="button" class="play" title="Log a listen" hx-post="/songs/{{ s.song.id }}/play"
               hx-target="closest tr" hx-swap="outerHTML">▶</button></td>
-  <td data-sort="{{ s.song.title }}"><a href="/songs/{{ s.song.id }}">{{ s.song.title }}</a>{% if ctx == 'album' %}{% if s.song.no_lyrics %} {{ none_tag }}{% elif not s.song.lyrics %} {{ missing_tag }}{% endif %}{% endif %}{% if s.song.notes %} <small class="muted" title="{{ s.song.notes }}">✎</small>{% endif %}{% if s.song.mv %} <small class="muted" title="Has a music video">MV</small>{% endif %}</td>
+  <td data-sort="{{ s.song.title }}"><a href="/songs/{{ s.song.id }}">{{ s.song.title }}</a>{% if ctx == 'album' %}{% if s.song.no_lyrics %} {{ none_tag }}{% elif not s.song.lyrics %} {{ missing_tag }}{% endif %}{% endif %}{% if s.song.notes %} <small class="muted" title="{{ s.song.notes }}">✎</small>{% endif %}{% if s.song.mv %} <small class="muted" title="Has a music video">MV</small>{% endif %}{% if s.video_count %} <small class="muted" title="{{ s.video_count }} {{ 'video' if s.video_count == 1 else 'videos' }}">▷{{ s.video_count }}</small>{% endif %}</td>
   {% if ctx in ('all', 'playlist') %}<td><a href="/artists/{{ s.song.artist_id }}">{{ s.artist_name }}</a></td>{% endif %}
   {% if ctx != 'album' %}<td>{% if s.song.album_id %}<a href="/albums/{{ s.song.album_id }}">{{ s.album_title }}</a>{% else %}<span class="muted">single</span>{% endif %}</td>{% endif %}
   {% if ctx == 'all' %}{% if s.song.no_lyrics %}<td data-sort="1">{{ none_tag }}</td>{% elif not s.song.lyrics %}<td data-sort="2">{{ missing_tag }}</td>{% else %}<td data-sort="0"></td>{% endif %}{% endif %}

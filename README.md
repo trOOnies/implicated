@@ -31,7 +31,7 @@ info/
 ```
 
 Re-importing updates what changed and keeps your ratings, notes, favorites, CD and vinyl
-ownership, music videos, listen later marks, playlists and plays; a broken
+ownership, music videos, song videos, listen later marks, playlists and plays; a broken
 file rolls the whole import back and is reported in the server log. `wiki` must be a link to a
 Wikipedia article (`https://<lang>.wikipedia.org/wiki/<title>`); any other link is ignored with a
 warning, and the API and forms refuse it. The full format is described
@@ -55,10 +55,12 @@ Besides what the import brings, the app keeps:
 - **CD and vinyl ownership** of albums: each format is unset, wanted or owned, picked with a
   selector on the album page and in the artist's discography. The Albums page filters by
   Wanted (CD), Owned (CD), Wanted (Vinyl) and Owned (Vinyl).
-- **Music videos** of songs on YouTube, entered as a link or the bare 11-character video id.
-  Links from `youtube.com` (`watch?v=`, `/embed/`, `/shorts/`, `/live/`, `/v/`, also `m.` and
-  `music.`), `youtu.be` and `youtube-nocookie.com` are accepted; anything else is refused, and
-  only the id is stored. Song pages embed the video.
+- **YouTube videos**: one music video per song, plus any number of other videos (lessons,
+  covers, live takes), each with a title and a start time, in your own order. They are entered
+  as a link or the bare 11-character video id. Links from `youtube.com` (`watch?v=`, `/embed/`,
+  `/shorts/`, `/live/`, `/v/`, also `m.` and `music.`), `youtu.be` and `youtube-nocookie.com`
+  are accepted; anything else is refused, and only the id (and a `t=` start) is stored. Song
+  pages embed them.
 - **Playlists** of songs, in your own order. Songs are added one by one from their page, or a
   whole album at a time from the album page; a song is in a playlist at most once.
   **Favorites** and **Listen Later** are built-in playlists that cannot be renamed or deleted:
@@ -68,7 +70,7 @@ Besides what the import brings, the app keeps:
 
 ## Layout
 
-- `src/implicated/models.py`: dataclass models (`Artist`, `Member`, `Album`, `Song`, `Play`, `Playlist`, and their `*In` inputs)
+- `src/implicated/models.py`: dataclass models (`Artist`, `Member`, `Album`, `Song`, `SongVideo`, `Play`, `Playlist`, and their `*In` inputs)
 - `src/implicated/library.py`: SQLite storage and stats
 - `src/implicated/importer.py`: YAML importer for artists, members, albums, songs, covers and lyrics
 - `src/implicated/api/`: JSON routes under `/api/...`, one router (and API page tag) per resource

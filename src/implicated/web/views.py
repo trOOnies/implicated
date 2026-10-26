@@ -8,6 +8,7 @@ so they refresh themselves:
 * ``plays-changed``: listening history changed
 * ``playlists-changed``: a playlist, or the songs in it, changed (also when a song's favorite or
   listen later mark changes, since the built-in playlists follow them)
+* ``videos-changed``: a song's videos changed
 * ``library-changed``: anything changed; the dashboard overview listens to it
 """
 
@@ -36,6 +37,7 @@ from implicated.models import (
     Point,
     Song,
     SongIn,
+    SongVideoIn,
 )
 from implicated.web import editor
 
@@ -633,6 +635,7 @@ def song_page(request: Request, lib: Lib, song_id: int):
         "song.html",
         **_song_info_context(lib, song_id),
         **_song_playlists_context(lib, song_id),
+        videos=lib.list_videos(song_id),
         lyrics_path=context["lyrics_path"],
         error=context.get("error"),
     )
@@ -647,6 +650,95 @@ def song_member_of(request: Request, lib: Lib, song_id: int):
         song_id=song_id,
         member_of=lib.playlists_with_song(song_id),
     )
+
+
+# Song videos
+
+
+def _videos(
+    request: Request,
+    lib: Library,
+    song_id: int,
+    *,
+    status_code: int = 200,
+    changed: bool = False,
+    form: FormData | None = None,
+    **extra,
+) -> HTMLResponse:
+    """The song's videos card; ``extra`` can say which video is being edited (``editing``) and
+    what went wrong (``error`` for the add form, ``edit_error`` for the edit one)."""
+    return render(
+        request,
+        "_videos.html",
+        status_code=status_code,
+        trigger=("videos-changed",) if changed else (),
+        song_id=song_id,
+        videos=lib.list_videos(song_id),
+        form=form or {},
+        **extra,
+    )
+
+
+def video_from_form(form: FormData) -> SongVideoIn:
+    start = _duration(form, "start")
+    return SongVideoIn(
+        youtube=_text(form, "youtube") or "", title=_text(form, "title"), start_seconds=start
+    )
+
+
+@router.get("/fragments/songs/{song_id}/videos")
+def song_videos(request: Request, lib: Lib, song_id: int):
+    found(lib.get_song, song_id)
+    return _videos(request, lib, song_id)
+
+
+@router.post("/songs/{song_id}/videos")
+async def add_song_video(request: Request, lib: Lib, song_id: int):
+    form = await request.form()
+    found(lib.get_song, song_id)
+    try:
+        lib.add_video(song_id, video_from_form(form))
+    except ValueError as exc:
+        return _videos(request, lib, song_id, status_code=422, error=str(exc), form=form)
+    return _videos(request, lib, song_id, changed=True)
+
+
+@router.get("/fragments/videos/{video_id}/edit")
+def video_edit(request: Request, lib: Lib, video_id: int):
+    video = found(lib.get_video, video_id)
+    return _videos(request, lib, video.song_id, editing=video_id)
+
+
+@router.post("/videos/{video_id}")
+async def update_video(request: Request, lib: Lib, video_id: int):
+    form = await request.form()
+    video = found(lib.get_video, video_id)
+    try:
+        lib.update_video(video_id, video_from_form(form))
+    except ValueError as exc:
+        return _videos(
+            request, lib, video.song_id, status_code=422, editing=video_id, edit_error=str(exc)
+        )
+    return _videos(request, lib, video.song_id, changed=True)
+
+
+@router.post("/videos/{video_id}/move")
+async def move_video(request: Request, lib: Lib, video_id: int):
+    form = await request.form()
+    video = found(lib.get_video, video_id)
+    try:
+        offset = _int(form, "offset") or 0
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    lib.move_video(video_id, offset)
+    return _videos(request, lib, video.song_id, changed=True)
+
+
+@router.post("/videos/{video_id}/delete")
+def delete_video(request: Request, lib: Lib, video_id: int):
+    video = found(lib.get_video, video_id)
+    lib.delete_video(video_id)
+    return _videos(request, lib, video.song_id, changed=True)
 
 
 @router.get("/fragments/songs/{song_id}/info")

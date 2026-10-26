@@ -125,7 +125,8 @@ def test_stats_route_clamps_days(client: TestClient, web_sample: Sample):
 def test_routes_are_grouped_by_tag(client: TestClient):
     schema = client.get("/openapi.json").json()
     assert [t["name"] for t in schema["tags"]] == [
-        "Artists", "Members", "Albums", "Songs", "Playlists", "Plays", "Stats"
+        "Artists", "Members", "Albums", "Songs", "Song videos", "Playlists", "Plays",
+        "Stats",
     ]  # fmt: skip
     tags = {
         (method, path): op["tags"]
@@ -225,3 +226,37 @@ def test_playlist_routes(client: TestClient, web_sample: Sample):
     assert client.get(f"/api/playlists/{pid}").json()["playlist"]["id"] == pid
     assert client.delete(f"/api/playlists/{pid}").status_code == 204
     assert client.get(f"/api/playlists/{pid}").status_code == 404
+
+
+def test_song_video_routes(client: TestClient, web_sample: Sample):
+    first, second = web_sample.song_ids
+    url = f"/api/songs/{first}/videos"
+    created = client.post(
+        url, json={"youtube": "https://youtu.be/aaaaaaaaaaa?t=42", "title": "Solo"}
+    )
+    assert created.status_code == 201
+    video = created.json()
+    assert (video["youtube"], video["start_seconds"], video["song_id"]) == (
+        "aaaaaaaaaaa",
+        42,
+        first,
+    )
+    assert client.post(url, json={"youtube": "nope"}).status_code == 422
+    assert client.post("/api/songs/99/videos", json={"youtube": "aaaaaaaaaaa"}).status_code == 404
+
+    vid = video["id"]
+    changed = client.put(f"{url}/{vid}", json={"youtube": "bbbbbbbbbbb", "title": "Lesson"}).json()
+    assert (changed["youtube"], changed["title"], changed["start_seconds"]) == (
+        "bbbbbbbbbbb",
+        "Lesson",
+        None,
+    )
+    other = f"/api/songs/{second}/videos/{vid}"
+    assert client.put(other, json={"youtube": "bbbbbbbbbbb"}).status_code == 404
+    assert client.delete(other).status_code == 404
+    assert [v["id"] for v in client.get(url).json()] == [vid]
+    counts = {s["song"]["id"]: s["video_count"] for s in client.get("/api/songs").json()}
+    assert counts == {first: 1, second: 0}
+    assert client.delete(f"{url}/{vid}").status_code == 204
+    assert client.get(url).json() == []
+    assert client.delete(f"{url}/{vid}").status_code == 404

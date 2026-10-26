@@ -10,6 +10,7 @@
 </div>
 <div class="layout">
   <div>
+    {% with song_id=s.song.id, error=None, form={} %}{% include "_videos.html" %}{% endwith %}
     {% include "_lyrics.html" %}
   </div>
   <aside>{% with error=None %}{% include "_playlist_add.html" %}{% endwith %}</aside>

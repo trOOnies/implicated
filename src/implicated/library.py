@@ -33,12 +33,15 @@ from implicated.models import (
     Song,
     SongIn,
     SongSummary,
+    SongVideo,
+    SongVideoIn,
     lyrics_file_name,
     validate_kind,
     validate_ownership,
     validate_rating,
     validate_wiki,
     youtube_id,
+    youtube_start,
 )
 
 SCHEMA = """
@@ -97,6 +100,15 @@ CREATE TABLE IF NOT EXISTS songs (
     mv               TEXT,
     listen_later     INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS song_videos (
+    id            INTEGER PRIMARY KEY,
+    song_id       INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+    position      INTEGER NOT NULL,
+    youtube       TEXT NOT NULL,
+    title         TEXT,
+    start_seconds INTEGER,
+    created_at    TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS plays (
     id        INTEGER PRIMARY KEY,
     song_id   INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
@@ -120,6 +132,7 @@ CREATE INDEX IF NOT EXISTS idx_songs_album ON songs(album_id);
 CREATE INDEX IF NOT EXISTS idx_songs_artist ON songs(artist_id);
 CREATE INDEX IF NOT EXISTS idx_plays_song ON plays(song_id);
 CREATE INDEX IF NOT EXISTS idx_playlist_songs_song ON playlist_songs(song_id);
+CREATE INDEX IF NOT EXISTS idx_song_videos_song ON song_videos(song_id);
 """
 
 # Columns added after the first release: (table, column, declaration). Older databases get them
@@ -173,6 +186,12 @@ def _artist(row: sqlite3.Row) -> Artist:
     data["favorite"] = bool(data["favorite"])
     data["listen_later"] = bool(data["listen_later"])
     return Artist(**data)
+
+
+def _video(row: sqlite3.Row) -> SongVideo:
+    data = dict(row)
+    del data["position"]
+    return SongVideo(**data)
 
 
 def _member(row: sqlite3.Row) -> Member:
@@ -611,7 +630,8 @@ class Library:
         sql = f"""
             SELECT s.*, ar.name AS x_artist, al.title AS x_album,
                    (SELECT COUNT(*) FROM plays WHERE song_id = s.id) AS x_plays,
-                   (SELECT MAX(played_at) FROM plays WHERE song_id = s.id) AS x_last_played
+                   (SELECT MAX(played_at) FROM plays WHERE song_id = s.id) AS x_last_played,
+                   (SELECT COUNT(*) FROM song_videos WHERE song_id = s.id) AS x_videos
               FROM songs s
               JOIN artists ar ON ar.id = s.artist_id
               LEFT JOIN albums al ON al.id = s.album_id
@@ -646,6 +666,7 @@ class Library:
                     extra["album"],
                     extra["plays"],
                     extra["last_played"],
+                    extra["videos"],
                 )
             )
         return out
@@ -803,6 +824,80 @@ class Library:
         values["mv"] = youtube_id(data.mv, "mv")
         values["listen_later"] = int(data.listen_later)
         return values
+
+    # Song videos
+
+    def list_videos(self, song_id: int) -> list[SongVideo]:
+        self.get_song(song_id)
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM song_videos WHERE song_id = ? ORDER BY position, id", (song_id,)
+            ).fetchall()
+        return [_video(row) for row in rows]
+
+    def get_video(self, video_id: int) -> SongVideo:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM song_videos WHERE id = ?", (video_id,)).fetchone()
+        if row is None:
+            raise NotFound(f"video {video_id} not found")
+        return _video(row)
+
+    def add_video(self, song_id: int, data: SongVideoIn) -> SongVideo:
+        """Add a video at the end of the song's list."""
+        self.get_song(song_id)
+        values = self._video_values(data)
+        with self.connect() as conn:
+            cur = conn.execute(
+                """INSERT INTO song_videos (song_id, position, youtube, title, start_seconds,
+                                            created_at)
+                   VALUES (:song_id, (SELECT COALESCE(MAX(position), -1) + 1 FROM song_videos
+                                       WHERE song_id = :song_id),
+                           :youtube, :title, :start_seconds, :now)""",
+                {**values, "song_id": song_id, "now": _now()},
+            )
+        return self.get_video(cur.lastrowid)
+
+    def update_video(self, video_id: int, data: SongVideoIn) -> SongVideo:
+        self.get_video(video_id)
+        with self.connect() as conn:
+            conn.execute(
+                """UPDATE song_videos SET youtube = :youtube, title = :title,
+                       start_seconds = :start_seconds
+                   WHERE id = :id""",
+                {**self._video_values(data), "id": video_id},
+            )
+        return self.get_video(video_id)
+
+    def delete_video(self, video_id: int) -> None:
+        self._delete("song_videos", video_id)
+
+    def move_video(self, video_id: int, offset: int) -> None:
+        """Move a video ``offset`` places later in its song's list (earlier when negative)."""
+        video = self.get_video(video_id)
+        ids = [v.id for v in self.list_videos(video.song_id)]
+        index = ids.index(video_id)
+        ids.insert(max(0, min(index + offset, len(ids) - 1)), ids.pop(index))
+        with self.connect() as conn:
+            conn.executemany(
+                "UPDATE song_videos SET position = ? WHERE id = ?",
+                [(position, vid) for position, vid in enumerate(ids)],
+            )
+
+    @staticmethod
+    def _video_values(data: SongVideoIn) -> dict:
+        video = youtube_id(data.youtube)
+        if video is None:
+            raise ValueError("video is required: a YouTube link or video id")
+        start = data.start_seconds
+        if start is None:
+            start = youtube_start(data.youtube)
+        if start is not None and start < 0:
+            raise ValueError("start must be positive")
+        return {
+            "youtube": video,
+            "title": data.title.strip() if data.title and data.title.strip() else None,
+            "start_seconds": start or None,
+        }
 
     # Plays
 

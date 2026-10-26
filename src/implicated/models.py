@@ -1,7 +1,7 @@
 """Domain models.
 
-Persisted records (``Artist``, ``Member``, ``Album``, ``Song``, ``Play``, ``Playlist``) carry their
-database id.
+Persisted records (``Artist``, ``Member``, ``Album``, ``Song``, ``SongVideo``, ``Play``,
+``Playlist``) carry their database id.
 The ``*In`` variants are the writable fields, used as API request bodies and for form input.
 """
 
@@ -19,6 +19,8 @@ OWNERSHIP = ("wanted", "owned")
 YOUTUBE_ID = re.compile(r"[A-Za-z0-9_-]{11}")
 YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"}
 YOUTUBE_PATHS = ("/embed/", "/shorts/", "/live/", "/v/")
+# A start time in a YouTube link: ``t=90``, ``t=90s``, ``t=1m30s``, ``start=90``.
+YOUTUBE_TIME = re.compile(r"(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?")
 
 # Playlists that always hold the songs with a mark: ``kind`` -> (name, ``Song`` field).
 SPECIAL_PLAYLISTS = {
@@ -120,7 +122,7 @@ class SongIn:
     # The song has no words (an instrumental), so its lyrics are not missing.
     no_lyrics: bool = False
     # The song's music video on YouTube: a link to it or its id, stored as the id (see
-    # ``youtube_id``).
+    # ``youtube_id``). Other videos of the song (lessons, covers, live takes) are ``SongVideo``s.
     mv: str | None = None
     # Turned off when the song is played.
     listen_later: bool = False
@@ -139,6 +141,24 @@ class Play:
     id: int
     song_id: int
     played_at: str
+
+
+@dataclass
+class SongVideoIn:
+    """A YouTube video about a song, such as a guitar lesson or a live take."""
+
+    # A link to the video or its id, stored as the id (see ``youtube_id``).
+    youtube: str
+    title: str | None = None
+    # Where to start playing; taken from the link's ``t=`` when not given.
+    start_seconds: int | None = None
+
+
+@dataclass
+class SongVideo(SongVideoIn):
+    id: int = 0
+    song_id: int = 0
+    created_at: str = ""
 
 
 @dataclass
@@ -185,6 +205,7 @@ class SongSummary:
     album_title: str | None = None
     play_count: int = 0
     last_played: str | None = None
+    video_count: int = 0
 
 
 @dataclass
@@ -285,6 +306,19 @@ def youtube_id(value: str | None, name: str = "video") -> str | None:
     if not YOUTUBE_ID.fullmatch(candidate):
         raise error
     return candidate
+
+
+def youtube_start(value: str) -> int | None:
+    """The start time, in seconds, of a YouTube link (``t=1m30s``, ``t=90``, ``start=90``), or
+    ``None`` when it has none or it cannot be read."""
+    query = parse_qs(urlsplit(value.strip()).query)
+    for key in ("t", "start"):
+        for raw in query.get(key, []):
+            match = YOUTUBE_TIME.fullmatch(raw)
+            if raw and match:
+                hours, minutes, seconds = (int(part or 0) for part in match.groups())
+                return hours * 3600 + minutes * 60 + seconds
+    return None
 
 
 def validate_wiki(url: str | None) -> None:

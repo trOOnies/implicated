@@ -6,7 +6,7 @@ import pytest
 from conftest import Sample, add_sample
 
 from implicated.library import Library, NotFound
-from implicated.models import AlbumIn, ArtistIn, MemberIn, PlaylistIn, SongIn
+from implicated.models import AlbumIn, ArtistIn, MemberIn, PlaylistIn, SongIn, SongVideoIn
 
 # Artists
 
@@ -429,6 +429,49 @@ def test_set_format(lib: Library, sample: Sample):
         lib.set_format(sample.album_id, "tape", "owned")
     with pytest.raises(NotFound):
         lib.set_format(99, "cd", "owned")
+
+
+# Song videos
+
+
+def test_song_videos(lib: Library, sample: Sample):
+    first, second = sample.song_ids
+    lesson = lib.add_video(
+        first, SongVideoIn("https://www.youtube.com/watch?v=aaaaaaaaaaa&t=1m30s", " Lesson ")
+    )
+    assert (lesson.youtube, lesson.title, lesson.start_seconds) == ("aaaaaaaaaaa", "Lesson", 90)
+    assert (lesson.song_id, bool(lesson.created_at)) == (first, True)
+    cover = lib.add_video(first, SongVideoIn("bbbbbbbbbbb", start_seconds=12))
+    live = lib.add_video(first, SongVideoIn("https://youtu.be/ccccccccccc?t=30", start_seconds=5))
+    assert (cover.title, cover.start_seconds, live.start_seconds) == (None, 12, 5)
+    lib.add_video(second, SongVideoIn("ddddddddddd"))
+
+    assert [v.id for v in lib.list_videos(first)] == [lesson.id, cover.id, live.id]
+    lib.move_video(live.id, -1)
+    assert [v.id for v in lib.list_videos(first)] == [lesson.id, live.id, cover.id]
+    lib.move_video(lesson.id, 9)
+    assert [v.id for v in lib.list_videos(first)] == [live.id, cover.id, lesson.id]
+    counts = {s.song.id: s.video_count for s in lib.list_songs()}
+    assert counts == {first: 3, second: 1}
+
+    updated = lib.update_video(cover.id, SongVideoIn("eeeeeeeeeee", "Cover", 0))
+    assert (updated.youtube, updated.title, updated.start_seconds) == ("eeeeeeeeeee", "Cover", None)
+    for bad, message in [("", "video is required"), ("nope", "YouTube")]:
+        with pytest.raises(ValueError, match=message):
+            lib.add_video(first, SongVideoIn(bad))
+    with pytest.raises(ValueError, match="start must be positive"):
+        lib.update_video(cover.id, SongVideoIn("eeeeeeeeeee", start_seconds=-1))
+    with pytest.raises(NotFound):
+        lib.add_video(99, SongVideoIn("eeeeeeeeeee"))
+
+    lib.delete_video(cover.id)
+    with pytest.raises(NotFound):
+        lib.get_video(cover.id)
+    with pytest.raises(NotFound):
+        lib.delete_video(cover.id)
+    lib.delete_song(first)
+    with pytest.raises(NotFound):
+        lib.get_video(lesson.id)
 
 
 # Playlists

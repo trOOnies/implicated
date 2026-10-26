@@ -1,0 +1,64 @@
+{# A song's videos: lessons, covers, live takes. `editing` is the id of the video being edited. #}
+{% macro fields(v) %}
+<div class="row wrap">
+  <label>Title <input name="title" placeholder="Intro riff lesson" value="{{ v.get('title') or '' }}"></label>
+  <label>YouTube link or video id <input name="youtube" required placeholder="https://youtu.be/…" value="{{ v.get('youtube') or '' }}"></label>
+  <label>Start at <input name="start" class="narrow" placeholder="1:30" value="{{ v.get('start') or '' }}"></label>
+</div>
+{% endmacro %}
+<section id="videos" class="card" hx-get="/fragments/songs/{{ song_id }}/videos"
+         hx-trigger="videos-changed from:body" hx-swap="outerHTML">
+  <h2>Videos</h2>
+  {% if videos %}
+  <ol class="videos">
+    {% for v in videos %}
+    <li>
+      {% if v.id == editing %}
+      <form class="stack" hx-post="/videos/{{ v.id }}" hx-target="#videos" hx-swap="outerHTML">
+        {% if edit_error %}<p class="error">{{ edit_error }}</p>{% endif %}
+        {{ fields({'title': v.title, 'youtube': v.youtube, 'start': v.start_seconds | duration if v.start_seconds else ''}) }}
+        <div class="row">
+          <button type="submit">Save</button>
+          <button type="button" class="secondary" hx-get="/fragments/songs/{{ song_id }}/videos"
+                  hx-target="#videos" hx-swap="outerHTML">Cancel</button>
+        </div>
+      </form>
+      {% else %}
+      <div class="row">
+        <strong>{{ v.title or 'Untitled video' }}</strong>
+        {% if v.start_seconds %}<small>from {{ v.start_seconds | duration }}</small>{% endif %}
+        <span class="spacer"></span>
+        <a class="small" href="https://www.youtube.com/watch?v={{ v.youtube }}{% if v.start_seconds %}&amp;t={{ v.start_seconds }}s{% endif %}"
+           target="_blank" rel="noopener noreferrer">YouTube ↗</a>
+        {% if not loop.first %}<button type="button" class="link" hx-post="/videos/{{ v.id }}/move" hx-vals='{"offset": -1}'
+                hx-target="#videos" hx-swap="outerHTML" title="Move up" aria-label="Move up">↑</button>{% endif %}
+        {% if not loop.last %}<button type="button" class="link" hx-post="/videos/{{ v.id }}/move" hx-vals='{"offset": 1}'
+                hx-target="#videos" hx-swap="outerHTML" title="Move down" aria-label="Move down">↓</button>{% endif %}
+        <button type="button" class="link" hx-get="/fragments/videos/{{ v.id }}/edit"
+                hx-target="#videos" hx-swap="outerHTML">Edit</button>
+        <button type="button" class="link danger" hx-post="/videos/{{ v.id }}/delete" hx-target="#videos"
+                hx-swap="outerHTML" hx-confirm="Remove the video “{{ v.title or v.youtube }}”?">Delete</button>
+      </div>
+      <details>
+        <summary>Play here</summary>
+        <div class="video">
+          <iframe src="https://www.youtube-nocookie.com/embed/{{ v.youtube }}{% if v.start_seconds %}?start={{ v.start_seconds }}{% endif %}"
+                  title="{{ v.title or 'YouTube video' }}" allow="encrypted-media; picture-in-picture; fullscreen"
+                  allowfullscreen loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+        </div>
+      </details>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="empty">No videos yet. Add lessons, covers, live takes or anything else about this song.</p>
+  {% endif %}
+  <form class="stack add-video" hx-post="/songs/{{ song_id }}/videos" hx-target="#videos" hx-swap="outerHTML">
+    <h3>Add a video</h3>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    {{ fields(form) }}
+    <p class="small">A <code>t=</code> in the link (like <code>?t=1m30s</code>) sets where it starts, unless you fill in Start at.</p>
+    <button type="submit">Add video</button>
+  </form>
+</section>

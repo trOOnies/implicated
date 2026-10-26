@@ -512,6 +512,51 @@ def test_song_notes_and_music_video(client: TestClient, client_lib: Library, web
     assert bad_new.status_code == 422 and "YouTube" in bad_new.text
 
 
+def test_song_videos(client: TestClient, client_lib: Library, web_sample: Sample):
+    song_id = web_sample.song_ids[0]
+    page = client.get(f"/songs/{song_id}").text
+    assert "<h2>Videos</h2>" in page and "No videos yet" in page
+
+    form = {"title": "Intro riff lesson", "youtube": "https://youtu.be/aaaaaaaaaaa?t=1m5s"}
+    added = client.post(f"/songs/{song_id}/videos", data=form)
+    assert added.status_code == 200 and "videos-changed" in added.headers["hx-trigger"]
+    assert "Intro riff lesson" in added.text and "from 1:05" in added.text
+    assert 'src="https://www.youtube-nocookie.com/embed/aaaaaaaaaaa?start=65"' in added.text
+    assert 'href="https://www.youtube.com/watch?v=aaaaaaaaaaa&amp;t=65s"' in added.text
+    client.post(f"/songs/{song_id}/videos", data={"youtube": "bbbbbbbbbbb", "start": "0:30"})
+    second, first = client_lib.list_videos(song_id)[::-1]
+    assert (second.start_seconds, second.title) == (30, None)
+
+    bad = client.post(f"/songs/{song_id}/videos", data={"title": "Solo", "youtube": "nope"})
+    assert bad.status_code == 422 and "YouTube" in bad.text and 'value="Solo"' in bad.text
+    assert client.post(f"/songs/{song_id}/videos", data={"youtube": ""}).status_code == 422
+    assert (
+        client.post(
+            f"/songs/{song_id}/videos", data={"youtube": "bbbbbbbbbbb", "start": "x"}
+        ).status_code
+        == 422
+    )
+    assert client.post("/songs/99/videos", data=form).status_code == 404
+    assert "▷2" in client.get(f"/fragments/songs/{song_id}").text
+
+    edit = client.get(f"/fragments/videos/{second.id}/edit").text
+    assert f'hx-post="/videos/{second.id}"' in edit and 'value="0:30"' in edit
+    saved = client.post(f"/videos/{second.id}", data={"youtube": "bbbbbbbbbbb", "title": "Cover"})
+    assert saved.status_code == 200 and "Cover" in saved.text
+    assert client_lib.get_video(second.id).start_seconds is None
+    failed = client.post(f"/videos/{second.id}", data={"youtube": "nope"})
+    assert failed.status_code == 422 and f'hx-post="/videos/{second.id}"' in failed.text
+
+    moved = client.post(f"/videos/{second.id}/move", data={"offset": "-1"})
+    assert moved.status_code == 200
+    assert [v.id for v in client_lib.list_videos(song_id)] == [second.id, first.id]
+    assert client.post(f"/videos/{second.id}/move", data={"offset": "x"}).status_code == 422
+    deleted = client.post(f"/videos/{second.id}/delete")
+    assert "Cover" not in deleted.text and "Intro riff lesson" in deleted.text
+    assert client.post(f"/videos/{second.id}/delete").status_code == 404
+    assert "Intro riff lesson" in client.get(f"/fragments/songs/{song_id}/videos").text
+
+
 def test_playlist_pages(client: TestClient, client_lib: Library, web_sample: Sample):
     first, second = web_sample.song_ids
     assert 'href="/playlists"' in client.get("/").text

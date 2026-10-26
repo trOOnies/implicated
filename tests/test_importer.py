@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from implicated import importer
 from implicated.importer import import_dir, lyrics_file_name, match_cover, parse_duration
 from implicated.library import Library
+from implicated.models import SongVideoIn
 from implicated.web import create_app, sync_info
 
 BANDS = """\
@@ -194,6 +195,7 @@ def test_reimport_keeps_personal_data(lib: Library, info: Path):
     lib.update_song(song.id, replace(song, rating=5))
     lib.record_play(song.id)
     lib.update_song(song.id, replace(lib.get_song(song.id), mv=YT, listen_later=True))
+    video = lib.add_video(song.id, SongVideoIn(YT, "Lesson"))
 
     report = import_dir(lib, info)
 
@@ -206,6 +208,7 @@ def test_reimport_keeps_personal_data(lib: Library, info: Path):
     assert (kept.cd, kept.vinyl, kept.listen_later) == ("owned", "wanted", True)
     assert lib.get_song(song.id).rating == 5
     assert (lib.get_song(song.id).mv, lib.get_song(song.id).listen_later) == (YT, True)
+    assert lib.list_videos(song.id) == [video]
     assert lib.playlist_song_ids(lib.special_playlist("listen_later").id) == [song.id]
     assert lib.get_song_summary(song.id).play_count == 1
     assert len(list(lib.covers_dir.iterdir())) == 2
