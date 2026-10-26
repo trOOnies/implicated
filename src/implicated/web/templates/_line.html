@@ -1,0 +1,35 @@
+{# Line chart drawn as inline SVG. `points` is a list of Point(label, value). #}
+{% macro line_chart(points, title, width=640, height=180) %}
+{% set pad_l, pad_r, pad_t, pad_b = 36, 12, 12, 26 %}
+{% set values = points | map(attribute='value') | list %}
+{% set top = [(values | max) if values else 0, 1] | max %}
+{% set top = (top * 1.1) | round(0, 'ceil') %}
+{% set n = points | length %}
+{% set step = (width - pad_l - pad_r) / ([n - 1, 1] | max) %}
+{% set plot_h = height - pad_t - pad_b %}
+{% set label_every = [(n / 6) | round(0, 'ceil') | int, 1] | max %}
+<figure class="chart line-chart">
+  <figcaption>{{ title }}</figcaption>
+  {% if n %}
+  <svg viewBox="0 0 {{ width }} {{ height }}" role="img" aria-label="{{ title }}">
+    {% for frac in (0, 0.5, 1) %}
+    {% set y = pad_t + plot_h * (1 - frac) %}
+    <line class="grid" x1="{{ pad_l }}" x2="{{ width - pad_r }}" y1="{{ y }}" y2="{{ y }}"/>
+    <text class="axis" x="{{ pad_l - 6 }}" y="{{ y + 4 }}" text-anchor="end">{{ (top * frac) | round | int }}</text>
+    {% endfor %}
+    {% set coords %}{% for p in points %}{{ pad_l + loop.index0 * step }},{{ pad_t + plot_h * (1 - p.value / top) }} {% endfor %}{% endset %}
+    <polygon class="area" points="{{ pad_l }},{{ pad_t + plot_h }} {{ coords }}{{ pad_l + (n - 1) * step }},{{ pad_t + plot_h }}"/>
+    <polyline class="line" points="{{ coords }}"/>
+    {% for p in points %}
+    {% set x = pad_l + loop.index0 * step %}
+    <circle class="dot" cx="{{ x }}" cy="{{ pad_t + plot_h * (1 - p.value / top) }}" r="3"><title>{{ p.label }}: {{ p.value | int }}</title></circle>
+    {% if loop.index0 % label_every == 0 or loop.last %}
+    <text class="axis" x="{{ x }}" y="{{ height - 6 }}" text-anchor="middle">{{ p.label }}</text>
+    {% endif %}
+    {% endfor %}
+  </svg>
+  {% else %}
+  <p class="empty">No data yet.</p>
+  {% endif %}
+</figure>
+{% endmacro %}

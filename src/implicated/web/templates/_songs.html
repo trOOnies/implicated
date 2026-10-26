@@ -1,0 +1,19 @@
+{# ctx is "all", "artist" or "album"; it decides which columns rows show. #}
+{% if songs %}
+<table class="songs">
+  <thead>
+    <tr>
+      {% if ctx == 'album' %}<th>#</th>{% endif %}
+      <th></th><th>Title</th>
+      {% if ctx == 'all' %}<th>Artist</th>{% endif %}
+      {% if ctx != 'album' %}<th>Album</th>{% endif %}
+      <th>Length</th><th>Rating</th><th>Plays</th><th>Last played</th><th></th>
+    </tr>
+  </thead>
+  <tbody hx-vals='{"ctx": "{{ ctx }}"}'>
+    {% for s in songs %}{% include "_song_row.html" %}{% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No songs here yet.</p>
+{% endif %}

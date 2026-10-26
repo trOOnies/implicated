@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% set active = 'help' %}
+{% block title %}Help{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Help</h1></div>
+<div class="help">
+  <section class="card">
+    <h2>What is implicated?</h2>
+    <p>A personal library of the artists, albums and songs you like. Everything you add is part
+    of the library straight away; listening to it is optional.</p>
+  </section>
+
+  <section class="card">
+    <h2>Pages</h2>
+    <dl>
+      <dt><a href="/">Overview</a></dt>
+      <dd>Totals, latest releases and charts of your library. Play history and favorites show
+      up here once you have some.</dd>
+      <dt><a href="/artists">Artists</a></dt>
+      <dd>Every artist with their genres. Open one to see its line-up, discography and songs,
+      edit it, or add albums and songs.</dd>
+      <dt><a href="/albums">Albums</a></dt>
+      <dd>All albums with their covers. Open one for its tracklist, rating and notes.</dd>
+      <dt><a href="/songs">Songs</a></dt>
+      <dd>Search every song by title, artist or album, sort them, or show only favorites.</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>Everyday actions</h2>
+    <dl>
+      <dt><span class="symbol">♡</span> Favorite</dt>
+      <dd>Mark an artist, album or song. Favorites are listed first and on the overview.</dd>
+      <dt><span class="symbol">▶</span> Log a listen</dt>
+      <dd>Records that you played a song right now; it feeds the play charts and history.</dd>
+      <dt>Edit and delete</dt>
+      <dd>Buttons on each artist, album and song. Deleting an artist also deletes their albums,
+      songs and plays.</dd>
+      <dt>Song lengths</dt>
+      <dd>Type them as <code>3:45</code> or as plain seconds.</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>Importing from files</h2>
+    <p>Put a <code>bands.yaml</code> in the <code>info/</code> folder (artists, genres,
+    languages and members), plus <code>bands/&lt;artist&gt;/albums.yaml</code> (albums and their
+    songs) and <code>bands/&lt;artist&gt;/covers/</code> (cover images, matched to albums by file
+    name). The server imports the folder every time it starts, so restart it after editing the
+    files. Importing again updates what changed and keeps your ratings, notes, favorites and
+    plays. Problems are listed in the server log.</p>
+  </section>
+
+  <section class="card">
+    <h2>API</h2>
+    <p>Everything is also available as JSON under <code>/api</code>. The
+    <a href="/docs">API page</a> lists every route and lets you try them in the browser.</p>
+  </section>
+</div>
+{% endblock %}

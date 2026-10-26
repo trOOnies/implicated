@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% set active = 'albums' %}
+{% block title %}Albums{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Albums</h1>
+  <input type="search" name="q" value="{{ q }}" placeholder="Filter by title or artist…"
+         hx-get="/fragments/albums" hx-trigger="input changed delay:300ms, search"
+         hx-target="#albums" hx-swap="innerHTML">
+</div>
+<section id="albums">
+  {% include "_album_grid.html" %}
+</section>
+{% endblock %}

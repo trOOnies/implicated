@@ -1,0 +1,23 @@
+{% if albums %}
+<table>
+  <thead><tr><th></th><th>Year</th><th>Title</th>{% if show_artist %}<th>Artist</th>{% endif %}<th>Type</th><th>Rating</th><th>Songs</th><th>Length</th><th>Plays</th><th></th></tr></thead>
+  <tbody>
+  {% for a in albums %}
+    <tr>
+      <td class="cover-cell">{% with album=a.album, size='thumb' %}{% include "_cover.html" %}{% endwith %}</td>
+      <td class="muted">{{ a.album.year or '' }}</td>
+      <td><a href="/albums/{{ a.album.id }}">{{ a.album.title }}</a></td>
+      {% if show_artist %}<td>{{ a.artist_name }}</td>{% endif %}
+      <td><span class="tag">{{ a.album.kind }}</span></td>
+      <td class="stars">{{ a.album.rating | stars }}</td>
+      <td>{{ a.song_count }}</td>
+      <td>{{ a.total_seconds | duration }}</td>
+      <td>{{ a.play_count }}</td>
+      <td>{% with kind='album', record_id=a.album.id, favorite=a.album.favorite %}{% include "_fav.html" %}{% endwith %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No albums yet.</p>
+{% endif %}

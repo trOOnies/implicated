@@ -1,0 +1,20 @@
+{# Horizontal bar chart drawn with plain HTML and CSS widths. `points` is a list of Point(label, value). #}
+{% macro bar_chart(points, title, href=None) %}
+{% set top = [(points | map(attribute='value') | max) if points else 0, 1] | max %}
+<figure class="chart bar-chart">
+  <figcaption>{{ title }}</figcaption>
+  {% if points %}
+  <ul class="bars">
+    {% for p in points %}
+    <li title="{{ p.label }}: {{ p.value | int }}">
+      <span class="bar-label">{{ p.label }}</span>
+      <span class="bar-track"><span class="bar" style="width: {{ (p.value / top * 100) | round(1) }}%"></span></span>
+      <span class="bar-value">{{ p.value | int }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">No data yet.</p>
+  {% endif %}
+</figure>
+{% endmacro %}

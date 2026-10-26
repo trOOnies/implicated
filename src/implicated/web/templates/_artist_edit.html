@@ -1,0 +1,21 @@
+<section id="artist-info" class="card info">
+  <form class="stack" hx-post="/artists/{{ artist.id }}" hx-target="#artist-info" hx-swap="outerHTML">
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <label>Name <input name="name" required value="{{ artist.name }}"></label>
+    <div class="row">
+      <label>Country <input name="country" value="{{ artist.country or '' }}"></label>
+      <label>Formed <input name="formed_year" type="number" min="1800" max="2100" value="{{ artist.formed_year or '' }}"></label>
+    </div>
+    <div class="row">
+      <label>Genres <input name="genres" value="{{ artist.genres | join(', ') }}"></label>
+      <label>Languages <input name="languages" value="{{ artist.languages | join(', ') }}"></label>
+    </div>
+    <label>Bio <textarea name="bio" rows="4">{{ artist.bio or '' }}</textarea></label>
+    <label class="check"><input type="checkbox" name="favorite" {% if artist.favorite %}checked{% endif %}> Favorite</label>
+    <div class="row">
+      <button type="submit">Save</button>
+      <button type="button" class="secondary" hx-get="/fragments/artists/{{ artist.id }}/info"
+              hx-target="#artist-info" hx-swap="outerHTML">Cancel</button>
+    </div>
+  </form>
+</section>

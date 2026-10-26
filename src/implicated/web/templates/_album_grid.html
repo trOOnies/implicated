@@ -1,0 +1,15 @@
+{% if albums %}
+<ul class="album-grid">
+  {% for a in albums %}
+  <li>
+    <a href="/albums/{{ a.album.id }}">
+      {% with album=a.album, size='tile' %}{% include "_cover.html" %}{% endwith %}
+      <strong>{{ a.album.title }}</strong>
+    </a>
+    <small>{{ a.artist_name }}{% if a.album.year %} · {{ a.album.year }}{% endif %} · {{ a.song_count }} songs</small>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="empty">No albums here yet.</p>
+{% endif %}

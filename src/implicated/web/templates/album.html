@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% set active = 'artists' %}
+{% block title %}{{ album.title }}{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/artists">Artists</a> / <a href="/artists/{{ artist.id }}">{{ artist.name }}</a> /</p>
+<div id="album-info-slot" hx-get="/fragments/albums/{{ album.id }}/info"
+     hx-trigger="songs-changed from:body, plays-changed from:body" hx-swap="innerHTML">
+  {% include "_album_info.html" %}
+</div>
+<div class="layout">
+  <section class="card">
+    <h2>Tracklist</h2>
+    <div id="songs" hx-get="/fragments/albums/{{ album.id }}/songs"
+         hx-trigger="songs-changed from:body" hx-swap="innerHTML">
+      {% set ctx = 'album' %}
+      {% include "_songs.html" %}
+    </div>
+  </section>
+  <aside class="card">
+    <h2>Add song</h2>
+    {% with form={'track_number': (songs | length) + 1}, artist_id=artist.id, album_id=album.id, fixed_album=True %}{% include "_song_form.html" %}{% endwith %}
+  </aside>
+</div>
+{% endblock %}

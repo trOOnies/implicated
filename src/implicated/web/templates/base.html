@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {# Let htmx swap 422 responses so forms can show their validation errors. #}
+  <meta name="htmx-config" content='{"responseHandling": [{"code": "204", "swap": false}, {"code": "[23]..", "swap": true}, {"code": "422", "swap": true}, {"code": "[45]..", "swap": false, "error": true}]}'>
+  <title>{% block title %}implicated{% endblock %} · implicated</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  <script src="{{ url_for('static', path='htmx.min.js') }}" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/">implicated</a>
+    <nav>
+      <a href="/" {% if active == 'home' %}aria-current="page"{% endif %}>Overview</a>
+      <a href="/artists" {% if active == 'artists' %}aria-current="page"{% endif %}>Artists</a>
+      <a href="/albums" {% if active == 'albums' %}aria-current="page"{% endif %}>Albums</a>
+      <a href="/songs" {% if active == 'songs' %}aria-current="page"{% endif %}>Songs</a>
+      <a href="/help" {% if active == 'help' %}aria-current="page"{% endif %}>Help</a>
+      <a href="/docs">API</a>
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="site-footer">
+    <p>© 2026 Implicated by trOOnies</p>
+    <p>Made with Claude Code</p>
+  </footer>
+</body>
+</html>

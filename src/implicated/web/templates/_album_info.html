@@ -1,0 +1,22 @@
+<section id="album-info" class="card info album-head">
+  {% with size='big' %}{% include "_cover.html" %}{% endwith %}
+  <div>
+  <div class="row">
+    <h1>{{ album.title }}</h1>
+    {% with kind='album', record_id=album.id, favorite=album.favorite %}{% include "_fav.html" %}{% endwith %}
+    <span class="spacer"></span>
+    <button type="button" class="secondary" hx-get="/fragments/albums/{{ album.id }}/edit"
+            hx-target="#album-info" hx-swap="outerHTML">Edit</button>
+    <button type="button" class="danger" hx-post="/albums/{{ album.id }}/delete"
+            hx-confirm="Delete {{ album.title }} and its songs?">Delete</button>
+  </div>
+  <p class="muted">
+    <a href="/artists/{{ artist.id }}">{{ artist.name }}</a>
+    {% if album.year %} · {{ album.year }}{% endif %} · <span class="tag">{{ album.kind }}</span>
+    · {{ songs | length }} songs · {{ total_seconds | duration }}
+    · {{ play_count }} plays
+  </p>
+  <p class="stars big">{{ album.rating | stars }}</p>
+  {% if album.notes %}<p class="bio">{{ album.notes }}</p>{% endif %}
+  </div>
+</section>

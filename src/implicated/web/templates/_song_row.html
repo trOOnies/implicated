@@ -1,0 +1,19 @@
+<tr id="song-{{ s.song.id }}">
+  {% if ctx == 'album' %}<td class="muted">{{ s.song.track_number or '' }}</td>{% endif %}
+  <td><button type="button" class="play" title="Log a listen" hx-post="/songs/{{ s.song.id }}/play"
+              hx-target="closest tr" hx-swap="outerHTML">▶</button></td>
+  <td>{{ s.song.title }}{% if s.song.notes %} <small class="muted" title="{{ s.song.notes }}">✎</small>{% endif %}</td>
+  {% if ctx == 'all' %}<td><a href="/artists/{{ s.song.artist_id }}">{{ s.artist_name }}</a></td>{% endif %}
+  {% if ctx != 'album' %}<td>{% if s.song.album_id %}<a href="/albums/{{ s.song.album_id }}">{{ s.album_title }}</a>{% else %}<span class="muted">single</span>{% endif %}</td>{% endif %}
+  <td>{{ s.song.duration_seconds | duration }}</td>
+  <td class="stars">{{ s.song.rating | stars }}</td>
+  <td>{{ s.play_count }}</td>
+  <td class="muted">{{ s.last_played | when }}</td>
+  <td class="actions">
+    {% with kind='song', record_id=s.song.id, favorite=s.song.favorite %}{% include "_fav.html" %}{% endwith %}
+    <button type="button" class="link" hx-get="/fragments/songs/{{ s.song.id }}/edit"
+            hx-target="closest tr" hx-swap="outerHTML">Edit</button>
+    <button type="button" class="link danger" hx-post="/songs/{{ s.song.id }}/delete"
+            hx-target="closest tr" hx-swap="outerHTML" hx-confirm="Delete “{{ s.song.title }}”?">Delete</button>
+  </td>
+</tr>

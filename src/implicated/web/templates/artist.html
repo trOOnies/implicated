@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_bars.html" import bar_chart %}
+{% set active = 'artists' %}
+{% block title %}{{ artist.name }}{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/artists">Artists</a> /</p>
+{% include "_artist_info.html" %}
+
+<div class="layout">
+  <div>
+    <section class="card">
+      <h2>Discography</h2>
+      <div id="albums" hx-get="/fragments/artists/{{ artist.id }}/albums"
+           hx-trigger="albums-changed from:body" hx-swap="innerHTML">
+        {% set show_artist = False %}
+        {% include "_albums.html" %}
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Songs</h2>
+      <div id="songs" hx-get="/fragments/artists/{{ artist.id }}/songs"
+           hx-trigger="songs-changed from:body, albums-changed from:body" hx-swap="innerHTML">
+        {% set ctx = 'artist' %}
+        {% include "_songs.html" %}
+      </div>
+    </section>
+  </div>
+
+  <aside>
+    {% if album_plays %}
+    <div class="card">{{ bar_chart(album_plays, "Plays per album") }}</div>
+    {% endif %}
+    {% if album_minutes %}
+    <div class="card">{{ bar_chart(album_minutes, "Album length (minutes)") }}</div>
+    {% endif %}
+    <div class="card">
+      <h2>Add album</h2>
+      {% with form={}, artist_id=artist.id %}{% include "_album_form.html" %}{% endwith %}
+    </div>
+    <div class="card">
+      <h2>Add song</h2>
+      {% with form={}, artist_id=artist.id, albums=albums, fixed_album=False %}{% include "_song_form.html" %}{% endwith %}
+    </div>
+  </aside>
+</div>
+{% endblock %}

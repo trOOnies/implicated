@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% set active = 'home' %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+<section id="view" hx-get="/fragments/view" hx-trigger="library-changed from:body" hx-swap="innerHTML">
+  {% include "_view.html" %}
+</section>
+{% endblock %}

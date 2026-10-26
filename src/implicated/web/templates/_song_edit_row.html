@@ -1,0 +1,29 @@
+<tr id="song-{{ s.song.id }}" class="editing">
+  <td colspan="99">
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <div class="row wrap">
+      <input type="hidden" name="ctx" value="{{ ctx }}">
+      <label># <input name="track_number" type="number" min="1" class="narrow" value="{{ s.song.track_number or '' }}"></label>
+      <label>Title <input name="title" required value="{{ s.song.title }}"></label>
+      <label>Album
+        <select name="album_id">
+          <option value="">(single)</option>
+          {% for a in albums %}<option value="{{ a.album.id }}" {% if a.album.id == s.song.album_id %}selected{% endif %}>{{ a.album.title }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Length <input name="duration" placeholder="3:45" class="narrow" value="{{ s.song.duration_seconds | duration if s.song.duration_seconds else '' }}"></label>
+      <label>Rating
+        <select name="rating">
+          <option value="">–</option>
+          {% for r in range(5, -1, -1) %}<option value="{{ r }}" {% if s.song.rating == r %}selected{% endif %}>{{ r | stars }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Notes <input name="notes" value="{{ s.song.notes or '' }}"></label>
+      <label class="check"><input type="checkbox" name="favorite" {% if s.song.favorite %}checked{% endif %}> Favorite</label>
+      <button type="button" hx-post="/songs/{{ s.song.id }}" hx-include="closest tr"
+              hx-target="closest tr" hx-swap="outerHTML">Save</button>
+      <button type="button" class="secondary" hx-get="/fragments/songs/{{ s.song.id }}?ctx={{ ctx }}"
+              hx-target="closest tr" hx-swap="outerHTML">Cancel</button>
+    </div>
+  </td>
+</tr>

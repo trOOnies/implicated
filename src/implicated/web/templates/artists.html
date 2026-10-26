@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% set active = 'artists' %}
+{% block title %}Artists{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Artists</h1>
+  <input type="search" name="q" value="{{ q }}" placeholder="Filter artists…"
+         hx-get="/fragments/artists" hx-trigger="input changed delay:300ms, search"
+         hx-target="#artists" hx-swap="innerHTML">
+</div>
+<div class="layout">
+  <section id="artists" hx-get="/fragments/artists" hx-trigger="artists-changed from:body"
+           hx-include="[name='q']" hx-swap="innerHTML">
+    {% include "_artists.html" %}
+  </section>
+  <aside class="card">
+    <h2>Add artist</h2>
+    {% set form = {} %}
+    {% include "_artist_form.html" %}
+  </aside>
+</div>
+{% endblock %}

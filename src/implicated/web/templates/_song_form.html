@@ -1,0 +1,27 @@
+<form class="stack" hx-post="/songs" hx-swap="outerHTML">
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <input type="hidden" name="artist_id" value="{{ artist_id }}">
+  {% if fixed_album %}
+  <input type="hidden" name="album_id" value="{{ album_id }}">
+  <input type="hidden" name="fixed_album" value="1">
+  {% else %}
+  <label>Album
+    <select name="album_id">
+      <option value="">(single)</option>
+      {% for a in albums or [] %}<option value="{{ a.album.id }}" {% if form.get('album_id') == a.album.id | string %}selected{% endif %}>{{ a.album.title }}</option>{% endfor %}
+    </select>
+  </label>
+  {% endif %}
+  <label>Title <input name="title" required value="{{ form.get('title', '') }}"></label>
+  <div class="row">
+    <label># <input name="track_number" type="number" min="1" class="narrow" value="{{ form.get('track_number') or '' }}"></label>
+    <label>Length <input name="duration" placeholder="3:45" class="narrow" value="{{ form.get('duration', '') }}"></label>
+  </div>
+  <label>Rating
+    <select name="rating">
+      <option value="">–</option>
+      {% for r in range(5, -1, -1) %}<option value="{{ r }}" {% if form.get('rating') == r | string %}selected{% endif %}>{{ r | stars }}</option>{% endfor %}
+    </select>
+  </label>
+  <button type="submit">Add song</button>
+</form>

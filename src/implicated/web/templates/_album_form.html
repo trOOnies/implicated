@@ -1,0 +1,20 @@
+<form class="stack" hx-post="/albums" hx-swap="outerHTML">
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <input type="hidden" name="artist_id" value="{{ artist_id }}">
+  <label>Title <input name="title" required value="{{ form.get('title', '') }}"></label>
+  <div class="row">
+    <label>Year <input name="year" type="number" min="1900" max="2100" value="{{ form.get('year', '') }}"></label>
+    <label>Type
+      <select name="kind">
+        {% for k in album_kinds %}<option value="{{ k }}" {% if form.get('kind') == k %}selected{% endif %}>{{ k }}</option>{% endfor %}
+      </select>
+    </label>
+  </div>
+  <label>Rating
+    <select name="rating">
+      <option value="">–</option>
+      {% for r in range(5, -1, -1) %}<option value="{{ r }}" {% if form.get('rating') == r | string %}selected{% endif %}>{{ r | stars }}</option>{% endfor %}
+    </select>
+  </label>
+  <button type="submit">Add album</button>
+</form>

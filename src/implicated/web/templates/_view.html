@@ -1,0 +1,76 @@
+{% from "_line.html" import line_chart %}
+{% from "_bars.html" import bar_chart %}
+<div class="tiles">
+  <a class="tile" href="/artists"><strong>{{ stats.artists }}</strong> artists</a>
+  <a class="tile" href="/albums"><strong>{{ stats.albums }}</strong> albums</a>
+  <a class="tile" href="/songs"><strong>{{ stats.songs }}</strong> songs</a>
+  <div class="tile"><strong>{{ stats.total_seconds | duration }}</strong> of music</div>
+  <div class="tile"><strong>{{ stats.plays }}</strong> plays</div>
+</div>
+
+{% if latest_albums %}
+<div class="card">
+  <div class="row"><h2>Latest releases</h2><span class="spacer"></span><a href="/albums">All albums →</a></div>
+  {% with albums=latest_albums %}{% include "_album_grid.html" %}{% endwith %}
+</div>
+{% elif not stats.artists %}
+<div class="card">
+  <p class="empty">Your library is empty. <a href="/artists">Add an artist</a>, or put a
+  <code>bands.yaml</code> in <code>info/</code> and restart the server to import it.</p>
+</div>
+{% endif %}
+
+<div class="grid">
+  <div class="card">{{ bar_chart(stats.songs_per_artist, "Songs per artist") }}</div>
+  <div class="card">{{ bar_chart(stats.genres, "Genres") }}</div>
+  <div class="card">{{ bar_chart(stats.albums_per_decade, "Albums by decade") }}</div>
+  {% if stats.ratings | map(attribute='value') | sum %}
+  <div class="card">{{ bar_chart(stats.ratings, "Album ratings") }}</div>
+  {% endif %}
+</div>
+
+{% if stats.plays %}
+<div class="card wide">
+  {{ line_chart(stats.plays_per_day, "Plays, last 30 days") }}
+</div>
+
+<div class="grid">
+  <div class="card">{{ bar_chart(stats.top_artists, "Most played artists") }}</div>
+  <div class="card">
+    <h2>Recently played</h2>
+    <table>
+      <tbody>
+      {% for play, s in recent %}
+        <tr>
+          <td>{{ s.song.title }}<br><small>{{ s.artist_name }}</small></td>
+          <td class="muted">{{ play.played_at | when }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if favorite_artists or favorite_albums or favorite_songs %}
+<div class="grid">
+  <div class="card">
+    <h2>Favorite artists</h2>
+    {% for a in favorite_artists %}
+    <p><a href="/artists/{{ a.artist.id }}">{{ a.artist.name }}</a> <small>{{ a.album_count }} albums</small></p>
+    {% else %}<p class="empty">Mark artists with ♡ to see them here.</p>{% endfor %}
+  </div>
+  <div class="card">
+    <h2>Favorite albums</h2>
+    {% for a in favorite_albums %}
+    <p><a href="/albums/{{ a.album.id }}">{{ a.album.title }}</a> <small>{{ a.artist_name }}{% if a.album.year %}, {{ a.album.year }}{% endif %}</small></p>
+    {% else %}<p class="empty">No favorite albums yet.</p>{% endfor %}
+  </div>
+  <div class="card">
+    <h2>Favorite songs</h2>
+    {% for s in favorite_songs %}
+    <p>{{ s.song.title }} <small>{{ s.artist_name }}</small></p>
+    {% else %}<p class="empty">No favorite songs yet.</p>{% endfor %}
+  </div>
+</div>
+{% endif %}

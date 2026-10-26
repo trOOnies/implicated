@@ -1,0 +1,28 @@
+<section id="album-info" class="card info">
+  <form class="stack" hx-post="/albums/{{ album.id }}" hx-target="#album-info" hx-swap="outerHTML">
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <input type="hidden" name="artist_id" value="{{ album.artist_id }}">
+    <label>Title <input name="title" required value="{{ album.title }}"></label>
+    <div class="row">
+      <label>Year <input name="year" type="number" min="1900" max="2100" value="{{ album.year or '' }}"></label>
+      <label>Type
+        <select name="kind">
+          {% for k in album_kinds %}<option value="{{ k }}" {% if album.kind == k %}selected{% endif %}>{{ k }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Rating
+        <select name="rating">
+          <option value="">–</option>
+          {% for r in range(5, -1, -1) %}<option value="{{ r }}" {% if album.rating == r %}selected{% endif %}>{{ r | stars }}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+    <label>Notes <textarea name="notes" rows="4">{{ album.notes or '' }}</textarea></label>
+    <label class="check"><input type="checkbox" name="favorite" {% if album.favorite %}checked{% endif %}> Favorite</label>
+    <div class="row">
+      <button type="submit">Save</button>
+      <button type="button" class="secondary" hx-get="/fragments/albums/{{ album.id }}/info"
+              hx-target="#album-info" hx-swap="outerHTML">Cancel</button>
+    </div>
+  </form>
+</section>

@@ -1,0 +1,29 @@
+<section id="artist-info" class="card info">
+  <div class="row">
+    <h1>{{ artist.name }}</h1>
+    {% with kind='artist', record_id=artist.id, favorite=artist.favorite %}{% include "_fav.html" %}{% endwith %}
+    <span class="spacer"></span>
+    <button type="button" class="secondary" hx-get="/fragments/artists/{{ artist.id }}/edit"
+            hx-target="#artist-info" hx-swap="outerHTML">Edit</button>
+    <button type="button" class="danger" hx-post="/artists/{{ artist.id }}/delete"
+            hx-confirm="Delete {{ artist.name }} with all their albums, songs and plays?">Delete</button>
+  </div>
+  <p class="muted">
+    {{ artist.country or 'Unknown origin' }}{% if artist.formed_year %} · since {{ artist.formed_year }}{% endif %}
+  </p>
+  {% if artist.genres %}<p>{% for g in artist.genres %}<span class="tag">{{ g }}</span>{% endfor %}</p>{% endif %}
+  {% if artist.languages %}<p class="small">Sings in {{ artist.languages | join(', ') }}</p>{% endif %}
+  {% if members %}
+  <h2 class="members-head">Members</h2>
+  <ul class="members">
+    {% for m in members %}
+    <li{% if m.to_year %} class="former"{% endif %}>
+      <strong>{{ m.name }}</strong>
+      {% if m.roles %}<span class="muted">{{ m.roles | join(', ') }}</span>{% endif %}
+      {% if m | tenure %}<small>{{ m | tenure }}</small>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if artist.bio %}<p class="bio">{{ artist.bio }}</p>{% endif %}
+</section>

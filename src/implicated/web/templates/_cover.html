@@ -1,0 +1,6 @@
+{# Album cover, or a placeholder when it has none. Needs `album` and `size` ("thumb" or "big"). #}
+{% if album.cover %}
+<img class="cover {{ size }}" src="/api/albums/{{ album.id }}/cover?v={{ album.cover }}" alt="Cover of {{ album.title }}" loading="lazy">
+{% else %}
+<span class="cover {{ size }} none" aria-hidden="true">♪</span>
+{% endif %}
