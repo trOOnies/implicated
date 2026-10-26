@@ -14,6 +14,8 @@
     <a href="/artists/{{ artist.id }}">{{ artist.name }}</a>
     {% if album.year %} · {{ album.year }}{% endif %} · <span class="tag">{{ album.kind }}</span>
     · {{ songs | length }} songs · {{ total_seconds | duration }}
+    {% set with_words = (songs | length) - no_lyrics_count %}
+    · <span title="{{ lyrics_count }} of {{ with_words }} songs have lyrics{% if no_lyrics_count %}; {{ no_lyrics_count }} have none to have{% endif %}">{{ lyrics_count | percent(with_words) }} with lyrics</span>
     · {{ play_count }} plays
   </p>
   <p class="stars big">{{ album.rating | stars }}</p>

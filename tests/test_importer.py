@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from implicated import importer
-from implicated.importer import import_dir, match_cover, parse_duration
+from implicated.importer import import_dir, lyrics_file_name, match_cover, parse_duration
 from implicated.library import Library
 from implicated.web import create_app, sync_info
 
@@ -42,6 +42,7 @@ I Brought You My Bullets, You Brought Me Your Love:
   songs:
   - name: Romance (instrumental)
     duration: 1:02
+    no_lyrics: true
   - name: Our Lady of Sorrows
     duratioN: 2:05
 Danger Days:
@@ -75,6 +76,11 @@ def info(tmp_path: Path) -> Path:
     (covers / "danger_days.webp").write_bytes(b"danger")
     (covers / "unrelated.png").write_bytes(b"?")
     (root / "bands" / "My Chemical Romance" / "band.avif").write_bytes(b"band")
+    songs = root / "bands" / "My Chemical Romance" / "songs"
+    songs.mkdir()
+    (songs / "Sing.txt").write_text("Sing it out\nboy, you've got to see what tomorrow brings\n")
+    (songs / "our lady of sorrows.txt").write_text("")
+    (songs / "Unreleased.txt").write_text("words")
     return root
 
 
@@ -85,6 +91,20 @@ def test_parse_duration():
     assert parse_duration(None) is None
     with pytest.raises(ValueError):
         parse_duration("soon")
+
+
+@pytest.mark.parametrize(
+    "title, name",
+    [
+        ("Sing", "Sing.txt"),
+        ("S/C/A/R/E/C/R/O/W", "S_C_A_R_E_C_R_O_W.txt"),
+        ("Question...?", "Question....txt"),
+        ("…Ready for It?", "…Ready for It.txt"),
+        ('Title: "Quoted" <a|b> *', "Title Quoted ab.txt"),
+    ],
+)
+def test_lyrics_file_name(title, name):
+    assert lyrics_file_name(title) == name
 
 
 def test_match_cover():
@@ -102,7 +122,19 @@ def test_import(lib: Library, info: Path):
     assert report.created == {"artists": 2, "albums": 3, "songs": 5}
     assert report.covers == 2
     assert report.images == 1
+    assert report.lyrics == 1
+    assert report.lyrics_files == 3  # Romance, Look Alive, Sunshine and 22 had no file
+    assert (info / "bands" / "Taylor Swift" / "songs" / "22.txt").read_text() == ""
+    mcr_songs = info / "bands" / "My Chemical Romance" / "songs"
+    assert sorted(p.name for p in mcr_songs.iterdir()) == [
+        "Look Alive, Sunshine.txt",
+        "Romance (instrumental).txt",
+        "Sing.txt",
+        "Unreleased.txt",
+        "our lady of sorrows.txt",
+    ]
     assert any("unrelated.png" in w for w in report.warnings)
+    assert any("lyrics 'Unreleased.txt' matched no song" in w for w in report.warnings)
     assert any("Taylor Swift: ignored wiki" in w for w in report.warnings)
 
     mcr = lib.find_artist("my chemical romance")
@@ -123,8 +155,22 @@ def test_import(lib: Library, info: Path):
     assert lib.cover_path(bullets.id).read_bytes() == b"bullets"
 
     danger = lib.find_album(mcr.id, "Danger Days")
-    titles = [s.song.title for s in lib.list_songs(album_id=danger.id, order="track")]
-    assert titles == ["Look Alive, Sunshine", "Sing"]
+    songs = lib.list_songs(album_id=danger.id, order="track")
+    assert [s.song.title for s in songs] == ["Look Alive, Sunshine", "Sing"]
+    assert [s.song.lyrics for s in songs] == [
+        None,
+        "Sing it out\nboy, you've got to see what tomorrow brings",
+    ]
+    assert lib.find_song(mcr.id, bullets.id, "Our Lady of Sorrows").lyrics is None
+    assert [s.song.no_lyrics for s in lib.list_songs(album_id=bullets.id, order="track")] == [
+        True,
+        False,
+    ]
+    assert lib.list_albums(mcr.id)[0].no_lyrics_count == 1
+    assert {a.album.title: a.lyrics_count for a in lib.list_albums(mcr.id)} == {
+        "I Brought You My Bullets, You Brought Me Your Love": 0,
+        "Danger Days": 1,
+    }
 
     swift = lib.find_artist("Taylor Swift")
     assert lib.list_members(swift.id) == []
@@ -145,6 +191,7 @@ def test_reimport_keeps_personal_data(lib: Library, info: Path):
 
     report = import_dir(lib, info)
 
+    assert report.lyrics_files == 0
     assert report.created == {"artists": 0, "albums": 0, "songs": 0}
     assert report.updated == {"artists": 2, "albums": 3, "songs": 5}
     assert lib.get_artist(mcr.id).favorite
@@ -152,6 +199,44 @@ def test_reimport_keeps_personal_data(lib: Library, info: Path):
     assert lib.get_song_summary(song.id).play_count == 1
     assert len(list(lib.covers_dir.iterdir())) == 2
     assert len(list(lib.images_dir.iterdir())) == 1
+
+
+def test_reimport_no_lyrics(lib: Library, info: Path):
+    import_dir(lib, info)
+    mcr = lib.find_artist("My Chemical Romance")
+    danger = lib.find_album(mcr.id, "Danger Days")
+    look_alive = lib.find_song(mcr.id, danger.id, "Look Alive, Sunshine")
+    lib.update_song(look_alive.id, replace(look_alive, no_lyrics=True))  # set in the app
+    albums = info / "bands" / "My Chemical Romance" / "albums.yaml"
+    albums.write_text(albums.read_text().replace("no_lyrics: true", "no_lyrics: false"))
+
+    import_dir(lib, info)
+    bullets = lib.find_album(mcr.id, "I Brought You My Bullets, You Brought Me Your Love")
+    assert not lib.find_song(mcr.id, bullets.id, "Romance (instrumental)").no_lyrics
+    assert lib.get_song(look_alive.id).no_lyrics  # no key in the file: the app's choice stays
+
+    albums.write_text(albums.read_text().replace("no_lyrics: false", "no_lyrics: maybe"))
+    report = import_dir(lib, info)
+    assert any("no_lyrics must be true or false" in w for w in report.warnings)
+
+
+def test_reimport_updates_lyrics(lib: Library, info: Path):
+    import_dir(lib, info)
+    mcr = lib.find_artist("My Chemical Romance")
+    sing = lib.find_song(mcr.id, lib.find_album(mcr.id, "Danger Days").id, "Sing")
+    songs = info / "bands" / "My Chemical Romance" / "songs"
+
+    (songs / "Sing.txt").write_text("New words")
+    import_dir(lib, info)
+    assert lib.get_song(sing.id).lyrics == "New words"
+
+    (songs / "Sing.txt").write_text("")
+    import_dir(lib, info)
+    assert lib.get_song(sing.id).lyrics is None
+
+    (songs / "Sing.txt").write_bytes(b"\xff\xfe")
+    report = import_dir(lib, info)
+    assert any("lyrics 'Sing.txt' is not UTF-8" in w for w in report.warnings)
 
 
 def test_pages_show_members_and_covers(tmp_path: Path, info: Path):
@@ -282,7 +367,7 @@ def test_report_summary():
     report.count("songs", created=True)
     assert report.summary() == (
         "created 0 artists, 0 albums, 1 songs; updated 0 artists, 0 albums, 0 songs; 0 covers, "
-        "0 band images"
+        "0 band images, 0 lyrics, 0 new lyrics files"
         "\nwarning: careful"
     )
 

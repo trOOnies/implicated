@@ -1,15 +1,17 @@
-"""Import artists, albums, songs and covers from YAML files.
+"""Import artists, albums, songs, covers and lyrics from YAML and text files.
 
 ``python -m implicated.importer [info_dir] [--db path]``
 
 The directory holds a ``bands.yaml`` listing the artists, and one folder per artist (named
-exactly like the artist) with an ``albums.yaml``, a picture of the artist and the album covers::
+exactly like the artist) with an ``albums.yaml``, a picture of the artist, the album covers
+and the song lyrics::
 
     info/
       bands.yaml
       bands/<artist name>/albums.yaml
       bands/<artist name>/band.jpg          # any of ``IMAGE_TYPES``
       bands/<artist name>/covers/<image>.jpg
+      bands/<artist name>/songs/<song title>.txt
 
 ``bands.yaml``::
 
@@ -35,6 +37,13 @@ exactly like the artist) with an ``albums.yaml``, a picture of the artist and th
       songs:
       - name: The End.
         duration: 1:52
+      - name: Intro (instrumental)
+        no_lyrics: true           # optional; the song has no words, so no lyrics are missing
+
+Lyrics files are named after the song (see ``lyrics_file_name``): ``/`` becomes ``_`` and the
+characters Windows does not allow in file names (``<>:"\\|?*``) are left out, so "S/C/A/R/E/C/R/O/W"
+is ``S_C_A_R_E_C_R_O_W.txt`` and "Question...?" is ``Question....txt``. Case does not matter. An
+empty file means the lyrics are still missing; songs without a file get an empty one.
 
 Importing again updates what changed and never touches ratings, notes, favorites or plays.
 """
@@ -51,7 +60,15 @@ from pathlib import Path
 import yaml
 
 from implicated.library import IMAGE_TYPES, Library
-from implicated.models import AlbumIn, ArtistIn, MemberIn, SongIn, validate_wiki
+from implicated.models import (
+    AlbumIn,
+    ArtistIn,
+    MemberIn,
+    Song,
+    SongIn,
+    lyrics_file_name,
+    validate_wiki,
+)
 
 # "country" and "bio" are the older names of "origin" and "description".
 BAND_KEYS = {
@@ -60,7 +77,7 @@ BAND_KEYS = {
 }  # fmt: skip
 MEMBER_KEYS = {"name", "roles", "from", "to"}
 ALBUM_KEYS = {"release_year", "kind", "cover", "songs"}
-SONG_KEYS = {"name", "duration"}
+SONG_KEYS = {"name", "duration", "no_lyrics"}
 
 # Words that say nothing about which album a cover file belongs to.
 COVER_STOPWORDS = {
@@ -78,6 +95,8 @@ class Report:
     updated: dict[str, int] = field(default_factory=lambda: {"artists": 0, "albums": 0, "songs": 0})
     covers: int = 0
     images: int = 0
+    lyrics: int = 0
+    lyrics_files: int = 0
     warnings: list[str] = field(default_factory=list)
 
     def count(self, kind: str, created: bool) -> None:
@@ -89,7 +108,8 @@ class Report:
 
         return (
             f"created {counts(self.created)}; updated {counts(self.updated)}; "
-            f"{self.covers} covers, {self.images} band images"
+            f"{self.covers} covers, {self.images} band images, {self.lyrics} lyrics, "
+            f"{self.lyrics_files} new lyrics files"
         )
 
     def summary(self) -> str:
@@ -215,7 +235,7 @@ def _import_bands(lib: Library, info_dir: Path, raw: object, report: Report) -> 
             albums = _load(albums_file)
             if not isinstance(albums, dict):
                 raise ValueError(f"{albums_file}: expected album titles mapped to their data")
-            _import_albums(lib, artist_id, albums, band_dir / "covers", report)
+            _import_albums(lib, artist_id, albums, band_dir, report)
         else:
             report.warnings.append(f"{name}: no {albums_file.relative_to(info_dir)}")
 
@@ -275,13 +295,20 @@ def _import_image(lib: Library, artist_id: int, band_dir: Path, report: Report) 
 
 
 def _import_albums(
-    lib: Library, artist_id: int, albums: dict, covers_dir: Path, report: Report
+    lib: Library, artist_id: int, albums: dict, band_dir: Path, report: Report
 ) -> None:
     artist = lib.get_artist(artist_id)
+    covers_dir = band_dir / "covers"
     covers = sorted(
         p for p in covers_dir.glob("*") if p.is_file() and p.suffix.lower() in IMAGE_TYPES
     )
     used_covers: set[Path] = set()
+    lyrics = {
+        p.name.casefold(): p
+        for p in sorted((band_dir / "songs").glob("*"))
+        if p.is_file() and p.suffix.lower() == ".txt"
+    }
+    used_lyrics: set[Path] = set()
     for raw_title, raw in albums.items():
         title = _title(raw_title)
         where = f"{artist.name} / {title}"
@@ -318,11 +345,36 @@ def _import_albums(
             report.covers += 1
 
         for number, song in enumerate(data.get("songs") or [], start=1):
-            _import_song(lib, artist_id, album.id, number, song, where, report)
+            imported = _import_song(lib, artist_id, album.id, number, song, where, report)
+            if imported is not None:
+                name = lyrics_file_name(imported.title)
+                path = lyrics.get(name.casefold())
+                if path is None:
+                    # The library may have just made it, when its ``info_dir`` is this folder.
+                    path = lyrics[name.casefold()] = band_dir / "songs" / name
+                    report.lyrics_files += 1
+                if not path.exists():
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text("", encoding="utf-8")
+                _import_lyrics(lib, imported.id, path, report)
+                used_lyrics.add(path)
 
     for path in covers:
         if path not in used_covers:
             report.warnings.append(f"{artist.name}: cover {path.name!r} matched no album")
+    for path in lyrics.values():
+        if path not in used_lyrics:
+            report.warnings.append(f"{artist.name}: lyrics {path.name!r} matched no song")
+
+
+def _import_lyrics(lib: Library, song_id: int, path: Path, report: Report) -> None:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        report.warnings.append(f"{path.parent.parent.name}: lyrics {path.name!r} is not UTF-8")
+        return
+    if lib.set_lyrics(song_id, text).lyrics:
+        report.lyrics += 1
 
 
 def _import_song(
@@ -333,12 +385,12 @@ def _import_song(
     raw: object,
     where: str,
     report: Report,
-) -> None:
+) -> Song | None:
     data = _mapping(raw, f"{where} track {number}", SONG_KEYS, report)
     title = _title(data.get("name") or "")
     if not title:
         report.warnings.append(f"{where} track {number}: skipped, it has no name")
-        return
+        return None
     try:
         seconds = parse_duration(data.get("duration"))
     except ValueError as exc:
@@ -348,6 +400,13 @@ def _import_song(
         report.warnings.append(f"{where} / {title}: no duration")
 
     existing = lib.find_song(artist_id, album_id, title)
+    # Without the key, a choice made in the app stays.
+    no_lyrics = bool(existing and existing.no_lyrics)
+    if "no_lyrics" in data:
+        if isinstance(data["no_lyrics"], bool):
+            no_lyrics = data["no_lyrics"]
+        else:
+            report.warnings.append(f"{where} / {title}: no_lyrics must be true or false")
     song_in = SongIn(
         artist_id=artist_id,
         title=title,
@@ -357,12 +416,14 @@ def _import_song(
         rating=existing and existing.rating,
         notes=existing and existing.notes,
         favorite=bool(existing and existing.favorite),
+        no_lyrics=no_lyrics,
     )
     if existing:
-        lib.update_song(existing.id, song_in)
+        song = lib.update_song(existing.id, song_in)
     else:
-        lib.create_song(song_in)
+        song = lib.create_song(song_in)
     report.count("songs", existing is None)
+    return song
 
 
 def main(argv: list[str] | None = None) -> None:

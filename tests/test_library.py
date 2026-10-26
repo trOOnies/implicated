@@ -3,7 +3,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from conftest import Sample
+from conftest import Sample, add_sample
 
 from implicated.library import Library, NotFound
 from implicated.models import AlbumIn, ArtistIn, MemberIn, SongIn
@@ -316,6 +316,23 @@ def test_find_song(lib: Library, sample: Sample):
     assert lib.find_song(sample.artist_id, None, "Sour Times").id == single.id
 
 
+def test_lyrics(lib: Library, sample: Sample):
+    song_id = sample.song_ids[0]
+    assert lib.get_song(song_id).lyrics is None
+    assert lib.list_albums()[0].lyrics_count == 0
+
+    lyrics = lib.set_lyrics(song_id, "\nTake a ride\nup the hill\n\n").lyrics
+    assert lyrics == "Take a ride\nup the hill"
+    assert lib.list_albums()[0].lyrics_count == 1
+    lib.update_song(song_id, SongIn(sample.artist_id, "Mysterons", sample.album_id, rating=4))
+    assert lib.get_song(song_id).lyrics == "Take a ride\nup the hill"  # edits keep them
+
+    assert lib.set_lyrics(song_id, "  \n").lyrics is None
+    assert lib.list_albums()[0].lyrics_count == 0
+    with pytest.raises(NotFound):
+        lib.set_lyrics(99, "words")
+
+
 # Plays and favorites
 
 
@@ -406,8 +423,13 @@ def test_old_databases_get_new_columns(tmp_path):
                    title TEXT NOT NULL, year INTEGER, kind TEXT NOT NULL DEFAULT 'album',
                    rating INTEGER, notes TEXT, favorite INTEGER NOT NULL DEFAULT 0,
                    created_at TEXT NOT NULL);
+               CREATE TABLE songs (id INTEGER PRIMARY KEY, artist_id INTEGER NOT NULL,
+                   album_id INTEGER, title TEXT NOT NULL, track_number INTEGER,
+                   duration_seconds INTEGER, rating INTEGER, notes TEXT,
+                   favorite INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
                INSERT INTO artists (name, created_at) VALUES ('Old', '2020-01-01');
-               INSERT INTO albums (artist_id, title, created_at) VALUES (1, 'Old album', '2020');"""
+               INSERT INTO albums (artist_id, title, created_at) VALUES (1, 'Old album', '2020');
+               INSERT INTO songs (artist_id, title, created_at) VALUES (1, 'Old song', '2020');"""
         )
     conn.close()
 
@@ -415,4 +437,79 @@ def test_old_databases_get_new_columns(tmp_path):
     assert lib.get_artist(1).languages == []
     assert lib.get_album(1).cover is None
     assert (lib.get_artist(1).wiki, lib.get_artist(1).image) == (None, None)
+    assert lib.get_song(1).lyrics is None
     Library(path)  # opening again is a no-op
+
+
+# Lyrics files
+
+
+@pytest.fixture
+def files_lib(tmp_path) -> Library:
+    return Library(tmp_path / "local" / "implicated.db", tmp_path / "info")
+
+
+def test_songs_get_a_lyrics_file(files_lib: Library, tmp_path):
+    sample = add_sample(files_lib)
+    folder = tmp_path / "info" / "bands" / "Portishead" / "songs"
+    assert sorted(p.name for p in folder.iterdir()) == ["Mysterons.txt", "Sour Times.txt"]
+    assert files_lib.lyrics_path(sample.song_ids[0]) == folder / "Mysterons.txt"
+    assert (folder / "Mysterons.txt").read_text() == ""
+
+    # An existing file is used as it is, even when its case differs.
+    (folder / "roads.txt").write_text("Oh, can't anybody see\n")
+    roads = files_lib.create_song(SongIn(sample.artist_id, "Roads / Live"))
+    assert files_lib.lyrics_path(roads.id) == folder / "Roads _ Live.txt"
+    files_lib.update_song(roads.id, replace(roads, title="Roads"))
+    assert files_lib.lyrics_path(roads.id) == folder / "roads.txt"
+    assert files_lib.reload_lyrics(roads.id).lyrics == "Oh, can't anybody see"
+    assert len(list(folder.iterdir())) == 4  # Roads _ Live.txt stays: Roads.txt existed
+
+
+def test_renaming_a_song_moves_its_file(files_lib: Library, tmp_path):
+    sample = add_sample(files_lib)
+    folder = tmp_path / "info" / "bands" / "Portishead" / "songs"
+    (folder / "Sour Times.txt").write_text("Nobody loves me\n")
+    song = files_lib.get_song(sample.song_ids[1])
+    files_lib.update_song(song.id, replace(song, title="Sour Times?"))  # same file name
+    assert (folder / "Sour Times.txt").exists()
+    files_lib.update_song(song.id, replace(song, title="Sour Times (Nobody Loves Me)"))
+    assert not (folder / "Sour Times.txt").exists()
+    assert files_lib.reload_lyrics(song.id).lyrics == "Nobody loves me"
+
+    # The same song on another album shares the file, so renaming one copies it.
+    single = files_lib.create_song(SongIn(sample.artist_id, "Sour Times (Nobody Loves Me)"))
+    assert files_lib.lyrics_path(single.id) == folder / "Sour Times (Nobody Loves Me).txt"
+    files_lib.update_song(single.id, replace(single, title="Sour Times (Edit)"))
+    assert (folder / "Sour Times (Nobody Loves Me).txt").read_text() == "Nobody loves me\n"
+    assert (folder / "Sour Times (Edit).txt").read_text() == "Nobody loves me\n"
+
+
+def test_deleting_a_song_removes_only_an_empty_file(files_lib: Library, tmp_path):
+    sample = add_sample(files_lib)
+    folder = tmp_path / "info" / "bands" / "Portishead" / "songs"
+    (folder / "Sour Times.txt").write_text("Nobody loves me\n")
+    twin = files_lib.create_song(SongIn(sample.artist_id, "mysterons"))
+    files_lib.delete_song(twin.id)
+    assert (folder / "Mysterons.txt").exists()  # Mysterons still uses it
+    for song_id in sample.song_ids:
+        files_lib.delete_song(song_id)
+    assert [p.name for p in folder.iterdir()] == ["Sour Times.txt"]
+
+
+def test_reload_lyrics(files_lib: Library, lib: Library, sample: Sample):
+    song_id = add_sample(files_lib).song_ids[0]
+    path = files_lib.lyrics_path(song_id)
+    path.unlink()
+    files_lib.set_lyrics(song_id, "Kept")
+    assert files_lib.reload_lyrics(song_id).lyrics == "Kept"  # the file is made from them
+    assert path.read_text() == "Kept\n"
+    path.write_bytes(b"\xff\xfe")
+    with pytest.raises(ValueError, match="Mysterons.txt is not UTF-8"):
+        files_lib.reload_lyrics(song_id)
+    with pytest.raises(NotFound):
+        files_lib.lyrics_path(99)
+
+    # Without an info folder there are no files.
+    assert lib.lyrics_path(sample.song_ids[0]) is None
+    assert lib.reload_lyrics(sample.song_ids[0]).lyrics is None

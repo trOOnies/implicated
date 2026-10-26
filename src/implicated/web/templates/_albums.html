@@ -1,6 +1,6 @@
 {% if albums %}
 <table>
-  <thead><tr><th></th><th>Year</th><th>Title</th>{% if show_artist %}<th>Artist</th>{% endif %}<th>Type</th><th>Rating</th><th>Songs</th><th>Length</th><th>Plays</th><th></th></tr></thead>
+  <thead><tr><th></th><th>Year</th><th>Title</th>{% if show_artist %}<th>Artist</th>{% endif %}<th>Type</th><th>Rating</th><th>Songs</th><th>Lyrics</th><th>Length</th><th>Plays</th><th></th></tr></thead>
   <tbody>
   {% for a in albums %}
     <tr>
@@ -11,6 +11,8 @@
       <td><span class="tag">{{ a.album.kind }}</span></td>
       <td class="stars">{{ a.album.rating | stars }}</td>
       <td>{{ a.song_count }}</td>
+      {% set with_words = a.song_count - a.no_lyrics_count %}
+      <td title="{{ a.lyrics_count }} of {{ with_words }} songs have lyrics{% if a.no_lyrics_count %}; {{ a.no_lyrics_count }} have none to have{% endif %}">{{ a.lyrics_count | percent(with_words) }}</td>
       <td>{{ a.total_seconds | duration }}</td>
       <td>{{ a.play_count }}</td>
       <td>{% with kind='album', record_id=a.album.id, favorite=a.album.favorite %}{% include "_fav.html" %}{% endwith %}</td>

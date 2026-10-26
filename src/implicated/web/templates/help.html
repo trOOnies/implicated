@@ -20,9 +20,16 @@
       <dd>Every artist with their genres. Open one to see its line-up, discography and songs,
       edit it, or add albums and songs.</dd>
       <dt><a href="/albums">Albums</a></dt>
-      <dd>All albums with their covers. Open one for its tracklist, rating and notes.</dd>
+      <dd>All albums with their covers and how many of their songs have lyrics. Open one for its
+      tracklist, rating and notes; songs without lyrics are marked
+      <span class="tag missing">missing lyrics</span>, and songs with no words to have (tick
+      <em>No lyrics</em> when adding or editing them) <span class="tag none">no lyrics</span>.
+      Those do not count against the album's lyrics percentage.</dd>
       <dt><a href="/songs">Songs</a></dt>
-      <dd>Search every song by title, artist or album, sort them, or show only favorites.</dd>
+      <dd>Search every song by title, artist or album, sort them, or show only favorites. The
+      Missing lyrics column marks the songs that still need theirs. Open a song to read its
+      lyrics, or press <em>Open lyrics file</em> to write them in your text editor; save the file
+      and press <em>Reload lyrics</em>.</dd>
     </dl>
   </section>
 
@@ -47,7 +54,9 @@
     genres, languages, a description, a Wikipedia link and members), plus
     <code>bands/&lt;artist&gt;/albums.yaml</code> (albums and their songs),
     <code>bands/&lt;artist&gt;/band.jpg</code> (a picture of the artist) and <code>bands/&lt;artist&gt;/covers/</code> (cover images, matched to albums by file
-    name). The server imports the folder every time it starts, so restart it after editing the
+    name) and <code>bands/&lt;artist&gt;/songs/&lt;song title&gt;.txt</code> (lyrics; a
+    <code>/</code> in the title becomes <code>_</code>, and <code>&lt;&gt;:"\|?*</code> are left
+    out). Every song gets one: songs you add without a file get an empty one. The server imports the folder every time it starts, so restart it after editing the
     files. Importing again updates what changed and keeps your ratings, notes, favorites and
     plays. Problems are listed in the server log.</p>
   </section>

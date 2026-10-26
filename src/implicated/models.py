@@ -24,6 +24,10 @@ WIKI_NAMESPACES = {
 # Characters a copied article link never has, but that browsers read in surprising ways.
 WIKI_BAD_CHARS = re.compile(r'[\x00-\x20\x7f-\x9f"<>\\^`{|}]')
 
+# Characters that cannot be part of a file name on Windows (or, for "/", anywhere).
+SLASHES = re.compile(r"[/\\]")
+NOT_IN_FILE_NAMES = re.compile(r'[<>:"|?*\x00-\x1f]')
+
 
 @dataclass
 class ArtistIn:
@@ -92,12 +96,16 @@ class SongIn:
     rating: int | None = None
     notes: str | None = None
     favorite: bool = False
+    # The song has no words (an instrumental), so its lyrics are not missing.
+    no_lyrics: bool = False
 
 
 @dataclass
 class Song(SongIn):
     id: int = 0
     created_at: str = ""
+    # Song text; set with ``Library.set_lyrics``. ``None`` means it is still missing.
+    lyrics: str | None = None
 
 
 @dataclass
@@ -125,6 +133,9 @@ class AlbumSummary:
     song_count: int = 0
     total_seconds: int = 0
     play_count: int = 0
+    # Songs that have lyrics, and songs that have none to have (see ``SongIn.no_lyrics``).
+    lyrics_count: int = 0
+    no_lyrics_count: int = 0
 
 
 @dataclass
@@ -157,6 +168,12 @@ class LibraryStats:
     genres: list[Point]
     albums_per_decade: list[Point]
     ratings: list[Point]
+
+
+def lyrics_file_name(title: str) -> str:
+    """The name of the text file holding a song's lyrics, valid on Linux, macOS and Windows:
+    ``/`` becomes ``_`` and the characters Windows refuses are left out."""
+    return NOT_IN_FILE_NAMES.sub("", SLASHES.sub("_", title)).strip() + ".txt"
 
 
 def validate_rating(rating: int | None) -> None:

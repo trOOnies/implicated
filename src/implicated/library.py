@@ -28,6 +28,7 @@ from implicated.models import (
     Song,
     SongIn,
     SongSummary,
+    lyrics_file_name,
     validate_kind,
     validate_rating,
     validate_wiki,
@@ -78,7 +79,9 @@ CREATE TABLE IF NOT EXISTS songs (
     rating           INTEGER,
     notes            TEXT,
     favorite         INTEGER NOT NULL DEFAULT 0,
-    created_at       TEXT NOT NULL
+    created_at       TEXT NOT NULL,
+    lyrics           TEXT,
+    no_lyrics        INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS plays (
     id        INTEGER PRIMARY KEY,
@@ -99,6 +102,8 @@ MIGRATIONS = [
     ("albums", "cover", "TEXT"),
     ("artists", "wiki", "TEXT"),
     ("artists", "image", "TEXT"),
+    ("songs", "lyrics", "TEXT"),
+    ("songs", "no_lyrics", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 FAVORITE_TABLES = {"artist": "artists", "album": "albums", "song": "songs"}
@@ -150,6 +155,7 @@ def _album(row: sqlite3.Row) -> Album:
 def _song(row: sqlite3.Row) -> Song:
     data = dict(row)
     data["favorite"] = bool(data["favorite"])
+    data["no_lyrics"] = bool(data["no_lyrics"])
     return Song(**data)
 
 
@@ -165,11 +171,14 @@ def _split(row: sqlite3.Row, prefix: str) -> tuple[dict, dict]:
 
 
 class Library:
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, info_dir: str | Path | None = None) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.covers_dir = self.path.parent / "covers"
         self.images_dir = self.path.parent / "artists"
+        # The folder ``implicated.importer`` reads. When set, every song has a lyrics file in
+        # ``bands/<artist>/songs/``: one is created (empty) along with the song if missing.
+        self.info_dir = Path(info_dir) if info_dir is not None else None
         self._local = threading.local()
         with self.connect() as conn:
             conn.executescript(SCHEMA)
@@ -358,7 +367,11 @@ class Library:
                    (SELECT COALESCE(SUM(duration_seconds), 0) FROM songs
                      WHERE album_id = al.id) AS x_seconds,
                    (SELECT COUNT(*) FROM plays p JOIN songs s ON s.id = p.song_id
-                     WHERE s.album_id = al.id) AS x_plays
+                     WHERE s.album_id = al.id) AS x_plays,
+                   (SELECT COUNT(*) FROM songs WHERE album_id = al.id
+                       AND lyrics IS NOT NULL AND no_lyrics = 0) AS x_lyrics,
+                   (SELECT COUNT(*) FROM songs WHERE album_id = al.id
+                       AND no_lyrics = 1) AS x_no_lyrics
               FROM albums al JOIN artists ar ON ar.id = al.artist_id
              WHERE (:artist_id IS NULL OR al.artist_id = :artist_id)
                AND (:favorites = 0 OR al.favorite = 1)
@@ -374,7 +387,13 @@ class Library:
             own, extra = _split(row, "x_")
             out.append(
                 AlbumSummary(
-                    _album(own), extra["artist"], extra["songs"], extra["seconds"], extra["plays"]
+                    _album(own),
+                    extra["artist"],
+                    extra["songs"],
+                    extra["seconds"],
+                    extra["plays"],
+                    extra["lyrics"],
+                    extra["no_lyrics"],
                 )
             )
         return out
@@ -560,28 +579,107 @@ class Library:
         with self.connect() as conn:
             cur = conn.execute(
                 """INSERT INTO songs (artist_id, album_id, title, track_number,
-                                      duration_seconds, rating, notes, favorite, created_at)
+                                      duration_seconds, rating, notes, favorite, no_lyrics,
+                                      created_at)
                    VALUES (:artist_id, :album_id, :title, :track_number, :duration_seconds,
-                           :rating, :notes, :favorite, :now)""",
+                           :rating, :notes, :favorite, :no_lyrics, :now)""",
                 {**values, "now": _now()},
             )
-        return self.get_song(cur.lastrowid)
+        song = self.get_song(cur.lastrowid)
+        self.ensure_lyrics_file(song.id)
+        return song
 
     def update_song(self, song_id: int, data: SongIn) -> Song:
-        self.get_song(song_id)
+        old_path = self.lyrics_path(song_id)
+        shared = self._shares_lyrics_file(self.get_song(song_id))
         with self.connect() as conn:
             conn.execute(
                 """UPDATE songs SET artist_id = :artist_id, album_id = :album_id,
                        title = :title, track_number = :track_number,
                        duration_seconds = :duration_seconds, rating = :rating,
-                       notes = :notes, favorite = :favorite
+                       notes = :notes, favorite = :favorite, no_lyrics = :no_lyrics
                    WHERE id = :id""",
                 {**self._song_values(data), "id": song_id},
             )
+        # A renamed song takes its lyrics file along (a copy, if another song still uses it).
+        new_path = self.lyrics_path(song_id)
+        if old_path and new_path and old_path.is_file() and not new_path.exists():
+            new_path.parent.mkdir(parents=True, exist_ok=True)
+            if shared:
+                new_path.write_bytes(old_path.read_bytes())
+            else:
+                old_path.rename(new_path)
+        self.ensure_lyrics_file(song_id)
         return self.get_song(song_id)
 
     def delete_song(self, song_id: int) -> None:
+        path = self.lyrics_path(song_id)
+        shared = self._shares_lyrics_file(self.get_song(song_id))
         self._delete("songs", song_id)
+        # Lyrics someone wrote are kept; an empty file only belonged to this song.
+        if path and not shared and path.is_file() and path.stat().st_size == 0:
+            path.unlink()
+
+    def lyrics_path(self, song_id: int) -> Path | None:
+        """The song's lyrics file, whether it exists or not; ``None`` without ``info_dir``.
+
+        Names match ignoring case, like the importer does, so an existing
+        ``our lady of sorrows.txt`` is the file of "Our Lady of Sorrows".
+        """
+        song = self.get_song(song_id)
+        if self.info_dir is None:
+            return None
+        artist = self.get_artist(song.artist_id)
+        folder = self.info_dir / "bands" / artist.name / "songs"
+        name = lyrics_file_name(song.title)
+        if not (folder / name).exists() and folder.is_dir():
+            for path in folder.iterdir():
+                if path.name.casefold() == name.casefold():
+                    return path
+        return folder / name
+
+    def _shares_lyrics_file(self, song: Song) -> bool:
+        """Whether another song of the artist (the same song on a deluxe edition, say) has the
+        same lyrics file."""
+        name = lyrics_file_name(song.title).casefold()
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT title FROM songs WHERE artist_id = ? AND id != ?",
+                (song.artist_id, song.id),
+            ).fetchall()
+        return any(lyrics_file_name(title).casefold() == name for (title,) in rows)
+
+    def ensure_lyrics_file(self, song_id: int) -> Path | None:
+        """Create the song's lyrics file when it is missing, holding the lyrics the library
+        already has (usually none, so the file is empty)."""
+        path = self.lyrics_path(song_id)
+        if path is not None and not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            lyrics = self.get_song(song_id).lyrics
+            path.write_text(f"{lyrics}\n" if lyrics else "", encoding="utf-8")
+        return path
+
+    def reload_lyrics(self, song_id: int) -> Song:
+        """Read the song's lyrics again from its file, so edits show without a new import.
+
+        Raises ``ValueError`` when the file is not UTF-8 text; the stored lyrics stay as they are.
+        """
+        path = self.ensure_lyrics_file(song_id)
+        if path is None:
+            return self.get_song(song_id)
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            raise ValueError(f"{path.name} is not UTF-8 text") from None
+        return self.set_lyrics(song_id, text)
+
+    def set_lyrics(self, song_id: int, lyrics: str | None) -> Song:
+        """Store the song's lyrics; blank text marks them as missing again."""
+        self.get_song(song_id)
+        lyrics = lyrics.strip() if lyrics else None
+        with self.connect() as conn:
+            conn.execute("UPDATE songs SET lyrics = ? WHERE id = ?", (lyrics or None, song_id))
+        return self.get_song(song_id)
 
     def _song_values(self, data: SongIn) -> dict:
         if not data.title.strip():
@@ -597,6 +695,7 @@ class Library:
         values = asdict(data)
         values["title"] = data.title.strip()
         values["favorite"] = int(data.favorite)
+        values["no_lyrics"] = int(data.no_lyrics)
         return values
 
     # Plays

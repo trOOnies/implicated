@@ -6,7 +6,7 @@
       {% with album=a.album, size='tile' %}{% include "_cover.html" %}{% endwith %}
       <strong>{{ a.album.title }}</strong>
     </a>
-    <small>{{ a.artist_name }}{% if a.album.year %} · {{ a.album.year }}{% endif %} · {{ a.song_count }} songs</small>
+    <small>{{ a.artist_name }}{% if a.album.year %} · {{ a.album.year }}{% endif %} · {{ a.song_count }} songs{% if a.song_count > a.no_lyrics_count %} · {{ a.lyrics_count | percent(a.song_count - a.no_lyrics_count) }} lyrics{% endif %}</small>
   </li>
   {% endfor %}
 </ul>

@@ -23,6 +23,7 @@ from starlette.datastructures import FormData
 from implicated.api import get_library
 from implicated.library import Library, NotFound
 from implicated.models import ALBUM_KINDS, AlbumIn, ArtistIn, Member, Point, SongIn
+from implicated.web import editor
 
 router = APIRouter(default_response_class=HTMLResponse, include_in_schema=False)
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -58,7 +59,14 @@ def tenure(member: Member) -> str:
     return f"{member.from_year or ''}–{member.to_year or ''}"
 
 
-templates.env.filters.update(duration=duration, stars=stars, when=when, tenure=tenure)
+def percent(part: int, whole: int) -> str:
+    """Rounded down, so 100% only shows once every song is covered."""
+    return f"{part * 100 // whole}%" if whole else "–"
+
+
+templates.env.filters.update(
+    duration=duration, stars=stars, when=when, tenure=tenure, percent=percent
+)
 templates.env.globals.update(album_kinds=ALBUM_KINDS)
 
 
@@ -157,6 +165,7 @@ def song_from_form(form: FormData) -> SongIn:
         rating=_int(form, "rating"),
         notes=_text(form, "notes"),
         favorite="favorite" in form,
+        no_lyrics="no_lyrics" in form,
     )
 
 
@@ -333,6 +342,8 @@ def _album_context(lib: Library, album_id: int) -> dict:
         "songs": songs,
         "total_seconds": sum(s.song.duration_seconds or 0 for s in songs),
         "play_count": sum(s.play_count for s in songs),
+        "lyrics_count": sum(1 for s in songs if s.song.lyrics and not s.song.no_lyrics),
+        "no_lyrics_count": sum(1 for s in songs if s.song.no_lyrics),
     }
 
 
@@ -454,6 +465,42 @@ async def create_song(request: Request, lib: Lib):
 def _ctx(form_or_query) -> str:
     ctx = form_or_query.get("ctx") or "all"
     return ctx if ctx in ("all", "artist", "album") else "all"
+
+
+def _lyrics_context(lib: Library, song_id: int, **extra) -> dict:
+    """The song with its lyrics read again from its file, so edits show straight away."""
+    try:
+        found(lib.reload_lyrics, song_id)
+    except (OSError, ValueError) as exc:
+        extra.setdefault("error", f"Could not read the lyrics file: {exc}")
+    return {"s": lib.get_song_summary(song_id), "lyrics_path": lib.lyrics_path(song_id), **extra}
+
+
+@router.get("/songs/{song_id}")
+def song_page(request: Request, lib: Lib, song_id: int):
+    context = _lyrics_context(lib, song_id)
+    artist = lib.get_artist(context["s"].song.artist_id)
+    return render(request, "song.html", artist=artist, **context)
+
+
+@router.get("/fragments/songs/{song_id}/lyrics")
+def song_lyrics(request: Request, lib: Lib, song_id: int):
+    return render(request, "_lyrics.html", **_lyrics_context(lib, song_id))
+
+
+@router.post("/songs/{song_id}/lyrics/open")
+def open_lyrics(request: Request, lib: Lib, song_id: int):
+    # Only the page's own buttons may open files: other sites cannot send this header.
+    if "hx-request" not in request.headers:
+        raise HTTPException(403, "open the lyrics file from the song page")
+    path = found(lib.ensure_lyrics_file, song_id)
+    if path is None:
+        raise HTTPException(404, "the library has no folder for lyrics files")
+    try:
+        editor.open_file(path)
+    except OSError as exc:
+        return render(request, "_lyrics.html", **_lyrics_context(lib, song_id, error=str(exc)))
+    return render(request, "_lyrics.html", **_lyrics_context(lib, song_id, opened=True))
 
 
 @router.get("/fragments/songs/{song_id}")

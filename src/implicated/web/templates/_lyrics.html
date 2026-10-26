@@ -1,0 +1,25 @@
+{# The lyrics card of a song page. `lyrics_path` is the song's lyrics file, or None when the library has no folder for them. #}
+<section id="lyrics" class="card">
+  <div class="row">
+    <h2>Lyrics</h2>
+    <span class="spacer"></span>
+    {% if lyrics_path %}
+    <button type="button" {% if s.song.lyrics or s.song.no_lyrics %}class="secondary"{% endif %} hx-post="/songs/{{ s.song.id }}/lyrics/open"
+            hx-target="#lyrics" hx-swap="outerHTML" title="Open {{ lyrics_path.name }} in your text editor">Open lyrics file</button>
+    <button type="button" class="secondary" hx-get="/fragments/songs/{{ s.song.id }}/lyrics"
+            hx-target="#lyrics" hx-swap="outerHTML" title="Read the lyrics file again">Reload lyrics</button>
+    {% endif %}
+  </div>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  {% if opened %}<p class="muted">Opened <code>{{ lyrics_path.name }}</code>. Save it, then press Reload lyrics.</p>{% endif %}
+  {% if s.song.lyrics %}
+  <p class="lyrics">{{ s.song.lyrics }}</p>
+  {% elif s.song.no_lyrics %}
+  <p class="empty">This song has no lyrics.</p>
+  {% elif lyrics_path %}
+  <p class="empty">No lyrics yet. Open the lyrics file, write them in and save it.</p>
+  {% else %}
+  <p class="empty">No lyrics yet.</p>
+  {% endif %}
+  {% if lyrics_path %}<p class="small">File: <code>{{ lyrics_path }}</code></p>{% endif %}
+</section>

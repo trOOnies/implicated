@@ -26,10 +26,12 @@ log = logging.getLogger("uvicorn.error")
 
 def create_app(db_path: str | Path | None = None, info_dir: str | Path | None = None) -> FastAPI:
     """Build the app. When ``info_dir`` (default ``$IMPLICATED_INFO`` or ``info/``) holds a
-    ``bands.yaml``, it is imported first so the library always reflects it."""
+    ``bands.yaml``, it is imported first so the library always reflects it. Songs keep their
+    lyrics files there either way."""
     app = FastAPI(title="implicated", version=__version__, openapi_tags=api_tags)
-    app.state.library = Library(db_path or os.environ.get("IMPLICATED_DB", DEFAULT_DB))
-    sync_info(app.state.library, info_dir or os.environ.get("IMPLICATED_INFO", DEFAULT_INFO))
+    info_dir = info_dir or os.environ.get("IMPLICATED_INFO", DEFAULT_INFO)
+    app.state.library = Library(db_path or os.environ.get("IMPLICATED_DB", DEFAULT_DB), info_dir)
+    sync_info(app.state.library, info_dir)
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     app.include_router(api_router)
     app.include_router(views_router)

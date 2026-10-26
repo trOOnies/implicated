@@ -23,9 +23,11 @@ so edits to the YAML files show up after a restart. `make import` (or
 info/
   bands.yaml                      # artists: name, origin, creation_year, genres,
                                   #   languages, description, wiki, members
-  bands/<artist name>/albums.yaml # album title -> release_year, songs (name, duration)
+  bands/<artist name>/albums.yaml # album title -> release_year, songs (name, duration,
+                                  #   no_lyrics: true for instrumentals)
   bands/<artist name>/band.jpg    # picture of the artist (.jpg, .png, .webp, .avif, ...)
   bands/<artist name>/covers/     # cover images, matched to albums by file name
+  bands/<artist name>/songs/      # lyrics, one <song title>.txt per song (empty = missing)
 ```
 
 Re-importing updates what changed and keeps your ratings, notes, favorites and plays; a broken
@@ -34,10 +36,20 @@ Wikipedia article (`https://<lang>.wikipedia.org/wiki/<title>`); any other link 
 warning, and the API and forms refuse it. The full format is described
 in `src/implicated/importer.py`. `info/` is git-ignored.
 
+Lyrics files are named after the song, with `/` turned into `_` and the characters Windows refuses
+in file names (`<>:"\|?*`) left out, so `S/C/A/R/E/C/R/O/W` is `S_C_A_R_E_C_R_O_W.txt`. Every song
+has a lyrics file: the import, the Add song forms and the API create an empty one when it is
+missing (also for artists that are not in `bands.yaml`), and renaming a song renames its file.
+Each song has its own page with its lyrics, read again from the file on every visit, and buttons
+to open the file in your default text editor (under WSL, the Windows one) and to reload it. Album
+pages mark the songs still missing lyrics, and album lists show the share of songs that have them.
+Songs with `no_lyrics` (set in `albums.yaml`, or with the No lyrics box when adding or editing a
+song) have no words, so they are never missing lyrics and do not count in that share.
+
 ## Layout
 
 - `src/implicated/models.py`: dataclass models (`Artist`, `Member`, `Album`, `Song`, `Play`, and their `*In` inputs)
 - `src/implicated/library.py`: SQLite storage and stats
-- `src/implicated/importer.py`: YAML importer for artists, members, albums, songs and covers
+- `src/implicated/importer.py`: YAML importer for artists, members, albums, songs, covers and lyrics
 - `src/implicated/api/`: JSON routes under `/api/...`, one router (and API page tag) per resource
 - `src/implicated/web/`: server-rendered pages (Jinja2 + vendored htmx, plain CSS, no build step)

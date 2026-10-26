@@ -7,7 +7,9 @@
       <th></th><th>Title</th>
       {% if ctx == 'all' %}<th>Artist</th>{% endif %}
       {% if ctx != 'album' %}<th>Album</th>{% endif %}
-      <th>Length</th><th>Rating</th><th>Plays</th><th>Last played</th><th></th>
+      {% if ctx == 'all' %}<th>Missing lyrics</th>{% endif %}
+      <th>Length</th><th>Rating</th>
+      <th>Plays</th><th>Last played</th><th></th>
     </tr>
   </thead>
   <tbody hx-vals='{"ctx": "{{ ctx }}"}'>

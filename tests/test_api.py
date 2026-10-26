@@ -139,3 +139,17 @@ def test_routes_are_grouped_by_tag(client: TestClient):
     assert tags[("get", "/api/stats")] == ["Stats"]
     assert all(len(t) == 1 for t in tags.values())
     assert not any(path.startswith("/fragments") for path in schema["paths"])
+
+
+def test_song_no_lyrics(client: TestClient, web_sample: Sample):
+    body = {"artist_id": web_sample.artist_id, "title": "Intro", "no_lyrics": True}
+    created = client.post("/api/songs", json=body).json()
+    assert created["no_lyrics"] is True
+    assert (
+        client.post("/api/songs", json=body | {"title": "Outro"} | {"no_lyrics": False}).json()[
+            "no_lyrics"
+        ]
+        is False
+    )
+    albums = client.get("/api/albums").json()
+    assert albums[0]["no_lyrics_count"] == 0
