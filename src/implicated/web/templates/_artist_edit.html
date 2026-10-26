@@ -3,7 +3,7 @@
     {% if error %}<p class="error">{{ error }}</p>{% endif %}
     <label>Name <input name="name" required value="{{ artist.name }}"></label>
     <div class="row">
-      <label>Country <input name="country" value="{{ artist.country or '' }}"></label>
+      <label>Origin <input name="country" value="{{ artist.country or '' }}"></label>
       <label>Formed <input name="formed_year" type="number" min="1800" max="2100" value="{{ artist.formed_year or '' }}"></label>
     </div>
     <div class="row">

@@ -21,8 +21,8 @@ so edits to the YAML files show up after a restart. `make import` (or
 
 ```
 info/
-  bands.yaml                      # artists: name, creation_year, genres, languages,
-                                  #   description, wiki, members
+  bands.yaml                      # artists: name, origin, creation_year, genres,
+                                  #   languages, description, wiki, members
   bands/<artist name>/albums.yaml # album title -> release_year, songs (name, duration)
   bands/<artist name>/band.jpg    # picture of the artist (.jpg, .png, .webp, .avif, ...)
   bands/<artist name>/covers/     # cover images, matched to albums by file name

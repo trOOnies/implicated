@@ -12,6 +12,7 @@ from implicated.web import create_app, sync_info
 BANDS = """\
 bands:
 - name: My Chemical Romance
+  origin: " American "
   creation_year: 2001
   languages: English
   genres: [Alternative Rock, Emo]
@@ -28,6 +29,7 @@ bands:
     from: 2004
     to: 2010
 - name: Taylor Swift
+  country: United States
   creation_year: 2003
   genres: [Pop]
   bio: An American singer-songwriter.
@@ -104,7 +106,7 @@ def test_import(lib: Library, info: Path):
     assert any("Taylor Swift: ignored wiki" in w for w in report.warnings)
 
     mcr = lib.find_artist("my chemical romance")
-    assert mcr.formed_year == 2001
+    assert (mcr.country, mcr.formed_year) == ("American", 2001)
     assert mcr.languages == ["English"]
     assert mcr.genres == ["Alternative Rock", "Emo"]
     assert mcr.bio == "An American rock band from New Jersey."
@@ -126,6 +128,7 @@ def test_import(lib: Library, info: Path):
 
     swift = lib.find_artist("Taylor Swift")
     assert lib.list_members(swift.id) == []
+    assert swift.country == "United States"
     assert (swift.bio, swift.wiki, swift.image) == ("An American singer-songwriter.", None, None)
     album_1989 = lib.find_album(swift.id, "1989")
     assert [s.song.title for s in lib.list_songs(album_id=album_1989.id)] == ["22"]
@@ -162,6 +165,7 @@ def test_pages_show_members_and_covers(tmp_path: Path, info: Path):
     page = client.get(f"/artists/{mcr.id}").text
     assert "Frank Iero" in page and "2002–" in page and "2004–2010" in page
     assert "Sings in English" in page
+    assert "American · since 2001" in page
     assert f"/api/albums/{album.id}/cover" in page
     assert f"/api/artists/{mcr.id}/image" in page
     assert "An American rock band from New Jersey." in page
@@ -191,7 +195,7 @@ def test_messy_files_import_with_warnings(lib: Library, tmp_path: Path):
         """\
 bands:
 - name: Band
-  origin: Mars
+  planet: Mars
   members:
   - name: Someone
     instrument: Kazoo
@@ -229,7 +233,7 @@ Third:
     report = import_dir(lib, root)
     warnings = "\n".join(report.warnings)
 
-    assert "ignored unknown key 'origin'" in warnings
+    assert "ignored unknown key 'planet'" in warnings
     assert "ignored unknown key 'instrument'" in warnings
     assert "ignored unknown key 'label'" in warnings
     assert "band #2: skipped, it has no name" in warnings

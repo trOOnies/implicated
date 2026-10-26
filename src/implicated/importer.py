@@ -15,6 +15,7 @@ exactly like the artist) with an ``albums.yaml``, a picture of the artist and th
 
     bands:
     - name: My Chemical Romance
+      origin: American            # where the artist comes from
       creation_year: 2001
       languages: English          # a single value or a list
       genres: [Alternative Rock, Emo]
@@ -52,10 +53,10 @@ import yaml
 from implicated.library import IMAGE_TYPES, Library
 from implicated.models import AlbumIn, ArtistIn, MemberIn, SongIn, validate_wiki
 
-# "bio" is the older name of "description".
+# "country" and "bio" are the older names of "origin" and "description".
 BAND_KEYS = {
-    "name", "creation_year", "country", "description", "bio", "wiki", "languages", "genres",
-    "members",
+    "name", "creation_year", "origin", "country", "description", "bio", "wiki", "languages",
+    "genres", "members",
 }  # fmt: skip
 MEMBER_KEYS = {"name", "roles", "from", "to"}
 ALBUM_KEYS = {"release_year", "kind", "cover", "songs"}
@@ -123,6 +124,12 @@ def _year(value: object, where: str) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         raise ValueError(f"{where}: {value!r} is not a year") from None
+
+
+def _text(value: object) -> str | None:
+    if value is None:
+        return None
+    return str(value).strip() or None
 
 
 def _title(value: object) -> str:
@@ -224,7 +231,7 @@ def _import_artist(lib: Library, data: dict, report: Report) -> int:
         wiki = None
     artist_in = ArtistIn(
         name=name,
-        country=data.get("country") or (existing and existing.country),
+        country=_text(data.get("origin") or data.get("country")) or (existing and existing.country),
         formed_year=_year(data.get("creation_year"), name) or (existing and existing.formed_year),
         genres=_strings(data.get("genres")) or (existing.genres if existing else []),
         languages=_strings(data.get("languages")) or (existing.languages if existing else []),
