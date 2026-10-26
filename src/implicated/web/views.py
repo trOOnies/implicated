@@ -328,9 +328,9 @@ def artist_songs(request: Request, lib: Lib, artist_id: int):
 async def update_artist(request: Request, lib: Lib, artist_id: int):
     form = await request.form()
     artist = found(lib.get_artist, artist_id)
-    data = artist_from_form(form)
-    data.rating = artist.rating  # set with the stars (see ``set_rating``)
     try:
+        data = artist_from_form(form)
+        data.rating = artist.rating  # set with the stars (see ``set_rating``)
         found(lib.update_artist, artist_id, data)
     except ValueError as exc:
         return render(request, "_artist_edit.html", status_code=422, error=str(exc), artist=artist)
@@ -461,11 +461,11 @@ def album_songs(request: Request, lib: Lib, album_id: int):
 async def update_album(request: Request, lib: Lib, album_id: int):
     form = await request.form()
     album = found(lib.get_album, album_id)
-    data = album_from_form(form)
-    # The rating, CD and vinyl have their own controls (see ``set_rating`` and
-    # ``set_album_format``), not edit form fields.
-    data.rating, data.cd, data.vinyl = album.rating, album.cd, album.vinyl
     try:
+        data = album_from_form(form)
+        # The rating, CD and vinyl have their own controls (see ``set_rating`` and
+        # ``set_album_format``), not edit form fields.
+        data.rating, data.cd, data.vinyl = album.rating, album.cd, album.vinyl
         found(lib.update_album, album_id, data)
     except ValueError as exc:
         return render(request, "_album_edit.html", status_code=422, error=str(exc), album=album)
@@ -853,10 +853,10 @@ def song_edit(request: Request, lib: Lib, song_id: int, ctx: str = "all"):
 async def update_song(request: Request, lib: Lib, song_id: int):
     form = await request.form()
     song = found(lib.get_song, song_id)
-    data = song_from_form(form)
-    data.artist_id = song.artist_id
-    data.rating = song.rating  # set with the stars (see ``set_rating``)
     try:
+        data = song_from_form(form)
+        data.artist_id = song.artist_id
+        data.rating = song.rating  # set with the stars (see ``set_rating``)
         found(lib.update_song, song_id, data)
     except ValueError as exc:
         return render(

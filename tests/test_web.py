@@ -717,3 +717,19 @@ def test_discography_is_full_width(client: TestClient, web_sample: Sample):
     discography = page.index("<h2>Discography</h2>")
     assert discography < page.index('<div class="layout">')
     assert '<div class="table-scroll">' in page[discography:]
+
+
+def test_bad_numbers_in_edit_forms_are_422(client: TestClient, web_sample: Sample):
+    song = client.post(
+        f"/songs/{web_sample.song_ids[0]}", data={"title": "Mysterons", "duration": "abc"}
+    )
+    assert song.status_code == 422 and "duration must look like 3:45" in song.text
+    album = client.post(
+        f"/albums/{web_sample.album_id}",
+        data={"artist_id": web_sample.artist_id, "title": "Dummy", "year": "soon"},
+    )
+    assert album.status_code == 422 and "year must be a number" in album.text
+    artist = client.post(
+        f"/artists/{web_sample.artist_id}", data={"name": "Portishead", "formed_year": "x"}
+    )
+    assert artist.status_code == 422 and "formed year must be a number" in artist.text
