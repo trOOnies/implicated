@@ -39,5 +39,5 @@ in `src/implicated/importer.py`. `info/` is git-ignored.
 - `src/implicated/models.py`: dataclass models (`Artist`, `Member`, `Album`, `Song`, `Play`, and their `*In` inputs)
 - `src/implicated/library.py`: SQLite storage and stats
 - `src/implicated/importer.py`: YAML importer for artists, members, albums, songs and covers
-- `src/implicated/api.py`: JSON routes under `/api/...`
+- `src/implicated/api/`: JSON routes under `/api/...`, one router (and API page tag) per resource
 - `src/implicated/web/`: server-rendered pages (Jinja2 + vendored htmx, plain CSS, no build step)

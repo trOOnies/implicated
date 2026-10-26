@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from implicated import __version__
+from implicated.api import TAGS as api_tags
 from implicated.api import router as api_router
 from implicated.importer import import_dir
 from implicated.library import Library
@@ -26,7 +27,7 @@ log = logging.getLogger("uvicorn.error")
 def create_app(db_path: str | Path | None = None, info_dir: str | Path | None = None) -> FastAPI:
     """Build the app. When ``info_dir`` (default ``$IMPLICATED_INFO`` or ``info/``) holds a
     ``bands.yaml``, it is imported first so the library always reflects it."""
-    app = FastAPI(title="implicated", version=__version__)
+    app = FastAPI(title="implicated", version=__version__, openapi_tags=api_tags)
     app.state.library = Library(db_path or os.environ.get("IMPLICATED_DB", DEFAULT_DB))
     sync_info(app.state.library, info_dir or os.environ.get("IMPLICATED_INFO", DEFAULT_INFO))
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")

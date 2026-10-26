@@ -120,3 +120,22 @@ def test_stats_route_clamps_days(client: TestClient, web_sample: Sample):
     stats = client.get("/api/stats").json()
     assert (stats["songs"], len(stats["plays_per_day"])) == (2, 30)
     assert stats["songs_per_artist"] == [{"label": "Portishead", "value": 2}]
+
+
+def test_routes_are_grouped_by_tag(client: TestClient):
+    schema = client.get("/openapi.json").json()
+    assert [t["name"] for t in schema["tags"]] == [
+        "Artists", "Members", "Albums", "Songs", "Plays", "Stats"
+    ]  # fmt: skip
+    tags = {
+        (method, path): op["tags"]
+        for path, ops in schema["paths"].items()
+        for method, op in ops.items()
+    }
+    assert tags[("get", "/api/artists")] == ["Artists"]
+    assert tags[("put", "/api/artists/{artist_id}/members")] == ["Members"]
+    assert tags[("get", "/api/albums/{album_id}/cover")] == ["Albums"]
+    assert tags[("post", "/api/songs/{song_id}/plays")] == ["Plays"]
+    assert tags[("get", "/api/stats")] == ["Stats"]
+    assert all(len(t) == 1 for t in tags.values())
+    assert not any(path.startswith("/fragments") for path in schema["paths"])
