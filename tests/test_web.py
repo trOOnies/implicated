@@ -103,6 +103,17 @@ def test_create_artist_form(client: TestClient, client_lib: Library):
     assert (artist.genres, artist.languages) == (["electronic", "downtempo"], ["French", "English"])
     assert artist.favorite
 
+    wiki = "https://en.wikipedia.org/wiki/Zero_7"
+    client.post("/artists", data={"name": "Zero 7", "bio": "A duo.", "wiki": wiki})
+    zero7 = client_lib.find_artist("Zero 7")
+    assert (zero7.bio, zero7.wiki) == ("A duo.", wiki)
+    page = client.get(f"/artists/{zero7.id}").text
+    assert f'href="{wiki}"' in page and 'rel="noopener noreferrer nofollow"' in page
+
+    error = client.post("/artists", data={"name": "Bad", "wiki": "https://evil.example.com/"})
+    assert error.status_code == 422 and "Wikipedia article" in error.text
+    assert client_lib.find_artist("Bad") is None
+
     error = client.post("/artists", data={"name": "Air", "formed_year": "soon"})
     assert error.status_code == 422 and "formed year must be a number" in error.text
     assert client.post("/artists", data={"name": " "}).status_code == 422
@@ -113,6 +124,7 @@ def test_update_and_delete_artist(client: TestClient, client_lib: Library, web_s
     response = client.post(url, data={"name": "Portishead", "languages": "English"})
     assert response.status_code == 200 and "Sings in English" in response.text
     assert client.post(url, data={"name": ""}).status_code == 422
+    assert client.post(url, data={"name": "P", "wiki": "javascript:alert(1)"}).status_code == 422
     assert client.post("/artists/99", data={"name": "X"}).status_code == 404
 
     deleted = client.post(f"{url}/delete")

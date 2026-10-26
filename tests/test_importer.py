@@ -15,6 +15,8 @@ bands:
   creation_year: 2001
   languages: English
   genres: [Alternative Rock, Emo]
+  description: An American rock band from New Jersey.
+  wiki: https://en.wikipedia.org/wiki/My_Chemical_Romance
   members:
   - name: Gerard Way
     roles: Lead vocals
@@ -28,6 +30,8 @@ bands:
 - name: Taylor Swift
   creation_year: 2003
   genres: [Pop]
+  bio: An American singer-songwriter.
+  wiki: https://evil.example.com/wiki/Taylor_Swift
 """
 
 MCR_ALBUMS = """\
@@ -68,6 +72,7 @@ def info(tmp_path: Path) -> Path:
     (covers / "bullets.jpg").write_bytes(b"bullets")
     (covers / "danger_days.webp").write_bytes(b"danger")
     (covers / "unrelated.png").write_bytes(b"?")
+    (root / "bands" / "My Chemical Romance" / "band.avif").write_bytes(b"band")
     return root
 
 
@@ -94,12 +99,17 @@ def test_import(lib: Library, info: Path):
 
     assert report.created == {"artists": 2, "albums": 3, "songs": 5}
     assert report.covers == 2
+    assert report.images == 1
     assert any("unrelated.png" in w for w in report.warnings)
+    assert any("Taylor Swift: ignored wiki" in w for w in report.warnings)
 
     mcr = lib.find_artist("my chemical romance")
     assert mcr.formed_year == 2001
     assert mcr.languages == ["English"]
     assert mcr.genres == ["Alternative Rock", "Emo"]
+    assert mcr.bio == "An American rock band from New Jersey."
+    assert mcr.wiki == "https://en.wikipedia.org/wiki/My_Chemical_Romance"
+    assert lib.image_path(mcr.id).read_bytes() == b"band"
     members = lib.list_members(mcr.id)
     assert [m.name for m in members] == ["Gerard Way", "Frank Iero", "Bob Bryar"]
     assert members[1].roles == ["Rhythm guitar", "Backing vocals"]
@@ -116,6 +126,7 @@ def test_import(lib: Library, info: Path):
 
     swift = lib.find_artist("Taylor Swift")
     assert lib.list_members(swift.id) == []
+    assert (swift.bio, swift.wiki, swift.image) == ("An American singer-songwriter.", None, None)
     album_1989 = lib.find_album(swift.id, "1989")
     assert [s.song.title for s in lib.list_songs(album_id=album_1989.id)] == ["22"]
 
@@ -137,6 +148,7 @@ def test_reimport_keeps_personal_data(lib: Library, info: Path):
     assert lib.get_song(song.id).rating == 5
     assert lib.get_song_summary(song.id).play_count == 1
     assert len(list(lib.covers_dir.iterdir())) == 2
+    assert len(list(lib.images_dir.iterdir())) == 1
 
 
 def test_pages_show_members_and_covers(tmp_path: Path, info: Path):
@@ -151,6 +163,9 @@ def test_pages_show_members_and_covers(tmp_path: Path, info: Path):
     assert "Frank Iero" in page and "2002–" in page and "2004–2010" in page
     assert "Sings in English" in page
     assert f"/api/albums/{album.id}/cover" in page
+    assert f"/api/artists/{mcr.id}/image" in page
+    assert "An American rock band from New Jersey." in page
+    assert 'href="https://en.wikipedia.org/wiki/My_Chemical_Romance"' in page
 
     cover = client.get(f"/api/albums/{album.id}/cover")
     assert cover.headers["content-type"] == "image/webp"
@@ -208,6 +223,8 @@ Third:
     covers.mkdir()
     (covers / "first.png").write_bytes(b"png")
     (covers / "readme.txt").write_text("not an image")
+    for name in ("band.png", "band.jpg", "band.txt"):
+        (root / "bands" / "Band" / name).write_bytes(name.encode())
 
     report = import_dir(lib, root)
     warnings = "\n".join(report.warnings)
@@ -222,7 +239,9 @@ Third:
     assert "track 4: skipped, it has no name" in warnings
     assert "Second: cover 'missing.jpg' not found" in warnings
     assert "Third: no cover file matches the title" in warnings
+    assert "Band: several band images (band.jpg, band.png), using the first" in warnings
     assert report.covers == 1
+    assert report.images == 1
     assert report.created == {"artists": 2, "albums": 3, "songs": 3}
 
     band = lib.find_artist("Band")
@@ -230,6 +249,7 @@ Third:
     first = lib.find_album(band.id, "First")
     assert lib.cover_path(first.id).read_bytes() == b"png"
     assert lib.find_song(band.id, first.id, "Broken").duration_seconds is None
+    assert lib.image_path(band.id).read_bytes() == b"band.jpg"
 
 
 @pytest.mark.parametrize(
@@ -257,7 +277,8 @@ def test_report_summary():
     report = importer.Report(warnings=["careful"])
     report.count("songs", created=True)
     assert report.summary() == (
-        "created 0 artists, 0 albums, 1 songs; updated 0 artists, 0 albums, 0 songs; 0 covers"
+        "created 0 artists, 0 albums, 1 songs; updated 0 artists, 0 albums, 0 songs; 0 covers, "
+        "0 band images"
         "\nwarning: careful"
     )
 

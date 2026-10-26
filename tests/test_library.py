@@ -29,6 +29,16 @@ def test_artist_crud(lib: Library):
         lib.get_artist(artist.id)
 
 
+def test_artist_wiki(lib: Library):
+    wiki = "https://en.wikipedia.org/wiki/Massive_Attack"
+    artist = lib.create_artist(ArtistIn("Massive Attack", wiki=f" {wiki} "))
+    assert artist.wiki == wiki
+    with pytest.raises(ValueError, match="Wikipedia article"):
+        lib.update_artist(artist.id, ArtistIn("Massive Attack", wiki="https://example.com/"))
+    assert lib.get_artist(artist.id).wiki == wiki
+    assert lib.update_artist(artist.id, ArtistIn("Massive Attack")).wiki is None
+
+
 def test_artist_validation_and_missing(lib: Library):
     with pytest.raises(ValueError, match="name is required"):
         lib.create_artist(ArtistIn("   "))
@@ -183,6 +193,32 @@ def test_set_cover_rejects_other_files(lib: Library, sample: Sample, image):
         lib.set_cover(sample.album_id, image("notes.txt"))
     with pytest.raises(NotFound):
         lib.set_cover(99, image())
+
+
+def test_set_cover_accepts_avif(lib: Library, sample: Sample, image):
+    assert lib.set_cover(sample.album_id, image("dummy.avif")).cover.endswith(".avif")
+
+
+def test_artist_image(lib: Library, sample: Sample, image):
+    with pytest.raises(NotFound, match="no image"):
+        lib.image_path(sample.artist_id)
+    artist = lib.set_image(sample.artist_id, image("band.AVIF", b"first"))
+    assert artist.image.startswith(f"{sample.artist_id}-") and artist.image.endswith(".avif")
+    assert lib.image_path(sample.artist_id).parent == lib.images_dir
+    assert lib.image_path(sample.artist_id).read_bytes() == b"first"
+    assert lib.set_image(sample.artist_id, image("again.avif", b"first")).image == artist.image
+
+    replaced = lib.set_image(sample.artist_id, image("band.jpg", b"second"))
+    assert [p.name for p in lib.images_dir.iterdir()] == [replaced.image]
+    with pytest.raises(ValueError, match="image must be one of"):
+        lib.set_image(sample.artist_id, image("band.txt"))
+    with pytest.raises(NotFound):
+        lib.set_image(99, image())
+
+    lib.set_cover(sample.album_id, image("cover.jpg", b"cover"))
+    lib.delete_artist(sample.artist_id)
+    assert list(lib.images_dir.iterdir()) == []
+    assert list(lib.covers_dir.iterdir()) == []
 
 
 def test_cover_path_without_cover(lib: Library, sample: Sample, image):
@@ -378,4 +414,5 @@ def test_old_databases_get_new_columns(tmp_path):
     lib = Library(path)
     assert lib.get_artist(1).languages == []
     assert lib.get_album(1).cover is None
+    assert (lib.get_artist(1).wiki, lib.get_artist(1).image) == (None, None)
     Library(path)  # opening again is a no-op

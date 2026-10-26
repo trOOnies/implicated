@@ -3,11 +3,12 @@
 ``python -m implicated.importer [info_dir] [--db path]``
 
 The directory holds a ``bands.yaml`` listing the artists, and one folder per artist (named
-exactly like the artist) with an ``albums.yaml`` and the album covers::
+exactly like the artist) with an ``albums.yaml``, a picture of the artist and the album covers::
 
     info/
       bands.yaml
       bands/<artist name>/albums.yaml
+      bands/<artist name>/band.jpg          # any of ``IMAGE_TYPES``
       bands/<artist name>/covers/<image>.jpg
 
 ``bands.yaml``::
@@ -17,6 +18,8 @@ exactly like the artist) with an ``albums.yaml`` and the album covers::
       creation_year: 2001
       languages: English          # a single value or a list
       genres: [Alternative Rock, Emo]
+      description: My Chemical Romance is an American rock band from New Jersey.
+      wiki: https://en.wikipedia.org/wiki/My_Chemical_Romance  # only Wikipedia articles
       members:
       - name: Frank Iero
         roles: Rhythm guitar      # a single value or a list
@@ -46,10 +49,14 @@ from pathlib import Path
 
 import yaml
 
-from implicated.library import COVER_TYPES, Library
-from implicated.models import AlbumIn, ArtistIn, MemberIn, SongIn
+from implicated.library import IMAGE_TYPES, Library
+from implicated.models import AlbumIn, ArtistIn, MemberIn, SongIn, validate_wiki
 
-BAND_KEYS = {"name", "creation_year", "country", "bio", "languages", "genres", "members"}
+# "bio" is the older name of "description".
+BAND_KEYS = {
+    "name", "creation_year", "country", "description", "bio", "wiki", "languages", "genres",
+    "members",
+}  # fmt: skip
 MEMBER_KEYS = {"name", "roles", "from", "to"}
 ALBUM_KEYS = {"release_year", "kind", "cover", "songs"}
 SONG_KEYS = {"name", "duration"}
@@ -69,6 +76,7 @@ class Report:
     created: dict[str, int] = field(default_factory=lambda: {"artists": 0, "albums": 0, "songs": 0})
     updated: dict[str, int] = field(default_factory=lambda: {"artists": 0, "albums": 0, "songs": 0})
     covers: int = 0
+    images: int = 0
     warnings: list[str] = field(default_factory=list)
 
     def count(self, kind: str, created: bool) -> None:
@@ -79,7 +87,8 @@ class Report:
             return ", ".join(f"{n} {kind}" for kind, n in d.items())
 
         return (
-            f"created {counts(self.created)}; updated {counts(self.updated)}; {self.covers} covers"
+            f"created {counts(self.created)}; updated {counts(self.updated)}; "
+            f"{self.covers} covers, {self.images} band images"
         )
 
     def summary(self) -> str:
@@ -193,6 +202,7 @@ def _import_bands(lib: Library, info_dir: Path, raw: object, report: Report) -> 
             continue
         artist_id = _import_artist(lib, data, report)
         band_dir = info_dir / "bands" / name
+        _import_image(lib, artist_id, band_dir, report)
         albums_file = band_dir / "albums.yaml"
         if albums_file.is_file():
             albums = _load(albums_file)
@@ -206,13 +216,20 @@ def _import_bands(lib: Library, info_dir: Path, raw: object, report: Report) -> 
 def _import_artist(lib: Library, data: dict, report: Report) -> int:
     name = str(data["name"]).strip()
     existing = lib.find_artist(name)
+    wiki = str(data["wiki"]).strip() if data.get("wiki") else None
+    try:
+        validate_wiki(wiki)
+    except ValueError:
+        report.warnings.append(f"{name}: ignored wiki {wiki!r}, it is not a Wikipedia article")
+        wiki = None
     artist_in = ArtistIn(
         name=name,
         country=data.get("country") or (existing and existing.country),
         formed_year=_year(data.get("creation_year"), name) or (existing and existing.formed_year),
         genres=_strings(data.get("genres")) or (existing.genres if existing else []),
         languages=_strings(data.get("languages")) or (existing.languages if existing else []),
-        bio=data.get("bio") or (existing and existing.bio),
+        bio=data.get("description") or data.get("bio") or (existing and existing.bio),
+        wiki=wiki or (existing and existing.wiki),
         favorite=bool(existing and existing.favorite),
     )
     if existing:
@@ -238,12 +255,24 @@ def _import_artist(lib: Library, data: dict, report: Report) -> int:
     return artist.id
 
 
+def _import_image(lib: Library, artist_id: int, band_dir: Path, report: Report) -> None:
+    images = sorted(
+        p for p in band_dir.glob("band.*") if p.is_file() and p.suffix.lower() in IMAGE_TYPES
+    )
+    if len(images) > 1:
+        names = ", ".join(p.name for p in images)
+        report.warnings.append(f"{band_dir.name}: several band images ({names}), using the first")
+    if images:
+        lib.set_image(artist_id, images[0])
+        report.images += 1
+
+
 def _import_albums(
     lib: Library, artist_id: int, albums: dict, covers_dir: Path, report: Report
 ) -> None:
     artist = lib.get_artist(artist_id)
     covers = sorted(
-        p for p in covers_dir.glob("*") if p.is_file() and p.suffix.lower() in COVER_TYPES
+        p for p in covers_dir.glob("*") if p.is_file() and p.suffix.lower() in IMAGE_TYPES
     )
     used_covers: set[Path] = set()
     for raw_title, raw in albums.items():

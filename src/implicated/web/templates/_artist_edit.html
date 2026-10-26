@@ -10,7 +10,8 @@
       <label>Genres <input name="genres" value="{{ artist.genres | join(', ') }}"></label>
       <label>Languages <input name="languages" value="{{ artist.languages | join(', ') }}"></label>
     </div>
-    <label>Bio <textarea name="bio" rows="4">{{ artist.bio or '' }}</textarea></label>
+    <label>Description <textarea name="bio" rows="4">{{ artist.bio or '' }}</textarea></label>
+    <label>Wikipedia <input name="wiki" type="url" placeholder="https://en.wikipedia.org/wiki/…" value="{{ artist.wiki or '' }}"></label>
     <label class="check"><input type="checkbox" name="favorite" {% if artist.favorite %}checked{% endif %}> Favorite</label>
     <div class="row">
       <button type="submit">Save</button>

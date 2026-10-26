@@ -11,7 +11,7 @@ make test      # run the tests with coverage
 ```
 
 The library is a SQLite file at `local/implicated.db`; set `IMPLICATED_DB` to use another path.
-Album covers are stored next to it, in `local/covers/`.
+Album covers and artist images are stored next to it, in `local/covers/` and `local/artists/`.
 
 ## Importing artists
 
@@ -21,13 +21,17 @@ so edits to the YAML files show up after a restart. `make import` (or
 
 ```
 info/
-  bands.yaml                      # artists: name, creation_year, genres, languages, members
+  bands.yaml                      # artists: name, creation_year, genres, languages,
+                                  #   description, wiki, members
   bands/<artist name>/albums.yaml # album title -> release_year, songs (name, duration)
+  bands/<artist name>/band.jpg    # picture of the artist (.jpg, .png, .webp, .avif, ...)
   bands/<artist name>/covers/     # cover images, matched to albums by file name
 ```
 
 Re-importing updates what changed and keeps your ratings, notes, favorites and plays; a broken
-file rolls the whole import back and is reported in the server log. The full format is described
+file rolls the whole import back and is reported in the server log. `wiki` must be a link to a
+Wikipedia article (`https://<lang>.wikipedia.org/wiki/<title>`); any other link is ignored with a
+warning, and the API and forms refuse it. The full format is described
 in `src/implicated/importer.py`. `info/` is git-ignored.
 
 ## Layout

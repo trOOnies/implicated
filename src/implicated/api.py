@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 
-from implicated.library import COVER_TYPES, Library, NotFound
+from implicated.library import IMAGE_TYPES, Library, NotFound
 from implicated.models import (
     Album,
     AlbumIn,
@@ -43,6 +44,15 @@ def _call(fn, *args, **kwargs):
         raise HTTPException(422, str(exc)) from exc
 
 
+def _image(path: Path) -> FileResponse:
+    # Image file names change with their content, so browsers may keep them forever.
+    return FileResponse(
+        path,
+        media_type=IMAGE_TYPES[path.suffix],
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
 # Artists
 
 
@@ -70,6 +80,11 @@ def update_artist(lib: Lib, artist_id: int, data: ArtistIn) -> Artist:
 def delete_artist(lib: Lib, artist_id: int) -> Response:
     _call(lib.delete_artist, artist_id)
     return Response(status_code=204)
+
+
+@router.get("/artists/{artist_id}/image", response_class=FileResponse)
+def artist_image(lib: Lib, artist_id: int) -> FileResponse:
+    return _image(_call(lib.image_path, artist_id))
 
 
 @router.get("/artists/{artist_id}/members")
@@ -117,13 +132,7 @@ def delete_album(lib: Lib, album_id: int) -> Response:
 
 @router.get("/albums/{album_id}/cover", response_class=FileResponse)
 def album_cover(lib: Lib, album_id: int) -> FileResponse:
-    path = _call(lib.cover_path, album_id)
-    # Cover file names change with their content, so browsers may keep them forever.
-    return FileResponse(
-        path,
-        media_type=COVER_TYPES[path.suffix],
-        headers={"Cache-Control": "public, max-age=31536000, immutable"},
-    )
+    return _image(_call(lib.cover_path, album_id))
 
 
 # Songs

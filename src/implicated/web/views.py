@@ -130,6 +130,7 @@ def artist_from_form(form: FormData) -> ArtistIn:
         genres=_csv(form, "genres"),
         languages=_csv(form, "languages"),
         bio=_text(form, "bio"),
+        wiki=_text(form, "wiki"),
         favorite="favorite" in form,
     )
 

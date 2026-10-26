@@ -151,9 +151,9 @@ a.tile:hover { text-decoration: none; border-color: var(--accent); }
 .album-grid a:hover strong { text-decoration: underline; }
 .album-grid strong { line-height: 1.25; }
 td.cover-cell { width: 3.25rem; padding-right: 0; }
-.album-head { display: flex; gap: 1.25rem; align-items: flex-start; }
-.album-head > div { flex: 1; min-width: 0; }
-@media (max-width: 600px) { .album-head { flex-direction: column; } }
+.media-head { display: flex; gap: 1.25rem; align-items: flex-start; }
+.media-head > div { flex: 1; min-width: 0; }
+@media (max-width: 600px) { .media-head { flex-direction: column; } }
 
 /* Forms */
 form.stack { display: flex; flex-direction: column; gap: .6rem; }

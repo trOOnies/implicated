@@ -1,4 +1,8 @@
-<section id="artist-info" class="card info">
+<section id="artist-info" class="card info media-head">
+  {% if artist.image %}
+  <img class="cover big" src="/api/artists/{{ artist.id }}/image?v={{ artist.image }}" alt="{{ artist.name }}">
+  {% endif %}
+  <div>
   <div class="row">
     <h1>{{ artist.name }}</h1>
     {% with kind='artist', record_id=artist.id, favorite=artist.favorite %}{% include "_fav.html" %}{% endwith %}
@@ -26,4 +30,8 @@
   </ul>
   {% endif %}
   {% if artist.bio %}<p class="bio">{{ artist.bio }}</p>{% endif %}
+  {% if artist.wiki %}
+  <p class="small"><a href="{{ artist.wiki }}" target="_blank" rel="noopener noreferrer nofollow">Read more on Wikipedia ↗</a></p>
+  {% endif %}
+  </div>
 </section>

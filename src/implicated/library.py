@@ -30,6 +30,7 @@ from implicated.models import (
     SongSummary,
     validate_kind,
     validate_rating,
+    validate_wiki,
 )
 
 SCHEMA = """
@@ -41,8 +42,10 @@ CREATE TABLE IF NOT EXISTS artists (
     genres      TEXT NOT NULL DEFAULT '[]',
     languages   TEXT NOT NULL DEFAULT '[]',
     bio         TEXT,
+    wiki        TEXT,
     favorite    INTEGER NOT NULL DEFAULT 0,
-    created_at  TEXT NOT NULL
+    created_at  TEXT NOT NULL,
+    image       TEXT
 );
 CREATE TABLE IF NOT EXISTS albums (
     id          INTEGER PRIMARY KEY,
@@ -94,11 +97,15 @@ CREATE INDEX IF NOT EXISTS idx_plays_song ON plays(song_id);
 MIGRATIONS = [
     ("artists", "languages", "TEXT NOT NULL DEFAULT '[]'"),
     ("albums", "cover", "TEXT"),
+    ("artists", "wiki", "TEXT"),
+    ("artists", "image", "TEXT"),
 ]
 
 FAVORITE_TABLES = {"artist": "artists", "album": "albums", "song": "songs"}
 
-COVER_TYPES = {
+# Album covers and artist images.
+IMAGE_TYPES = {
+    ".avif": "image/avif",
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".png": "image/png",
@@ -162,6 +169,7 @@ class Library:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.covers_dir = self.path.parent / "covers"
+        self.images_dir = self.path.parent / "artists"
         self._local = threading.local()
         with self.connect() as conn:
             conn.executescript(SCHEMA)
@@ -244,9 +252,9 @@ class Library:
         with self.connect() as conn:
             cur = conn.execute(
                 """INSERT INTO artists (name, country, formed_year, genres, languages, bio,
-                                        favorite, created_at)
+                                        wiki, favorite, created_at)
                    VALUES (:name, :country, :formed_year, :genres, :languages, :bio,
-                           :favorite, :now)""",
+                           :wiki, :favorite, :now)""",
                 {**values, "now": _now()},
             )
         return self.get_artist(cur.lastrowid)
@@ -257,23 +265,47 @@ class Library:
             conn.execute(
                 """UPDATE artists SET name = :name, country = :country,
                        formed_year = :formed_year, genres = :genres,
-                       languages = :languages, bio = :bio, favorite = :favorite
+                       languages = :languages, bio = :bio, wiki = :wiki,
+                       favorite = :favorite
                    WHERE id = :id""",
                 {**self._artist_values(data), "id": artist_id},
             )
         return self.get_artist(artist_id)
 
     def delete_artist(self, artist_id: int) -> None:
+        image = self.get_artist(artist_id).image
         covers = [a.album.cover for a in self.list_albums(artist_id)]
         self._delete("artists", artist_id)
-        self._remove_covers(covers)
+        self._remove_files(self.covers_dir, covers)
+        self._remove_files(self.images_dir, [image])
+
+    def set_image(self, artist_id: int, source: str | Path) -> Artist:
+        """Copy ``source`` into the artist images directory as the artist's picture; works
+        like ``set_cover``."""
+        artist = self.get_artist(artist_id)
+        name = self._store_image(self.images_dir, artist_id, Path(source), artist.image)
+        if name != artist.image:
+            with self.connect() as conn:
+                conn.execute("UPDATE artists SET image = ? WHERE id = ?", (name, artist_id))
+            self._remove_files(self.images_dir, [artist.image])
+        return self.get_artist(artist_id)
+
+    def image_path(self, artist_id: int) -> Path:
+        artist = self.get_artist(artist_id)
+        path = self.images_dir / artist.image if artist.image else None
+        if path is None or not path.is_file():
+            raise NotFound(f"artist {artist_id} has no image")
+        return path
 
     @staticmethod
     def _artist_values(data: ArtistIn) -> dict:
         if not data.name.strip():
             raise ValueError("name is required")
+        wiki = data.wiki.strip() if data.wiki else None
+        validate_wiki(wiki)
         values = asdict(data)
         values["name"] = data.name.strip()
+        values["wiki"] = wiki
         values["genres"] = _clean_list(data.genres)
         values["languages"] = _clean_list(data.languages)
         values["favorite"] = int(data.favorite)
@@ -389,7 +421,7 @@ class Library:
     def delete_album(self, album_id: int) -> None:
         cover = self.get_album(album_id).cover
         self._delete("albums", album_id)
-        self._remove_covers([cover])
+        self._remove_files(self.covers_dir, [cover])
 
     def set_cover(self, album_id: int, source: str | Path) -> Album:
         """Copy ``source`` into the covers directory as the album's cover.
@@ -397,20 +429,12 @@ class Library:
         Files are named after their content, so setting the same image again is a no-op and a
         changed image gets a new URL (no stale browser caches).
         """
-        source = Path(source)
         album = self.get_album(album_id)
-        suffix = source.suffix.lower()
-        if suffix not in COVER_TYPES:
-            raise ValueError(f"cover must be one of {', '.join(COVER_TYPES)}")
-        data = source.read_bytes()
-        name = f"{album_id}-{hashlib.sha256(data).hexdigest()[:12]}{suffix}"
-        if name == album.cover:
-            return album
-        self.covers_dir.mkdir(parents=True, exist_ok=True)
-        (self.covers_dir / name).write_bytes(data)
-        with self.connect() as conn:
-            conn.execute("UPDATE albums SET cover = ? WHERE id = ?", (name, album_id))
-        self._remove_covers([album.cover])
+        name = self._store_image(self.covers_dir, album_id, Path(source), album.cover, "cover")
+        if name != album.cover:
+            with self.connect() as conn:
+                conn.execute("UPDATE albums SET cover = ? WHERE id = ?", (name, album_id))
+            self._remove_files(self.covers_dir, [album.cover])
         return self.get_album(album_id)
 
     def cover_path(self, album_id: int) -> Path:
@@ -420,10 +444,27 @@ class Library:
             raise NotFound(f"album {album_id} has no cover")
         return path
 
-    def _remove_covers(self, names: list[str | None]) -> None:
+    @staticmethod
+    def _store_image(
+        directory: Path, record_id: int, source: Path, current: str | None, what: str = "image"
+    ) -> str:
+        """Copy ``source`` into ``directory`` under a name made from its content, unless it is
+        ``current`` already, and return that name."""
+        suffix = source.suffix.lower()
+        if suffix not in IMAGE_TYPES:
+            raise ValueError(f"{what} must be one of {', '.join(IMAGE_TYPES)}")
+        data = source.read_bytes()
+        name = f"{record_id}-{hashlib.sha256(data).hexdigest()[:12]}{suffix}"
+        if name != current:
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / name).write_bytes(data)
+        return name
+
+    @staticmethod
+    def _remove_files(directory: Path, names: list[str | None]) -> None:
         for name in names:
             if name:
-                (self.covers_dir / name).unlink(missing_ok=True)
+                (directory / name).unlink(missing_ok=True)
 
     def _album_values(self, data: AlbumIn) -> dict:
         if not data.title.strip():

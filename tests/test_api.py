@@ -25,6 +25,8 @@ def test_artist_routes(client: TestClient):
 
 def test_validation_errors_are_422(client: TestClient, web_sample: Sample):
     assert client.post("/api/artists", json={"name": " "}).status_code == 422
+    bad_wiki = {"name": "X", "wiki": "javascript:alert(1)"}
+    assert client.post("/api/artists", json=bad_wiki).status_code == 422
     bad_album = {"artist_id": web_sample.artist_id, "title": "X", "rating": 9}
     assert client.post("/api/albums", json=bad_album).status_code == 422
     assert client.post("/api/albums", json={"artist_id": 99, "title": "X"}).status_code == 404
@@ -63,6 +65,19 @@ def test_album_routes(client: TestClient, web_sample: Sample):
     assert client.put(f"/api/albums/{album['id']}", json=body).json()["kind"] == "live"
     assert client.delete(f"/api/albums/{album['id']}").status_code == 204
     assert client.get(f"/api/albums/{album['id']}").status_code == 404
+
+
+def test_artist_image_route(client: TestClient, client_lib: Library, web_sample: Sample, image):
+    url = f"/api/artists/{web_sample.artist_id}/image"
+    assert client.get(url).status_code == 404
+    assert client.get("/api/artists/99/image").status_code == 404
+
+    client_lib.set_image(web_sample.artist_id, image("band.avif", b"avif!"))
+    response = client.get(url)
+    assert response.headers["content-type"] == "image/avif"
+    assert "immutable" in response.headers["cache-control"]
+    assert response.content == b"avif!"
+    assert client.get(f"/api/artists/{web_sample.artist_id}").json()["image"].endswith(".avif")
 
 
 def test_album_cover_route(client: TestClient, client_lib: Library, web_sample: Sample, image):

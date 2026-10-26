@@ -6,9 +6,23 @@ The ``*In`` variants are the writable fields, used as API request bodies and for
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from urllib.parse import unquote, urlsplit
 
 ALBUM_KINDS = ("album", "ep", "single", "live", "compilation")
+
+# Any language edition, desktop or mobile: en.wikipedia.org, pt-br.m.wikipedia.org, ...
+WIKI_HOST = re.compile(r"[a-z]{2,3}(?:-[a-z0-9]{1,8})*(?:\.m)?\.wikipedia\.org")
+# Pages under /wiki/ that are not articles (English names; "Image" and "WP" are aliases).
+WIKI_NAMESPACES = {
+    "special", "media", "talk", "user", "user talk", "wikipedia", "wikipedia talk", "wp",
+    "file", "file talk", "image", "mediawiki", "mediawiki talk", "template", "template talk",
+    "help", "help talk", "category", "category talk", "portal", "portal talk", "draft",
+    "draft talk", "module", "module talk", "timedtext", "timedtext talk",
+}  # fmt: skip
+# Characters a copied article link never has, but that browsers read in surprising ways.
+WIKI_BAD_CHARS = re.compile(r'[\x00-\x20\x7f-\x9f"<>\\^`{|}]')
 
 
 @dataclass
@@ -19,6 +33,8 @@ class ArtistIn:
     genres: list[str] = field(default_factory=list)
     languages: list[str] = field(default_factory=list)
     bio: str | None = None
+    # Link to the artist's Wikipedia article; see ``validate_wiki``.
+    wiki: str | None = None
     favorite: bool = False
 
 
@@ -26,6 +42,8 @@ class ArtistIn:
 class Artist(ArtistIn):
     id: int = 0
     created_at: str = ""
+    # File name inside the library's artist images directory; set with ``Library.set_image``.
+    image: str | None = None
 
 
 @dataclass
@@ -149,3 +167,35 @@ def validate_rating(rating: int | None) -> None:
 def validate_kind(kind: str) -> None:
     if kind not in ALBUM_KINDS:
         raise ValueError(f"kind must be one of {', '.join(ALBUM_KINDS)}")
+
+
+def validate_wiki(url: str | None) -> None:
+    """Only accept plain links to Wikipedia articles, such as
+    ``https://en.wikipedia.org/wiki/My_Chemical_Romance``.
+
+    The link ends up in an ``href``, so anything else (other sites, look-alike hosts, user
+    info, ports, ``javascript:``, edit or special pages, query strings) is rejected.
+    """
+    if url is None:
+        return
+    error = ValueError(
+        "wiki must be a link to a Wikipedia article, like https://en.wikipedia.org/wiki/Name"
+    )
+    if len(url) > 2000 or WIKI_BAD_CHARS.search(url):
+        raise error
+    parts = urlsplit(url)
+    if (
+        parts.scheme != "https"
+        or not WIKI_HOST.fullmatch(parts.netloc)  # also rules out user info and ports
+        or not parts.path.startswith("/wiki/")
+        or "?" in url.partition("#")[0]
+    ):
+        raise error
+    title = unquote(parts.path.removeprefix("/wiki/"))
+    if WIKI_BAD_CHARS.search(title) or not title.strip("_"):
+        raise error
+    if any(segment in (".", "..") for segment in title.split("/")):
+        raise error
+    namespace = title.split(":", 1)[0].replace("_", " ").strip().casefold()
+    if ":" in title and namespace in WIKI_NAMESPACES:
+        raise error

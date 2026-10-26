@@ -5,7 +5,8 @@
   <label>Formed <input name="formed_year" type="number" min="1800" max="2100" value="{{ form.get('formed_year', '') }}"></label>
   <label>Genres <input name="genres" placeholder="trip hop, electronic" value="{{ form.get('genres', '') }}"></label>
   <label>Languages <input name="languages" placeholder="English, Spanish" value="{{ form.get('languages', '') }}"></label>
-  <label>Bio <textarea name="bio" rows="3">{{ form.get('bio', '') }}</textarea></label>
+  <label>Description <textarea name="bio" rows="3">{{ form.get('bio', '') }}</textarea></label>
+  <label>Wikipedia <input name="wiki" type="url" placeholder="https://en.wikipedia.org/wiki/…" value="{{ form.get('wiki', '') }}"></label>
   <label class="check"><input type="checkbox" name="favorite" {% if form.get('favorite') %}checked{% endif %}> Favorite</label>
   <button type="submit">Add artist</button>
 </form>
