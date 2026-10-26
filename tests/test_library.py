@@ -358,6 +358,89 @@ def test_toggle_favorite(lib: Library, sample: Sample, kind: str):
         lib.toggle_favorite(kind, 99)
 
 
+@pytest.mark.parametrize("kind", ["artist", "album", "song"])
+def test_toggle_listen_later(lib: Library, sample: Sample, kind: str):
+    record_id = {"artist": sample.artist_id, "album": sample.album_id, "song": sample.song_ids[0]}
+    assert lib.toggle(kind, record_id[kind], "listen_later") is True
+    assert lib.toggle(kind, record_id[kind], "listen_later") is False
+    with pytest.raises(NotFound):
+        lib.toggle(kind, 99, "listen_later")
+    with pytest.raises(ValueError, match="flag"):
+        lib.toggle(kind, record_id[kind], "rating")
+
+
+def test_playing_a_song_clears_listen_later(lib: Library, sample: Sample):
+    first, second = sample.song_ids
+    lib.toggle("song", first, "listen_later")
+    lib.toggle("song", second, "listen_later")
+    assert [s.song.id for s in lib.list_songs(listen_later=True)] == [first, second]
+
+    lib.record_play(first)
+    assert not lib.get_song(first).listen_later
+    assert lib.get_song(second).listen_later
+    assert [s.song.id for s in lib.list_songs(listen_later=True)] == [second]
+
+
+def test_artist_notes_and_listen_later(lib: Library, sample: Sample):
+    artist = lib.update_artist(
+        sample.artist_id, ArtistIn("Portishead", notes="Saw them live", listen_later=True)
+    )
+    assert (artist.notes, artist.listen_later) == ("Saw them live", True)
+
+
+def test_album_ownership(lib: Library, sample: Sample):
+    album = lib.get_album(sample.album_id)
+    updated = lib.update_album(album.id, replace(album, cd="owned", vinyl="wanted"))
+    assert (updated.cd, updated.vinyl) == ("owned", "wanted")
+    other = lib.create_album(AlbumIn(sample.artist_id, "Third", vinyl="owned", listen_later=True))
+
+    def titles(**filters):
+        return [a.album.title for a in lib.list_albums(**filters)]
+
+    assert titles(cd="owned") == ["Dummy"]
+    assert titles(cd="wanted") == []
+    assert titles(vinyl="wanted") == ["Dummy"]
+    assert titles(vinyl="owned") == ["Third"]
+    assert titles(listen_later=True) == ["Third"]
+    assert titles(cd="owned", vinyl="owned") == []
+    for field in ("cd", "vinyl"):
+        with pytest.raises(ValueError, match=f"{field} must be one of"):
+            lib.update_album(other.id, replace(other, **{field: "lost"}))
+
+
+def test_song_music_video(lib: Library, sample: Sample):
+    song = lib.get_song(sample.song_ids[0])
+    updated = lib.update_song(song.id, replace(song, mv="https://youtu.be/dQw4w9WgXcQ"))
+    assert updated.mv == "dQw4w9WgXcQ"
+    with pytest.raises(ValueError, match="mv must be a YouTube"):
+        lib.update_song(song.id, replace(song, mv="https://example.com/watch?v=dQw4w9WgXcQ"))
+    assert lib.get_song(song.id).mv == "dQw4w9WgXcQ"
+    assert lib.update_song(song.id, replace(song, mv=" ")).mv is None
+
+
+def test_set_format(lib: Library, sample: Sample):
+    assert lib.set_format(sample.album_id, "cd", "owned").cd == "owned"
+    album = lib.set_format(sample.album_id, "vinyl", "wanted")
+    assert (album.cd, album.vinyl) == ("owned", "wanted")
+    assert lib.set_format(sample.album_id, "cd", None).cd is None
+    with pytest.raises(ValueError, match="vinyl must be one of"):
+        lib.set_format(sample.album_id, "vinyl", "lost")
+    with pytest.raises(ValueError, match="cd or vinyl"):
+        lib.set_format(sample.album_id, "tape", "owned")
+    with pytest.raises(NotFound):
+        lib.set_format(99, "cd", "owned")
+
+
+def test_youtube_column_becomes_mv(tmp_path):
+    path = tmp_path / "library.db"
+    add_sample(Library(path))
+    with sqlite3.connect(path) as conn:
+        conn.execute("ALTER TABLE songs RENAME COLUMN mv TO youtube")
+        conn.execute("UPDATE songs SET youtube = 'dQw4w9WgXcQ' WHERE id = 1")
+    conn.close()
+    assert Library(path).get_song(1).mv == "dQw4w9WgXcQ"
+
+
 # Stats
 
 
@@ -438,6 +521,10 @@ def test_old_databases_get_new_columns(tmp_path):
     assert lib.get_album(1).cover is None
     assert (lib.get_artist(1).wiki, lib.get_artist(1).image) == (None, None)
     assert lib.get_song(1).lyrics is None
+    assert (lib.get_artist(1).notes, lib.get_artist(1).listen_later) == (None, False)
+    album = lib.get_album(1)
+    assert (album.cd, album.vinyl, album.listen_later) == (None, None, False)
+    assert (lib.get_song(1).mv, lib.get_song(1).listen_later) == (None, False)
     Library(path)  # opening again is a no-op
 
 

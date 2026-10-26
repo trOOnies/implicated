@@ -1,6 +1,6 @@
 import pytest
 
-from implicated.models import validate_wiki
+from implicated.models import validate_ownership, validate_wiki, youtube_id
 
 
 @pytest.mark.parametrize(
@@ -54,3 +54,69 @@ def test_wikipedia_articles_are_accepted(url):
 def test_other_links_are_rejected(url):
     with pytest.raises(ValueError, match="Wikipedia article"):
         validate_wiki(url)
+
+
+ID = "dQw4w9WgXcQ"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        ID,
+        f"  {ID} ",
+        f"https://www.youtube.com/watch?v={ID}",
+        f"https://www.youtube.com/watch?v={ID}&t=42s&list=PL123",
+        f"http://youtube.com/watch?feature=share&v={ID}",
+        f"https://m.youtube.com/watch?v={ID}",
+        f"https://music.youtube.com/watch?v={ID}",
+        f"youtube.com/watch?v={ID}",
+        f"https://youtu.be/{ID}",
+        f"https://youtu.be/{ID}?si=abc&t=10",
+        f"https://www.youtube.com/embed/{ID}",
+        f"https://www.youtube-nocookie.com/embed/{ID}?start=3",
+        f"https://www.youtube.com/shorts/{ID}",
+        f"https://www.youtube.com/live/{ID}/",
+        f"https://WWW.YOUTUBE.COM/watch?v={ID}",
+    ],
+)
+def test_youtube_links_and_ids_are_accepted(value):
+    assert youtube_id(value) == ID
+
+
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_no_youtube_video(value):
+    assert youtube_id(value) is None
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "dQw4w9WgXc",  # too short
+        "dQw4w9WgXcQQ",  # too long
+        "dQw4w9WgXc!",
+        f"https://www.youtube.com/watch?v={ID}x",
+        f"https://www.youtube.com/watch?v={ID}&v={ID}",
+        "https://www.youtube.com/watch",
+        f"https://www.youtube.com/results?search_query={ID}",
+        f"https://www.youtube.com/{ID}",
+        f"https://youtube.com.evil.com/watch?v={ID}",
+        f"https://evilyoutube.com/watch?v={ID}",
+        f"https://www.youtube.com:8080/watch?v={ID}",
+        f"https://user@www.youtube.com/watch?v={ID}",
+        f"https://youtu.be/{ID}/extra",
+        f"ftp://youtu.be/{ID}",
+        f"javascript:alert('{ID}')",
+        f"https://vimeo.com/{ID}",
+        f'https://youtu.be/{ID}"onload="x',
+    ],
+)
+def test_other_youtube_values_are_rejected(value):
+    with pytest.raises(ValueError, match="YouTube"):
+        youtube_id(value)
+
+
+def test_validate_ownership():
+    for value in (None, "wanted", "owned"):
+        validate_ownership("cd", value)
+    with pytest.raises(ValueError, match="vinyl must be one of wanted, owned"):
+        validate_ownership("vinyl", "borrowed")

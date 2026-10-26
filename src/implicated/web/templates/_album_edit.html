@@ -18,7 +18,10 @@
       </label>
     </div>
     <label>Notes <textarea name="notes" rows="4">{{ album.notes or '' }}</textarea></label>
-    <label class="check"><input type="checkbox" name="favorite" {% if album.favorite %}checked{% endif %}> Favorite</label>
+    <div class="row">
+      <label class="check"><input type="checkbox" name="favorite" {% if album.favorite %}checked{% endif %}> Favorite</label>
+      <label class="check"><input type="checkbox" name="listen_later" {% if album.listen_later %}checked{% endif %}> Listen later</label>
+    </div>
     <div class="row">
       <button type="submit">Save</button>
       <button type="button" class="secondary" hx-get="/fragments/albums/{{ album.id }}/info"

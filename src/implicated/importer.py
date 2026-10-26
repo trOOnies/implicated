@@ -45,7 +45,8 @@ characters Windows does not allow in file names (``<>:"\\|?*``) are left out, so
 is ``S_C_A_R_E_C_R_O_W.txt`` and "Question...?" is ``Question....txt``. Case does not matter. An
 empty file means the lyrics are still missing; songs without a file get an empty one.
 
-Importing again updates what changed and never touches ratings, notes, favorites or plays.
+Importing again updates what changed and never touches ratings, notes, favorites, CD and vinyl
+ownership, music videos, listen later marks or plays.
 """
 
 from __future__ import annotations
@@ -258,6 +259,8 @@ def _import_artist(lib: Library, data: dict, report: Report) -> int:
         bio=data.get("description") or data.get("bio") or (existing and existing.bio),
         wiki=wiki or (existing and existing.wiki),
         favorite=bool(existing and existing.favorite),
+        notes=existing and existing.notes,
+        listen_later=bool(existing and existing.listen_later),
     )
     if existing:
         artist = lib.update_artist(existing.id, artist_in)
@@ -323,6 +326,9 @@ def _import_albums(
             rating=existing and existing.rating,
             notes=existing and existing.notes,
             favorite=bool(existing and existing.favorite),
+            cd=existing and existing.cd,
+            vinyl=existing and existing.vinyl,
+            listen_later=bool(existing and existing.listen_later),
         )
         if existing:
             album = lib.update_album(existing.id, album_in)
@@ -417,6 +423,8 @@ def _import_song(
         notes=existing and existing.notes,
         favorite=bool(existing and existing.favorite),
         no_lyrics=no_lyrics,
+        mv=existing and existing.mv,
+        listen_later=bool(existing and existing.listen_later),
     )
     if existing:
         song = lib.update_song(existing.id, song_in)

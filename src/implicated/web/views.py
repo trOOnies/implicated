@@ -11,6 +11,7 @@ so they refresh themselves:
 
 from __future__ import annotations
 
+from dataclasses import fields
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -22,7 +23,17 @@ from starlette.datastructures import FormData
 
 from implicated.api import get_library
 from implicated.library import Library, NotFound
-from implicated.models import ALBUM_KINDS, AlbumIn, ArtistIn, Member, Point, SongIn
+from implicated.models import (
+    ALBUM_KINDS,
+    OWNERSHIP,
+    Album,
+    AlbumIn,
+    ArtistIn,
+    Member,
+    Point,
+    Song,
+    SongIn,
+)
 from implicated.web import editor
 
 router = APIRouter(default_response_class=HTMLResponse, include_in_schema=False)
@@ -64,10 +75,28 @@ def percent(part: int, whole: int) -> str:
     return f"{part * 100 // whole}%" if whole else "–"
 
 
+# The Albums page filter: value -> (format, ownership, label).
+FORMAT_FILTERS = {
+    f"{fmt}-{state}": (fmt, state, f"{state.capitalize()} ({label})")
+    for fmt, label in (("cd", "CD"), ("vinyl", "Vinyl"))
+    for state in OWNERSHIP
+}
+
+
+def formats(album: Album) -> list[tuple[str, str]]:
+    """``[("owned", "Owned (CD)"), ("wanted", "Wanted (Vinyl)")]`` and the like; empty when
+    neither is set."""
+    return [
+        (state, label)
+        for fmt, state, label in FORMAT_FILTERS.values()
+        if getattr(album, fmt) == state
+    ]
+
+
 templates.env.filters.update(
-    duration=duration, stars=stars, when=when, tenure=tenure, percent=percent
+    duration=duration, stars=stars, when=when, tenure=tenure, percent=percent, formats=formats
 )
-templates.env.globals.update(album_kinds=ALBUM_KINDS)
+templates.env.globals.update(album_kinds=ALBUM_KINDS, ownership=OWNERSHIP)
 
 
 def render(
@@ -140,6 +169,8 @@ def artist_from_form(form: FormData) -> ArtistIn:
         bio=_text(form, "bio"),
         wiki=_text(form, "wiki"),
         favorite="favorite" in form,
+        notes=_text(form, "notes"),
+        listen_later="listen_later" in form,
     )
 
 
@@ -152,6 +183,9 @@ def album_from_form(form: FormData) -> AlbumIn:
         rating=_int(form, "rating"),
         notes=_text(form, "notes"),
         favorite="favorite" in form,
+        cd=_text(form, "cd"),
+        vinyl=_text(form, "vinyl"),
+        listen_later="listen_later" in form,
     )
 
 
@@ -166,7 +200,14 @@ def song_from_form(form: FormData) -> SongIn:
         notes=_text(form, "notes"),
         favorite="favorite" in form,
         no_lyrics="no_lyrics" in form,
+        mv=_text(form, "mv"),
+        listen_later="listen_later" in form,
     )
+
+
+def song_in(song: Song) -> SongIn:
+    """The writable fields of ``song``, to change some of them."""
+    return SongIn(**{f.name: getattr(song, f.name) for f in fields(SongIn)})
 
 
 # Dashboard
@@ -174,12 +215,16 @@ def song_from_form(form: FormData) -> SongIn:
 
 def _view_context(lib: Library) -> dict:
     albums = lib.list_albums()
+    artists = lib.list_artists()
     return {
         "stats": lib.stats(),
         "latest_albums": sorted(albums, key=lambda a: a.album.year or 0, reverse=True)[:12],
-        "favorite_artists": [a for a in lib.list_artists() if a.artist.favorite],
-        "favorite_albums": lib.list_albums(favorites=True),
+        "favorite_artists": [a for a in artists if a.artist.favorite],
+        "favorite_albums": [a for a in albums if a.album.favorite],
         "favorite_songs": lib.list_songs(favorites=True, order="plays"),
+        "later_artists": [a for a in artists if a.artist.listen_later],
+        "later_albums": [a for a in albums if a.album.listen_later],
+        "later_songs": lib.list_songs(listen_later=True),
         "recent": lib.recent_plays(8),
     }
 
@@ -299,14 +344,46 @@ def delete_artist(lib: Lib, artist_id: int):
 # Albums
 
 
+def _albums_query(q: str | None, own: str | None, favorites: str | None, later: str | None) -> dict:
+    query = {"q": q or None, "favorites": bool(favorites), "listen_later": bool(later)}
+    if own in FORMAT_FILTERS:
+        fmt, state, _label = FORMAT_FILTERS[own]
+        query[fmt] = state
+    return query
+
+
 @router.get("/albums")
-def albums_page(request: Request, lib: Lib, q: str | None = None):
-    return render(request, "albums.html", albums=lib.list_albums(q=q), q=q or "")
+def albums_page(
+    request: Request,
+    lib: Lib,
+    q: str | None = None,
+    own: str | None = None,
+    favorites: str | None = None,
+    later: str | None = None,
+):
+    return render(
+        request,
+        "albums.html",
+        albums=lib.list_albums(**_albums_query(q, own, favorites, later)),
+        q=q or "",
+        own=own if own in FORMAT_FILTERS else "",
+        favorites=bool(favorites),
+        later=bool(later),
+        format_filters=FORMAT_FILTERS,
+    )
 
 
 @router.get("/fragments/albums")
-def albums_fragment(request: Request, lib: Lib, q: str | None = None):
-    return render(request, "_album_grid.html", albums=lib.list_albums(q=q))
+def albums_fragment(
+    request: Request,
+    lib: Lib,
+    q: str | None = None,
+    own: str | None = None,
+    favorites: str | None = None,
+    later: str | None = None,
+):
+    albums = lib.list_albums(**_albums_query(q, own, favorites, later))
+    return render(request, "_album_grid.html", albums=albums)
 
 
 @router.post("/albums")
@@ -376,8 +453,11 @@ def album_songs(request: Request, lib: Lib, album_id: int):
 async def update_album(request: Request, lib: Lib, album_id: int):
     form = await request.form()
     album = found(lib.get_album, album_id)
+    data = album_from_form(form)
+    # CD and vinyl have their own selectors (see ``set_album_format``), not edit form fields.
+    data.cd, data.vinyl = album.cd, album.vinyl
     try:
-        found(lib.update_album, album_id, album_from_form(form))
+        found(lib.update_album, album_id, data)
     except ValueError as exc:
         return render(request, "_album_edit.html", status_code=422, error=str(exc), album=album)
     return render(
@@ -385,6 +465,25 @@ async def update_album(request: Request, lib: Lib, album_id: int):
         "_album_info.html",
         trigger=("albums-changed", "library-changed"),
         **_album_context(lib, album_id),
+    )
+
+
+@router.post("/albums/{album_id}/formats/{fmt}")
+async def set_album_format(request: Request, lib: Lib, album_id: int, fmt: str):
+    if fmt not in ("cd", "vinyl"):
+        raise HTTPException(404)
+    form = await request.form()
+    try:
+        album = found(lib.set_format, album_id, fmt, _text(form, "state"))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return render(
+        request,
+        "_format_picker.html",
+        trigger=("library-changed",),
+        album=album,
+        fmt=fmt,
+        compact="compact" in form,
     )
 
 
@@ -398,8 +497,8 @@ def delete_album(lib: Lib, album_id: int):
 # Songs
 
 
-def _songs_query(q: str | None, favorites: str | None) -> dict:
-    return {"q": q or None, "favorites": bool(favorites)}
+def _songs_query(q: str | None, favorites: str | None, later: str | None) -> dict:
+    return {"q": q or None, "favorites": bool(favorites), "listen_later": bool(later)}
 
 
 @router.get("/songs")
@@ -408,16 +507,18 @@ def songs_page(
     lib: Lib,
     q: str | None = None,
     favorites: str | None = None,
+    later: str | None = None,
     order: str = "title",
 ):
     order = order if order in ("title", "plays", "recent") else "title"
-    songs = lib.list_songs(order=order, **_songs_query(q, favorites))
+    songs = lib.list_songs(order=order, **_songs_query(q, favorites, later))
     return render(
         request,
         "songs.html",
         songs=songs,
         q=q or "",
         favorites=bool(favorites),
+        later=bool(later),
         order=order,
         ctx="all",
     )
@@ -429,10 +530,11 @@ def songs_fragment(
     lib: Lib,
     q: str | None = None,
     favorites: str | None = None,
+    later: str | None = None,
     order: str = "title",
 ):
     order = order if order in ("title", "plays", "recent") else "title"
-    songs = lib.list_songs(order=order, **_songs_query(q, favorites))
+    songs = lib.list_songs(order=order, **_songs_query(q, favorites, later))
     return render(request, "_songs.html", songs=songs, ctx="all")
 
 
@@ -463,8 +565,9 @@ async def create_song(request: Request, lib: Lib):
 
 
 def _ctx(form_or_query) -> str:
+    """Where a song row is shown; "page" is the song's own page."""
     ctx = form_or_query.get("ctx") or "all"
-    return ctx if ctx in ("all", "artist", "album") else "all"
+    return ctx if ctx in ("all", "artist", "album", "page") else "all"
 
 
 def _lyrics_context(lib: Library, song_id: int, **extra) -> dict:
@@ -476,11 +579,64 @@ def _lyrics_context(lib: Library, song_id: int, **extra) -> dict:
     return {"s": lib.get_song_summary(song_id), "lyrics_path": lib.lyrics_path(song_id), **extra}
 
 
+def _song_info_context(lib: Library, song_id: int) -> dict:
+    summary = found(lib.get_song_summary, song_id)
+    return {"s": summary, "artist": lib.get_artist(summary.song.artist_id)}
+
+
 @router.get("/songs/{song_id}")
 def song_page(request: Request, lib: Lib, song_id: int):
     context = _lyrics_context(lib, song_id)
-    artist = lib.get_artist(context["s"].song.artist_id)
-    return render(request, "song.html", artist=artist, **context)
+    return render(
+        request,
+        "song.html",
+        **_song_info_context(lib, song_id),
+        lyrics_path=context["lyrics_path"],
+        error=context.get("error"),
+    )
+
+
+@router.get("/fragments/songs/{song_id}/info")
+def song_info(request: Request, lib: Lib, song_id: int):
+    return render(request, "_song_info.html", **_song_info_context(lib, song_id))
+
+
+@router.get("/fragments/songs/{song_id}/details")
+def song_details_edit(request: Request, lib: Lib, song_id: int):
+    song = found(lib.get_song, song_id)
+    return render(
+        request,
+        "_song_details_edit.html",
+        song=song,
+        form={"notes": song.notes or "", "mv": song.mv or ""},
+    )
+
+
+@router.post("/songs/{song_id}/details")
+async def update_song_details(request: Request, lib: Lib, song_id: int):
+    """Change only the notes and the music video of a song, from its page."""
+    form = await request.form()
+    song = found(lib.get_song, song_id)
+    data = song_in(song)
+    data.notes = _text(form, "notes")
+    data.mv = _text(form, "mv")
+    try:
+        lib.update_song(song_id, data)
+    except ValueError as exc:
+        return render(
+            request,
+            "_song_details_edit.html",
+            status_code=422,
+            error=str(exc),
+            song=song,
+            form=form,
+        )
+    return render(
+        request,
+        "_song_info.html",
+        trigger=("library-changed",),
+        **_song_info_context(lib, song_id),
+    )
 
 
 @router.get("/fragments/songs/{song_id}/lyrics")
@@ -550,14 +706,21 @@ async def update_song(request: Request, lib: Lib, song_id: int):
 
 @router.post("/songs/{song_id}/play")
 async def play_song(request: Request, lib: Lib, song_id: int):
+    """Log a listen; this also clears the song's listen later mark."""
     form = await request.form()
     found(lib.record_play, song_id)
+    trigger = ("plays-changed", "library-changed")
+    ctx = _ctx(form)
+    if ctx == "page":
+        return render(
+            request, "_song_info.html", trigger=trigger, **_song_info_context(lib, song_id)
+        )
     return render(
         request,
         "_song_row.html",
-        trigger=("plays-changed", "library-changed"),
+        trigger=trigger,
         s=lib.get_song_summary(song_id),
-        ctx=_ctx(form),
+        ctx=ctx,
     )
 
 
@@ -567,7 +730,22 @@ def delete_song(lib: Lib, song_id: int):
     return Response(headers={"HX-Trigger": "songs-changed, library-changed"})
 
 
-# Favorites
+# Favorites and listen later
+
+
+@router.post("/later/{kind}/{record_id}")
+def toggle_listen_later(request: Request, lib: Lib, kind: str, record_id: int):
+    if kind not in ("artist", "album", "song"):
+        raise HTTPException(404)
+    later = found(lib.toggle, kind, record_id, "listen_later")
+    return render(
+        request,
+        "_later.html",
+        trigger=("library-changed",),
+        kind=kind,
+        record_id=record_id,
+        later=later,
+    )
 
 
 @router.post("/favorite/{kind}/{record_id}")

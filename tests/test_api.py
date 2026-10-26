@@ -153,3 +153,38 @@ def test_song_no_lyrics(client: TestClient, web_sample: Sample):
     )
     albums = client.get("/api/albums").json()
     assert albums[0]["no_lyrics_count"] == 0
+
+
+def test_album_filters_and_ownership(client: TestClient, web_sample: Sample):
+    url = f"/api/albums/{web_sample.album_id}"
+    album = client.get(url).json()
+    assert (album["cd"], album["vinyl"], album["listen_later"]) == (None, None, False)
+    changed = client.put(url, json=album | {"cd": "owned", "vinyl": "wanted"}).json()
+    assert (changed["cd"], changed["vinyl"]) == ("owned", "wanted")
+    assert client.put(url, json=album | {"cd": "lost"}).status_code == 422
+
+    def count(**params):
+        return len(client.get("/api/albums", params=params).json())
+
+    assert (count(cd="owned"), count(cd="wanted"), count(vinyl="wanted")) == (1, 0, 1)
+    assert count(listen_later=True) == 0
+    assert client.get("/api/albums", params={"cd": "lost"}).status_code == 422
+
+    format_url = f"/api/albums/{web_sample.album_id}/formats"
+    assert client.put(f"{format_url}/vinyl", params={"state": "owned"}).json()["vinyl"] == "owned"
+    assert client.put(f"{format_url}/cd").json()["cd"] is None
+    assert client.put(f"{format_url}/tape", params={"state": "owned"}).status_code == 422
+    assert client.put("/api/albums/99/formats/cd", params={"state": "owned"}).status_code == 404
+
+
+def test_song_music_video_and_listen_later(client: TestClient, web_sample: Sample):
+    song_id = web_sample.song_ids[0]
+    song = client.get(f"/api/songs/{song_id}").json()
+    body = song | {"mv": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "listen_later": True}
+    assert client.put(f"/api/songs/{song_id}", json=body).json()["mv"] == "dQw4w9WgXcQ"
+    assert len(client.get("/api/songs", params={"listen_later": True}).json()) == 1
+    bad = client.put(f"/api/songs/{song_id}", json=song | {"mv": "https://example.com"})
+    assert bad.status_code == 422 and "YouTube" in bad.json()["detail"]
+
+    client.post(f"/api/songs/{song_id}/plays")
+    assert client.get(f"/api/songs/{song_id}").json()["listen_later"] is False

@@ -1,0 +1,2 @@
+{# Tags saying whether the `album` is wanted or owned on CD and on vinyl. #}
+{% for state, label in album | formats %}<span class="tag {{ state }}">{{ label }}</span>{% endfor %}

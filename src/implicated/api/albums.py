@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Response
 from fastapi.responses import FileResponse
 
@@ -8,12 +10,29 @@ from implicated.models import Album, AlbumIn, AlbumSummary
 
 router = APIRouter(prefix="/albums", tags=["Albums"])
 
+Ownership = Literal["wanted", "owned"]
+
 
 @router.get("")
 def list_albums(
-    lib: Lib, artist_id: int | None = None, favorites: bool = False, q: str | None = None
+    lib: Lib,
+    artist_id: int | None = None,
+    favorites: bool = False,
+    q: str | None = None,
+    cd: Ownership | None = None,
+    vinyl: Ownership | None = None,
+    listen_later: bool = False,
 ) -> list[AlbumSummary]:
-    return lib.list_albums(artist_id, favorites, q)
+    """Filter by CD or vinyl ownership with ``cd`` and ``vinyl`` (``wanted`` or ``owned``)."""
+    return lib.list_albums(artist_id, favorites, q, cd=cd, vinyl=vinyl, listen_later=listen_later)
+
+
+@router.put("/{album_id}/formats/{fmt}")
+def set_format(
+    lib: Lib, album_id: int, fmt: Literal["cd", "vinyl"], state: Ownership | None = None
+) -> Album:
+    """Say whether you want or own the album on CD or vinyl; leave ``state`` out for neither."""
+    return call(lib.set_format, album_id, fmt, state)
 
 
 @router.post("", status_code=201)

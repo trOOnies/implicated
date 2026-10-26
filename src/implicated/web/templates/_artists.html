@@ -4,7 +4,10 @@
   <li class="card artist-card">
     <div class="row">
       <a href="/artists/{{ a.artist.id }}"><strong>{{ a.artist.name }}</strong></a>
-      {% with kind='artist', record_id=a.artist.id, favorite=a.artist.favorite %}{% include "_fav.html" %}{% endwith %}
+      <span>
+        {% with kind='artist', record_id=a.artist.id, favorite=a.artist.favorite %}{% include "_fav.html" %}{% endwith %}
+        {% with kind='artist', record_id=a.artist.id, later=a.artist.listen_later %}{% include "_later.html" %}{% endwith %}
+      </span>
     </div>
     <p class="muted">
       {{ a.artist.country or '' }}{% if a.artist.country and a.artist.formed_year %} · {% endif %}{{ a.artist.formed_year or '' }}

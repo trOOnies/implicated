@@ -30,7 +30,8 @@ info/
   bands/<artist name>/songs/      # lyrics, one <song title>.txt per song (empty = missing)
 ```
 
-Re-importing updates what changed and keeps your ratings, notes, favorites and plays; a broken
+Re-importing updates what changed and keeps your ratings, notes, favorites, CD and vinyl
+ownership, music videos, listen later marks and plays; a broken
 file rolls the whole import back and is reported in the server log. `wiki` must be a link to a
 Wikipedia article (`https://<lang>.wikipedia.org/wiki/<title>`); any other link is ignored with a
 warning, and the API and forms refuse it. The full format is described
@@ -45,6 +46,21 @@ to open the file in your default text editor (under WSL, the Windows one) and to
 pages mark the songs still missing lyrics, and album lists show the share of songs that have them.
 Songs with `no_lyrics` (set in `albums.yaml`, or with the No lyrics box when adding or editing a
 song) have no words, so they are never missing lyrics and do not count in that share.
+
+## Your own data
+
+Besides what the import brings, the app keeps:
+
+- **Notes** on artists, albums and songs (artists' notes are separate from their imported description).
+- **CD and vinyl ownership** of albums: each format is unset, wanted or owned, picked with a
+  selector on the album page and in the artist's discography. The Albums page filters by
+  Wanted (CD), Owned (CD), Wanted (Vinyl) and Owned (Vinyl).
+- **Music videos** of songs on YouTube, entered as a link or the bare 11-character video id.
+  Links from `youtube.com` (`watch?v=`, `/embed/`, `/shorts/`, `/live/`, `/v/`, also `m.` and
+  `music.`), `youtu.be` and `youtube-nocookie.com` are accepted; anything else is refused, and
+  only the id is stored. Song pages embed the video.
+- **Listen later** marks on artists, albums and songs. A song's mark goes away when you log a play
+  of it.
 
 ## Layout
 

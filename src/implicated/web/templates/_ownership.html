@@ -1,0 +1,11 @@
+{# CD and vinyl ownership selects of the album forms; `values` holds the current choices. #}
+<div class="row">
+  {% for fmt, name in (('cd', 'CD'), ('vinyl', 'Vinyl')) %}
+  <label>{{ name }}
+    <select name="{{ fmt }}">
+      <option value="">–</option>
+      {% for o in ownership %}<option value="{{ o }}" {% if values.get(fmt) == o %}selected{% endif %}>{{ o | capitalize }} ({{ name }})</option>{% endfor %}
+    </select>
+  </label>
+  {% endfor %}
+</div>

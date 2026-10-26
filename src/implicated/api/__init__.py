@@ -18,7 +18,10 @@ TAGS = [
     {"name": "Members", "description": "The line-up of an artist, current and former."},
     {"name": "Albums", "description": "Albums, EPs, singles and more, with their cover."},
     {"name": "Songs", "description": "Songs, on an album or as singles, and their lyrics."},
-    {"name": "Plays", "description": "Listening history."},
+    {
+        "name": "Plays",
+        "description": "Listening history; a play clears the song's listen later mark.",
+    },
     {"name": "Stats", "description": "Totals and chart data for the whole library."},
 ]
 

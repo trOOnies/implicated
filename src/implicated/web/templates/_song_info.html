@@ -1,0 +1,29 @@
+<section id="song-info" class="card info">
+  <div class="row">
+    <h1>{{ s.song.title }}</h1>
+    {% with kind='song', record_id=s.song.id, favorite=s.song.favorite %}{% include "_fav.html" %}{% endwith %}
+    {% with kind='song', record_id=s.song.id, later=s.song.listen_later %}{% include "_later.html" %}{% endwith %}
+    <span class="spacer"></span>
+    <button type="button" hx-post="/songs/{{ s.song.id }}/play" hx-vals='{"ctx": "page"}'
+            hx-target="#song-info" hx-swap="outerHTML" title="Log a listen">▶ Played</button>
+    <button type="button" class="secondary" hx-get="/fragments/songs/{{ s.song.id }}/details"
+            hx-target="#song-info" hx-swap="outerHTML">Edit notes &amp; MV</button>
+  </div>
+  <p class="muted">
+    <a href="/artists/{{ artist.id }}">{{ artist.name }}</a>
+    · {% if s.song.album_id %}{% if s.song.track_number %}track {{ s.song.track_number }} of {% endif %}<a href="/albums/{{ s.song.album_id }}">{{ s.album_title }}</a>{% else %}single{% endif %}
+    · {{ s.song.duration_seconds | duration }}
+    · {{ s.play_count }} plays · last played {{ s.last_played | when }}
+  </p>
+  <p class="stars big">{{ s.song.rating | stars }}</p>
+  {% if s.song.notes %}<p class="bio">{{ s.song.notes }}</p>{% endif %}
+  {% if s.song.mv %}
+  <h2 class="members-head">Music video</h2>
+  <div class="video">
+    <iframe src="https://www.youtube-nocookie.com/embed/{{ s.song.mv }}" title="Music video of {{ s.song.title }}"
+            allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen loading="lazy"
+            referrerpolicy="strict-origin-when-cross-origin"></iframe>
+  </div>
+  <p class="small"><a href="https://www.youtube.com/watch?v={{ s.song.mv }}" target="_blank" rel="noopener noreferrer">Watch on YouTube ↗</a></p>
+  {% endif %}
+</section>

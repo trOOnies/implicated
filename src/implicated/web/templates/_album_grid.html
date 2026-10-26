@@ -7,6 +7,7 @@
       <strong>{{ a.album.title }}</strong>
     </a>
     <small>{{ a.artist_name }}{% if a.album.year %} · {{ a.album.year }}{% endif %} · {{ a.song_count }} songs{% if a.song_count > a.no_lyrics_count %} · {{ a.lyrics_count | percent(a.song_count - a.no_lyrics_count) }} lyrics{% endif %}</small>
+    {% if a.album | formats or a.album.listen_later %}<p>{% with album=a.album %}{% include "_formats.html" %}{% endwith %}{% if a.album.listen_later %}<span class="tag later">Listen later</span>{% endif %}</p>{% endif %}
   </li>
   {% endfor %}
 </ul>

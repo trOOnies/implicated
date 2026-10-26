@@ -52,6 +52,29 @@
 </div>
 {% endif %}
 
+{% if later_artists or later_albums or later_songs %}
+<div class="grid">
+  <div class="card">
+    <h2>Artists to listen to</h2>
+    {% for a in later_artists %}
+    <p><a href="/artists/{{ a.artist.id }}">{{ a.artist.name }}</a> <small>{{ a.album_count }} albums</small></p>
+    {% else %}<p class="empty">Mark artists with ⧖ to listen to them later.</p>{% endfor %}
+  </div>
+  <div class="card">
+    <h2>Albums to listen to</h2>
+    {% for a in later_albums %}
+    <p><a href="/albums/{{ a.album.id }}">{{ a.album.title }}</a> <small>{{ a.artist_name }}{% if a.album.year %}, {{ a.album.year }}{% endif %}</small></p>
+    {% else %}<p class="empty">No albums to listen to later.</p>{% endfor %}
+  </div>
+  <div class="card">
+    <h2>Songs to listen to</h2>
+    {% for s in later_songs %}
+    <p><a href="/songs/{{ s.song.id }}">{{ s.song.title }}</a> <small>{{ s.artist_name }}</small></p>
+    {% else %}<p class="empty">No songs to listen to later.</p>{% endfor %}
+  </div>
+</div>
+{% endif %}
+
 {% if favorite_artists or favorite_albums or favorite_songs %}
 <div class="grid">
   <div class="card">

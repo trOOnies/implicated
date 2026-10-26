@@ -3,19 +3,6 @@
 {% block title %}{{ s.song.title }}{% endblock %}
 {% block content %}
 <p class="crumbs"><a href="/artists">Artists</a> / <a href="/artists/{{ artist.id }}">{{ artist.name }}</a> /{% if s.song.album_id %} <a href="/albums/{{ s.song.album_id }}">{{ s.album_title }}</a> /{% endif %}</p>
-<section class="card info">
-  <div class="row">
-    <h1>{{ s.song.title }}</h1>
-    {% with kind='song', record_id=s.song.id, favorite=s.song.favorite %}{% include "_fav.html" %}{% endwith %}
-  </div>
-  <p class="muted">
-    <a href="/artists/{{ artist.id }}">{{ artist.name }}</a>
-    · {% if s.song.album_id %}{% if s.song.track_number %}track {{ s.song.track_number }} of {% endif %}<a href="/albums/{{ s.song.album_id }}">{{ s.album_title }}</a>{% else %}single{% endif %}
-    · {{ s.song.duration_seconds | duration }}
-    · {{ s.play_count }} plays · last played {{ s.last_played | when }}
-  </p>
-  <p class="stars big">{{ s.song.rating | stars }}</p>
-  {% if s.song.notes %}<p class="bio">{{ s.song.notes }}</p>{% endif %}
-</section>
+{% include "_song_info.html" %}
 {% include "_lyrics.html" %}
 {% endblock %}

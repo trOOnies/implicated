@@ -180,14 +180,20 @@ def test_import(lib: Library, info: Path):
     assert [s.song.title for s in lib.list_songs(album_id=album_1989.id)] == ["22"]
 
 
+YT = "dQw4w9WgXcQ"
+
+
 def test_reimport_keeps_personal_data(lib: Library, info: Path):
     import_dir(lib, info)
     mcr = lib.find_artist("My Chemical Romance")
     album = lib.find_album(mcr.id, "Danger Days")
     song = lib.find_song(mcr.id, album.id, "Sing")
     lib.toggle_favorite("artist", mcr.id)
+    lib.update_artist(mcr.id, replace(lib.get_artist(mcr.id), notes="Mine", listen_later=True))
+    lib.update_album(album.id, replace(album, cd="owned", vinyl="wanted", listen_later=True))
     lib.update_song(song.id, replace(song, rating=5))
     lib.record_play(song.id)
+    lib.update_song(song.id, replace(lib.get_song(song.id), mv=YT, listen_later=True))
 
     report = import_dir(lib, info)
 
@@ -195,7 +201,11 @@ def test_reimport_keeps_personal_data(lib: Library, info: Path):
     assert report.created == {"artists": 0, "albums": 0, "songs": 0}
     assert report.updated == {"artists": 2, "albums": 3, "songs": 5}
     assert lib.get_artist(mcr.id).favorite
+    assert (lib.get_artist(mcr.id).notes, lib.get_artist(mcr.id).listen_later) == ("Mine", True)
+    kept = lib.get_album(album.id)
+    assert (kept.cd, kept.vinyl, kept.listen_later) == ("owned", "wanted", True)
     assert lib.get_song(song.id).rating == 5
+    assert (lib.get_song(song.id).mv, lib.get_song(song.id).listen_later) == (YT, True)
     assert lib.get_song_summary(song.id).play_count == 1
     assert len(list(lib.covers_dir.iterdir())) == 2
     assert len(list(lib.images_dir.iterdir())) == 1

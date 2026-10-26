@@ -112,6 +112,8 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 2rem; }
 
 .tag.none { background: transparent; border: 1px solid var(--border); color: var(--muted); font-size: .72rem; }
 .tag.missing { background: transparent; border: 1px dashed var(--muted); color: var(--muted); font-size: .72rem; }
+.tag.owned { background: var(--accent); color: var(--surface); }
+.tag.wanted, .tag.later { background: transparent; border: 1px dashed var(--accent); color: var(--accent); }
 .lyrics { white-space: pre-line; margin: 0; max-width: 70ch; line-height: 1.6; }
 
 .stars { color: var(--accent); white-space: nowrap; letter-spacing: .05em; }
@@ -155,6 +157,20 @@ a.tile:hover { text-decoration: none; border-color: var(--accent); }
 .album-grid a:hover strong { text-decoration: underline; }
 .album-grid strong { line-height: 1.25; }
 td.cover-cell { width: 3.25rem; padding-right: 0; }
+/* CD and vinyl selectors */
+.pickers { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+td .pickers { flex-direction: column; align-items: flex-start; gap: .25rem; margin: 0; }
+.picker { display: inline-flex; align-items: stretch; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; font-size: .8rem; }
+.picker.compact { font-size: .72rem; }
+.picker-label { padding: .15rem .6rem; color: var(--muted); border-right: 1px solid var(--border); }
+.picker button { background: none; border: none; border-radius: 0; color: var(--muted); padding: .15rem .6rem; }
+.picker button + button { border-left: 1px solid var(--border); }
+.picker button:hover { color: var(--text); }
+.picker button.on { background: var(--accent-soft); color: var(--text); font-weight: 600; }
+.picker button.owned.on { background: var(--accent); color: var(--surface); }
+
+.video { width: 100%; max-width: 640px; aspect-ratio: 16 / 9; margin-top: .75rem; }
+.video iframe { width: 100%; height: 100%; border: 0; border-radius: 6px; }
 .media-head { display: flex; gap: 1.25rem; align-items: flex-start; }
 .media-head > div { flex: 1; min-width: 0; }
 @media (max-width: 600px) { .media-head { flex-direction: column; } }
@@ -189,7 +205,7 @@ button.secondary { background: transparent; color: var(--accent); }
 button.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
 button.link { background: none; border: none; color: var(--accent); padding: 0 .25rem; }
 button.link.danger { color: var(--danger); }
-button.play, button.fav {
+button.play, button.fav, button.later {
   background: none;
   border: none;
   padding: 0 .25rem;
@@ -199,6 +215,7 @@ button.play, button.fav {
 }
 button.play:hover { color: var(--accent); }
 button.fav.on, button.fav:hover { color: var(--fav); }
+button.later.on, button.later:hover { color: var(--accent); }
 
 .htmx-request button, button.htmx-request { opacity: .6; }
 

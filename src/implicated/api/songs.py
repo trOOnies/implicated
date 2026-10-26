@@ -15,8 +15,15 @@ def list_songs(
     album_id: int | None = None,
     q: str | None = None,
     favorites: bool = False,
+    listen_later: bool = False,
 ) -> list[SongSummary]:
-    return lib.list_songs(artist_id=artist_id, album_id=album_id, q=q, favorites=favorites)
+    return lib.list_songs(
+        artist_id=artist_id,
+        album_id=album_id,
+        q=q,
+        favorites=favorites,
+        listen_later=listen_later,
+    )
 
 
 @router.post("", status_code=201)

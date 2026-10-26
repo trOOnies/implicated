@@ -1,0 +1,4 @@
+<button class="later{% if later %} on{% endif %}" type="button"
+        hx-post="/later/{{ kind }}/{{ record_id }}" hx-swap="outerHTML"
+        title="{{ 'Remove from' if later else 'Add to' }} Listen later"
+        aria-pressed="{{ 'true' if later else 'false' }}">{{ '⧗' if later else '⧖' }}</button>

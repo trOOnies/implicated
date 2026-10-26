@@ -30,8 +30,10 @@ from implicated.models import (
     SongSummary,
     lyrics_file_name,
     validate_kind,
+    validate_ownership,
     validate_rating,
     validate_wiki,
+    youtube_id,
 )
 
 SCHEMA = """
@@ -46,7 +48,9 @@ CREATE TABLE IF NOT EXISTS artists (
     wiki        TEXT,
     favorite    INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL,
-    image       TEXT
+    image       TEXT,
+    notes       TEXT,
+    listen_later INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS albums (
     id          INTEGER PRIMARY KEY,
@@ -58,7 +62,10 @@ CREATE TABLE IF NOT EXISTS albums (
     notes       TEXT,
     favorite    INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL,
-    cover       TEXT
+    cover       TEXT,
+    cd          TEXT,
+    vinyl       TEXT,
+    listen_later INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS members (
     id         INTEGER PRIMARY KEY,
@@ -81,7 +88,9 @@ CREATE TABLE IF NOT EXISTS songs (
     favorite         INTEGER NOT NULL DEFAULT 0,
     created_at       TEXT NOT NULL,
     lyrics           TEXT,
-    no_lyrics        INTEGER NOT NULL DEFAULT 0
+    no_lyrics        INTEGER NOT NULL DEFAULT 0,
+    mv               TEXT,
+    listen_later     INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS plays (
     id        INTEGER PRIMARY KEY,
@@ -104,9 +113,20 @@ MIGRATIONS = [
     ("artists", "image", "TEXT"),
     ("songs", "lyrics", "TEXT"),
     ("songs", "no_lyrics", "INTEGER NOT NULL DEFAULT 0"),
+    ("artists", "notes", "TEXT"),
+    ("artists", "listen_later", "INTEGER NOT NULL DEFAULT 0"),
+    ("albums", "cd", "TEXT"),
+    ("albums", "vinyl", "TEXT"),
+    ("albums", "listen_later", "INTEGER NOT NULL DEFAULT 0"),
+    ("songs", "mv", "TEXT"),
+    ("songs", "listen_later", "INTEGER NOT NULL DEFAULT 0"),
 ]
+# Columns that changed names: (table, old name, new name), renamed before ``MIGRATIONS`` run.
+RENAMES = [("songs", "youtube", "mv")]
 
 FAVORITE_TABLES = {"artist": "artists", "album": "albums", "song": "songs"}
+# Yes/no marks that can be switched with one click.
+FLAGS = ("favorite", "listen_later")
 
 # Album covers and artist images.
 IMAGE_TYPES = {
@@ -132,6 +152,7 @@ def _artist(row: sqlite3.Row) -> Artist:
     data["genres"] = json.loads(data["genres"])
     data["languages"] = json.loads(data["languages"])
     data["favorite"] = bool(data["favorite"])
+    data["listen_later"] = bool(data["listen_later"])
     return Artist(**data)
 
 
@@ -149,6 +170,7 @@ def _clean_list(values: list[str]) -> str:
 def _album(row: sqlite3.Row) -> Album:
     data = dict(row)
     data["favorite"] = bool(data["favorite"])
+    data["listen_later"] = bool(data["listen_later"])
     return Album(**data)
 
 
@@ -156,6 +178,7 @@ def _song(row: sqlite3.Row) -> Song:
     data = dict(row)
     data["favorite"] = bool(data["favorite"])
     data["no_lyrics"] = bool(data["no_lyrics"])
+    data["listen_later"] = bool(data["listen_later"])
     return Song(**data)
 
 
@@ -182,6 +205,10 @@ class Library:
         self._local = threading.local()
         with self.connect() as conn:
             conn.executescript(SCHEMA)
+            for table, old, new in RENAMES:
+                columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+                if old in columns and new not in columns:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN {old} TO {new}")
             for table, column, declaration in MIGRATIONS:
                 columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
                 if column not in columns:
@@ -261,9 +288,9 @@ class Library:
         with self.connect() as conn:
             cur = conn.execute(
                 """INSERT INTO artists (name, country, formed_year, genres, languages, bio,
-                                        wiki, favorite, created_at)
+                                        wiki, favorite, notes, listen_later, created_at)
                    VALUES (:name, :country, :formed_year, :genres, :languages, :bio,
-                           :wiki, :favorite, :now)""",
+                           :wiki, :favorite, :notes, :listen_later, :now)""",
                 {**values, "now": _now()},
             )
         return self.get_artist(cur.lastrowid)
@@ -275,7 +302,7 @@ class Library:
                 """UPDATE artists SET name = :name, country = :country,
                        formed_year = :formed_year, genres = :genres,
                        languages = :languages, bio = :bio, wiki = :wiki,
-                       favorite = :favorite
+                       favorite = :favorite, notes = :notes, listen_later = :listen_later
                    WHERE id = :id""",
                 {**self._artist_values(data), "id": artist_id},
             )
@@ -318,6 +345,7 @@ class Library:
         values["genres"] = _clean_list(data.genres)
         values["languages"] = _clean_list(data.languages)
         values["favorite"] = int(data.favorite)
+        values["listen_later"] = int(data.listen_later)
         return values
 
     # Members
@@ -359,8 +387,17 @@ class Library:
     # Albums
 
     def list_albums(
-        self, artist_id: int | None = None, favorites: bool = False, q: str | None = None
+        self,
+        artist_id: int | None = None,
+        favorites: bool = False,
+        q: str | None = None,
+        *,
+        cd: str | None = None,
+        vinyl: str | None = None,
+        listen_later: bool = False,
     ) -> list[AlbumSummary]:
+        """Albums, optionally only those with the given CD or vinyl ownership (see
+        ``OWNERSHIP``), the favorites or the ones marked to listen to later."""
         sql = """
             SELECT al.*, ar.name AS x_artist,
                    (SELECT COUNT(*) FROM songs WHERE album_id = al.id) AS x_songs,
@@ -375,11 +412,21 @@ class Library:
               FROM albums al JOIN artists ar ON ar.id = al.artist_id
              WHERE (:artist_id IS NULL OR al.artist_id = :artist_id)
                AND (:favorites = 0 OR al.favorite = 1)
+               AND (:listen_later = 0 OR al.listen_later = 1)
+               AND (:cd IS NULL OR al.cd = :cd)
+               AND (:vinyl IS NULL OR al.vinyl = :vinyl)
                AND (:q IS NULL OR al.title LIKE '%' || :q || '%'
                     OR ar.name LIKE '%' || :q || '%')
              ORDER BY al.year IS NULL, al.year, al.title COLLATE NOCASE
         """
-        params = {"artist_id": artist_id, "favorites": int(favorites), "q": q or None}
+        params = {
+            "artist_id": artist_id,
+            "favorites": int(favorites),
+            "listen_later": int(listen_later),
+            "cd": cd,
+            "vinyl": vinyl,
+            "q": q or None,
+        }
         with self.connect() as conn:
             rows = conn.execute(sql, params).fetchall()
         out = []
@@ -420,8 +467,9 @@ class Library:
         with self.connect() as conn:
             cur = conn.execute(
                 """INSERT INTO albums (artist_id, title, year, kind, rating, notes, favorite,
-                                       created_at)
-                   VALUES (:artist_id, :title, :year, :kind, :rating, :notes, :favorite, :now)""",
+                                       cd, vinyl, listen_later, created_at)
+                   VALUES (:artist_id, :title, :year, :kind, :rating, :notes, :favorite,
+                           :cd, :vinyl, :listen_later, :now)""",
                 {**values, "now": _now()},
             )
         return self.get_album(cur.lastrowid)
@@ -431,7 +479,8 @@ class Library:
         with self.connect() as conn:
             conn.execute(
                 """UPDATE albums SET artist_id = :artist_id, title = :title, year = :year,
-                       kind = :kind, rating = :rating, notes = :notes, favorite = :favorite
+                       kind = :kind, rating = :rating, notes = :notes, favorite = :favorite,
+                       cd = :cd, vinyl = :vinyl, listen_later = :listen_later
                    WHERE id = :id""",
                 {**self._album_values(data), "id": album_id},
             )
@@ -490,11 +539,25 @@ class Library:
             raise ValueError("title is required")
         validate_rating(data.rating)
         validate_kind(data.kind)
+        validate_ownership("cd", data.cd)
+        validate_ownership("vinyl", data.vinyl)
         self.get_artist(data.artist_id)
         values = asdict(data)
         values["title"] = data.title.strip()
         values["favorite"] = int(data.favorite)
+        values["listen_later"] = int(data.listen_later)
         return values
+
+    def set_format(self, album_id: int, fmt: str, state: str | None) -> Album:
+        """Say whether you want or own the album on ``fmt`` ("cd" or "vinyl"); ``None`` for
+        neither."""
+        if fmt not in ("cd", "vinyl"):
+            raise ValueError("format must be cd or vinyl")
+        validate_ownership(fmt, state)
+        self.get_album(album_id)
+        with self.connect() as conn:
+            conn.execute(f"UPDATE albums SET {fmt} = ? WHERE id = ?", (state, album_id))
+        return self.get_album(album_id)
 
     # Songs
 
@@ -505,6 +568,7 @@ class Library:
         album_id: int | None = None,
         q: str | None = None,
         favorites: bool = False,
+        listen_later: bool = False,
         order: str = "title",
     ) -> list[SongSummary]:
         order_by = {
@@ -523,6 +587,7 @@ class Library:
              WHERE (:artist_id IS NULL OR s.artist_id = :artist_id)
                AND (:album_id IS NULL OR s.album_id = :album_id)
                AND (:favorites = 0 OR s.favorite = 1)
+               AND (:listen_later = 0 OR s.listen_later = 1)
                AND (:q IS NULL OR s.title LIKE '%' || :q || '%'
                     OR ar.name LIKE '%' || :q || '%'
                     OR al.title LIKE '%' || :q || '%')
@@ -532,6 +597,7 @@ class Library:
             "artist_id": artist_id,
             "album_id": album_id,
             "favorites": int(favorites),
+            "listen_later": int(listen_later),
             "q": q or None,
         }
         with self.connect() as conn:
@@ -580,9 +646,10 @@ class Library:
             cur = conn.execute(
                 """INSERT INTO songs (artist_id, album_id, title, track_number,
                                       duration_seconds, rating, notes, favorite, no_lyrics,
-                                      created_at)
+                                      mv, listen_later, created_at)
                    VALUES (:artist_id, :album_id, :title, :track_number, :duration_seconds,
-                           :rating, :notes, :favorite, :no_lyrics, :now)""",
+                           :rating, :notes, :favorite, :no_lyrics, :mv, :listen_later,
+                           :now)""",
                 {**values, "now": _now()},
             )
         song = self.get_song(cur.lastrowid)
@@ -597,7 +664,8 @@ class Library:
                 """UPDATE songs SET artist_id = :artist_id, album_id = :album_id,
                        title = :title, track_number = :track_number,
                        duration_seconds = :duration_seconds, rating = :rating,
-                       notes = :notes, favorite = :favorite, no_lyrics = :no_lyrics
+                       notes = :notes, favorite = :favorite, no_lyrics = :no_lyrics,
+                       mv = :mv, listen_later = :listen_later
                    WHERE id = :id""",
                 {**self._song_values(data), "id": song_id},
             )
@@ -696,17 +764,21 @@ class Library:
         values["title"] = data.title.strip()
         values["favorite"] = int(data.favorite)
         values["no_lyrics"] = int(data.no_lyrics)
+        values["mv"] = youtube_id(data.mv, "mv")
+        values["listen_later"] = int(data.listen_later)
         return values
 
     # Plays
 
     def record_play(self, song_id: int, played_at: str | None = None) -> Play:
+        """Log a listen of the song; it is no longer waiting to be listened to later."""
         self.get_song(song_id)
         played_at = played_at or _now()
         with self.connect() as conn:
             cur = conn.execute(
                 "INSERT INTO plays (song_id, played_at) VALUES (?, ?)", (song_id, played_at)
             )
+            conn.execute("UPDATE songs SET listen_later = 0 WHERE id = ?", (song_id,))
         return Play(cur.lastrowid, song_id, played_at)
 
     def recent_plays(self, limit: int = 10) -> list[tuple[Play, SongSummary]]:
@@ -719,14 +791,18 @@ class Library:
     # Shared
 
     def toggle_favorite(self, kind: str, record_id: int) -> bool:
+        return self.toggle(kind, record_id, "favorite")
+
+    def toggle(self, kind: str, record_id: int, flag: str) -> bool:
+        """Switch one of ``FLAGS`` of an artist, album or song, and return its new value."""
         table = FAVORITE_TABLES[kind]
+        if flag not in FLAGS:
+            raise ValueError(f"flag must be one of {', '.join(FLAGS)}")
         with self.connect() as conn:
-            cur = conn.execute(
-                f"UPDATE {table} SET favorite = 1 - favorite WHERE id = ?", (record_id,)
-            )
+            cur = conn.execute(f"UPDATE {table} SET {flag} = 1 - {flag} WHERE id = ?", (record_id,))
             if cur.rowcount == 0:
                 raise NotFound(f"{kind} {record_id} not found")
-            row = conn.execute(f"SELECT favorite FROM {table} WHERE id = ?", (record_id,))
+            row = conn.execute(f"SELECT {flag} FROM {table} WHERE id = ?", (record_id,))
             return bool(row.fetchone()[0])
 
     def _delete(self, table: str, record_id: int) -> None:

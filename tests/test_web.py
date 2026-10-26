@@ -380,3 +380,133 @@ def test_open_command(monkeypatch, tmp_path):
     monkeypatch.setattr(editor.shutil, "which", lambda name: None)
     with pytest.raises(OSError, match="no program"):
         editor.open_command(path)
+
+
+def test_listen_later_toggle(client: TestClient, client_lib: Library, web_sample: Sample):
+    for kind, record_id in [
+        ("artist", web_sample.artist_id),
+        ("album", web_sample.album_id),
+        ("song", web_sample.song_ids[0]),
+    ]:
+        on = client.post(f"/later/{kind}/{record_id}")
+        assert "⧗" in on.text and 'aria-pressed="true"' in on.text
+        assert "library-changed" in on.headers["hx-trigger"]
+    assert client_lib.get_album(web_sample.album_id).listen_later
+    overview = client.get("/").text
+    assert "Artists to listen to" in overview and "Songs to listen to" in overview
+    assert f'href="/songs/{web_sample.song_ids[0]}">Mysterons' in overview
+    assert "⧖" in client.post(f"/later/album/{web_sample.album_id}").text
+    assert client.post("/later/playlist/1").status_code == 404
+    assert client.post("/later/song/99").status_code == 404
+
+
+def test_playing_clears_listen_later(client: TestClient, client_lib: Library, web_sample: Sample):
+    song_id = web_sample.song_ids[0]
+    client.post(f"/later/song/{song_id}")
+    assert "Mysterons" in client.get("/fragments/songs", params={"later": "1"}).text
+    row = client.post(f"/songs/{song_id}/play", data={"ctx": "album"}).text
+    assert 'class="later"' in row and "⧖" in row
+    assert not client_lib.get_song(song_id).listen_later
+    assert "Mysterons" not in client.get("/fragments/songs", params={"later": "1"}).text
+
+    client.post(f"/later/song/{song_id}")
+    info = client.post(f"/songs/{song_id}/play", data={"ctx": "page"}).text
+    assert 'id="song-info"' in info and "2 plays" in info and "⧖" in info
+
+
+def test_album_ownership_forms_and_filters(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    album_id = web_sample.album_id
+    page = client.get(f"/albums/{album_id}").text
+    assert 'role="group" aria-label="CD"' in page and 'role="group" aria-label="Vinyl"' in page
+    assert 'name="cd"' not in client.get(f"/fragments/albums/{album_id}/edit").text
+
+    picked = client.post(f"/albums/{album_id}/formats/cd", data={"state": "owned"})
+    assert picked.status_code == 200 and "library-changed" in picked.headers["hx-trigger"]
+    assert 'class="owned on"' in picked.text and "compact" not in picked.text
+    assert picked.text.count('aria-pressed="true"') == 1
+    compact = client.post(
+        f"/albums/{album_id}/formats/vinyl", data={"state": "wanted", "compact": "1"}
+    )
+    assert 'class="picker compact"' in compact.text and '"compact": "1"' in compact.text
+    assert client.post(f"/albums/{album_id}/formats/cd", data={"state": "lost"}).status_code == 422
+    assert (
+        client.post(f"/albums/{album_id}/formats/tape", data={"state": "owned"}).status_code == 404
+    )
+    assert client.post("/albums/99/formats/cd", data={"state": "owned"}).status_code == 404
+    info = client.get(f"/fragments/albums/{album_id}/info").text
+    assert 'class="owned on"' in info and 'class="wanted on"' in info
+
+    # Saving the edit form keeps the formats.
+    form = {"artist_id": web_sample.artist_id, "title": "Dummy", "listen_later": "on"}
+    assert client.post(f"/albums/{album_id}", data=form | {"cd": "wanted"}).status_code == 200
+    album = client_lib.get_album(album_id)
+    assert (album.cd, album.vinyl, album.listen_later) == ("owned", "wanted", True)
+    new = {"artist_id": web_sample.artist_id, "title": "Third", "cd": "wanted", "vinyl": "wanted"}
+    created = client.post("/albums", data=new)
+    assert created.status_code == 200
+    assert client_lib.find_album(web_sample.artist_id, "Third").cd == "wanted"
+
+    page = client.get("/albums").text
+    for label in ("Wanted (CD)", "Owned (CD)", "Wanted (Vinyl)", "Owned (Vinyl)"):
+        assert f">{label}</option>" in page
+
+    def shown(**params):
+        text = client.get("/fragments/albums", params=params).text
+        return [title for title in ("Dummy", "Third") if f"<strong>{title}</strong>" in text]
+
+    assert shown() == ["Dummy", "Third"]
+    assert shown(own="cd-owned") == ["Dummy"]
+    assert shown(own="cd-wanted") == ["Third"]
+    assert shown(own="vinyl-wanted") == ["Dummy", "Third"]
+    assert shown(own="vinyl-owned") == []
+    assert shown(own="nonsense") == ["Dummy", "Third"]
+    assert shown(later="1") == ["Dummy"]
+    assert shown(later="1", own="cd-wanted") == []
+    assert 'value="cd-owned" selected' in client.get("/albums", params={"own": "cd-owned"}).text
+    artist_page = client.get(f"/artists/{web_sample.artist_id}").text
+    assert "<th>Formats</th>" in artist_page and 'class="picker compact"' in artist_page
+
+
+def test_artist_notes(client: TestClient, client_lib: Library, web_sample: Sample):
+    artist_id = web_sample.artist_id
+    assert 'name="notes"' in client.get(f"/fragments/artists/{artist_id}/edit").text
+    form = {"name": "Portishead", "notes": "Saw them in 2022", "listen_later": "on"}
+    info = client.post(f"/artists/{artist_id}", data=form).text
+    assert "Notes" in info and "Saw them in 2022" in info
+    artist = client_lib.get_artist(artist_id)
+    assert (artist.notes, artist.listen_later) == ("Saw them in 2022", True)
+
+
+def test_song_notes_and_music_video(client: TestClient, client_lib: Library, web_sample: Sample):
+    song_id = web_sample.song_ids[0]
+    page = client.get(f"/songs/{song_id}").text
+    assert "Edit notes &amp; MV" in page and "Music video" not in page
+
+    edit = client.get(f"/fragments/songs/{song_id}/details").text
+    assert 'name="notes"' in edit and 'name="mv"' in edit
+    form = {"notes": "Best on headphones", "mv": "https://youtu.be/dQw4w9WgXcQ?t=3"}
+    info = client.post(f"/songs/{song_id}/details", data=form)
+    assert info.status_code == 200 and "Best on headphones" in info.text
+    assert "Music video" in info.text
+    assert 'src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"' in info.text
+    assert 'href="https://www.youtube.com/watch?v=dQw4w9WgXcQ"' in info.text
+    song = client_lib.get_song(song_id)
+    assert (song.notes, song.mv, song.rating) == ("Best on headphones", "dQw4w9WgXcQ", None)
+
+    bad = client.post(f"/songs/{song_id}/details", data={"mv": "https://evil.com/x"})
+    assert bad.status_code == 422 and "YouTube" in bad.text and "https://evil.com/x" in bad.text
+    assert client_lib.get_song(song_id).mv == "dQw4w9WgXcQ"
+    assert client.post("/songs/99/details", data=form).status_code == 404
+    assert ">MV</small>" in client.get(f"/fragments/songs/{song_id}").text
+
+    # The edit row and the add form take it too, also as a bare id.
+    row = {"title": "Mysterons", "mv": "a1B2c3D4e5F", "ctx": "album"}
+    assert client.post(f"/songs/{song_id}", data=row).status_code == 200
+    assert client_lib.get_song(song_id).mv == "a1B2c3D4e5F"
+    assert client.post(f"/songs/{song_id}", data=row | {"mv": "short"}).status_code == 422
+    new = {"artist_id": web_sample.artist_id, "title": "Roads", "mv": "a1B2c3D4e5F"}
+    assert client.post("/songs", data=new).status_code == 200
+    bad_new = client.post("/songs", data=new | {"title": "Glory Box", "mv": "nope"})
+    assert bad_new.status_code == 422 and "YouTube" in bad_new.text

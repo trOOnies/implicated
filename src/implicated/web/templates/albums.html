@@ -4,9 +4,16 @@
 {% block content %}
 <div class="page-head">
   <h1>Albums</h1>
-  <input type="search" name="q" value="{{ q }}" placeholder="Filter by title or artist…"
-         hx-get="/fragments/albums" hx-trigger="input changed delay:300ms, search"
-         hx-target="#albums" hx-swap="innerHTML">
+  <form class="filters" hx-get="/fragments/albums" hx-target="#albums" hx-swap="innerHTML"
+        hx-trigger="input changed delay:300ms, change, search">
+    <input type="search" name="q" value="{{ q }}" placeholder="Filter by title or artist…">
+    <select name="own" aria-label="CD or vinyl">
+      <option value="">Any format</option>
+      {% for value, (fmt, state, label) in format_filters.items() %}<option value="{{ value }}" {% if own == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <label class="check"><input type="checkbox" name="favorites" value="1" {% if favorites %}checked{% endif %}> Favorites</label>
+    <label class="check"><input type="checkbox" name="later" value="1" {% if later %}checked{% endif %}> Listen later</label>
+  </form>
 </div>
 <section id="albums">
   {% include "_album_grid.html" %}

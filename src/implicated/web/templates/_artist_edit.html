@@ -12,7 +12,11 @@
     </div>
     <label>Description <textarea name="bio" rows="4">{{ artist.bio or '' }}</textarea></label>
     <label>Wikipedia <input name="wiki" type="url" placeholder="https://en.wikipedia.org/wiki/…" value="{{ artist.wiki or '' }}"></label>
-    <label class="check"><input type="checkbox" name="favorite" {% if artist.favorite %}checked{% endif %}> Favorite</label>
+    <label>Notes <textarea name="notes" rows="4" placeholder="Your own notes; imports leave them alone">{{ artist.notes or '' }}</textarea></label>
+    <div class="row">
+      <label class="check"><input type="checkbox" name="favorite" {% if artist.favorite %}checked{% endif %}> Favorite</label>
+      <label class="check"><input type="checkbox" name="listen_later" {% if artist.listen_later %}checked{% endif %}> Listen later</label>
+    </div>
     <div class="row">
       <button type="submit">Save</button>
       <button type="button" class="secondary" hx-get="/fragments/artists/{{ artist.id }}/info"

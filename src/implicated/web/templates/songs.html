@@ -13,6 +13,7 @@
       <option value="recent" {% if order == 'recent' %}selected{% endif %}>Recently played</option>
     </select>
     <label class="check"><input type="checkbox" name="favorites" value="1" {% if favorites %}checked{% endif %}> Favorites</label>
+    <label class="check"><input type="checkbox" name="later" value="1" {% if later %}checked{% endif %}> Listen later</label>
   </form>
 </div>
 <section id="songs" class="card">

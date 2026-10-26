@@ -1,6 +1,6 @@
 {% if albums %}
 <table class="sortable">
-  <thead><tr><th></th><th data-type="number">Year</th><th>Title</th>{% if show_artist %}<th>Artist</th>{% endif %}<th>Type</th><th data-type="number">Rating</th><th data-type="number">Songs</th><th data-type="number">Lyrics</th><th data-type="number">Length</th><th data-type="number">Plays</th><th></th></tr></thead>
+  <thead><tr><th></th><th data-type="number">Year</th><th>Title</th>{% if show_artist %}<th>Artist</th>{% endif %}<th>Type</th><th data-type="number">Rating</th><th data-type="number">Songs</th><th data-type="number">Lyrics</th><th data-type="number">Length</th><th data-type="number">Plays</th><th>Formats</th><th></th></tr></thead>
   <tbody>
   {% for a in albums %}
     <tr>
@@ -15,7 +15,13 @@
       <td title="{{ a.lyrics_count }} of {{ with_words }} songs have lyrics{% if a.no_lyrics_count %}; {{ a.no_lyrics_count }} have none to have{% endif %}" data-sort="{{ a.lyrics_count / with_words if with_words else '' }}">{{ a.lyrics_count | percent(with_words) }}</td>
       <td data-sort="{{ a.total_seconds or '' }}">{{ a.total_seconds | duration }}</td>
       <td>{{ a.play_count }}</td>
-      <td>{% with kind='album', record_id=a.album.id, favorite=a.album.favorite %}{% include "_fav.html" %}{% endwith %}</td>
+      <td data-sort="{{ a.album.cd or '' }} {{ a.album.vinyl or '' }}">
+        <div class="pickers">{% with album=a.album, compact=True %}{% for fmt in ('cd', 'vinyl') %}{% include "_format_picker.html" %}{% endfor %}{% endwith %}</div>
+      </td>
+      <td class="actions">
+        {% with kind='album', record_id=a.album.id, favorite=a.album.favorite %}{% include "_fav.html" %}{% endwith %}
+        {% with kind='album', record_id=a.album.id, later=a.album.listen_later %}{% include "_later.html" %}{% endwith %}
+      </td>
     </tr>
   {% endfor %}
   </tbody>

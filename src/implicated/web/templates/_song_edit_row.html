@@ -19,7 +19,9 @@
         </select>
       </label>
       <label>Notes <input name="notes" value="{{ s.song.notes or '' }}"></label>
+      <label>Music video <input name="mv" placeholder="YouTube link or id" value="{{ s.song.mv or '' }}"></label>
       <label class="check"><input type="checkbox" name="favorite" {% if s.song.favorite %}checked{% endif %}> Favorite</label>
+      <label class="check"><input type="checkbox" name="listen_later" {% if s.song.listen_later %}checked{% endif %}> Listen later</label>
       <label class="check"><input type="checkbox" name="no_lyrics" {% if s.song.no_lyrics %}checked{% endif %}> No lyrics</label>
       <button type="button" hx-post="/songs/{{ s.song.id }}" hx-include="closest tr"
               hx-target="closest tr" hx-swap="outerHTML">Save</button>

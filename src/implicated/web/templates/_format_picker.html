@@ -1,0 +1,14 @@
+{# Says whether you want or own the `album` on `fmt` ("cd" or "vinyl"); `compact` is for tables. #}
+{% set name = 'CD' if fmt == 'cd' else 'Vinyl' %}
+{% set current = album[fmt] or '' %}
+<span class="picker{% if compact %} compact{% endif %}" role="group" aria-label="{{ name }}">
+  <span class="picker-label">{{ name }}</span>
+  {% for state, text in (('', '–'), ('wanted', 'Wanted'), ('owned', 'Owned')) %}
+  <button type="button" class="{{ state or 'neither' }}{% if state == current %} on{% endif %}"
+          aria-pressed="{{ 'true' if state == current else 'false' }}"
+          hx-post="/albums/{{ album.id }}/formats/{{ fmt }}"
+          hx-vals='{"state": "{{ state }}"{% if compact %}, "compact": "1"{% endif %}}'
+          hx-target="closest .picker" hx-swap="outerHTML"
+          title="{{ text ~ ' (' ~ name ~ ')' if state else 'Neither wanted nor owned on ' ~ name }}">{{ text }}</button>
+  {% endfor %}
+</span>

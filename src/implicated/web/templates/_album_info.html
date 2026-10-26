@@ -4,6 +4,7 @@
   <div class="row">
     <h1>{{ album.title }}</h1>
     {% with kind='album', record_id=album.id, favorite=album.favorite %}{% include "_fav.html" %}{% endwith %}
+    {% with kind='album', record_id=album.id, later=album.listen_later %}{% include "_later.html" %}{% endwith %}
     <span class="spacer"></span>
     <button type="button" class="secondary" hx-get="/fragments/albums/{{ album.id }}/edit"
             hx-target="#album-info" hx-swap="outerHTML">Edit</button>
@@ -19,6 +20,9 @@
     · {{ play_count }} plays
   </p>
   <p class="stars big">{{ album.rating | stars }}</p>
+  <div class="pickers">
+    {% for fmt in ('cd', 'vinyl') %}{% include "_format_picker.html" %}{% endfor %}
+  </div>
   {% if album.notes %}<p class="bio">{{ album.notes }}</p>{% endif %}
   </div>
 </section>

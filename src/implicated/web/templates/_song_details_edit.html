@@ -1,0 +1,13 @@
+<section id="song-info" class="card info">
+  <form class="stack" hx-post="/songs/{{ song.id }}/details" hx-target="#song-info" hx-swap="outerHTML">
+    <h1>{{ song.title }}</h1>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <label>Notes <textarea name="notes" rows="5">{{ form.get('notes', '') }}</textarea></label>
+    <label>Music video <input name="mv" placeholder="YouTube link (https://www.youtube.com/watch?v=…) or just the video id" value="{{ form.get('mv', '') }}"></label>
+    <div class="row">
+      <button type="submit">Save</button>
+      <button type="button" class="secondary" hx-get="/fragments/songs/{{ song.id }}/info"
+              hx-target="#song-info" hx-swap="outerHTML">Cancel</button>
+    </div>
+  </form>
+</section>

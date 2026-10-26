@@ -6,6 +6,7 @@
   <div class="row">
     <h1>{{ artist.name }}</h1>
     {% with kind='artist', record_id=artist.id, favorite=artist.favorite %}{% include "_fav.html" %}{% endwith %}
+    {% with kind='artist', record_id=artist.id, later=artist.listen_later %}{% include "_later.html" %}{% endwith %}
     <span class="spacer"></span>
     <button type="button" class="secondary" hx-get="/fragments/artists/{{ artist.id }}/edit"
             hx-target="#artist-info" hx-swap="outerHTML">Edit</button>
@@ -32,6 +33,10 @@
   {% if artist.bio %}<p class="bio">{{ artist.bio }}</p>{% endif %}
   {% if artist.wiki %}
   <p class="small"><a href="{{ artist.wiki }}" target="_blank" rel="noopener noreferrer nofollow">Read more on Wikipedia ↗</a></p>
+  {% endif %}
+  {% if artist.notes %}
+  <h2 class="members-head">Notes</h2>
+  <p class="bio">{{ artist.notes }}</p>
   {% endif %}
   </div>
 </section>
