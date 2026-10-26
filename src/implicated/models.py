@@ -207,6 +207,7 @@ class SongSummary:
     play_count: int = 0
     last_played: str | None = None
     video_count: int = 0
+    album_cover: str | None = None
 
 
 @dataclass

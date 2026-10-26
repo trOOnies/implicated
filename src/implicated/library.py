@@ -659,7 +659,7 @@ class Library:
             "playlist": "ps.position",
         }[order]
         sql = f"""
-            SELECT s.*, ar.name AS x_artist, al.title AS x_album,
+            SELECT s.*, ar.name AS x_artist, al.title AS x_album, al.cover AS x_album_cover,
                    (SELECT COUNT(*) FROM plays WHERE song_id = s.id) AS x_plays,
                    (SELECT MAX(played_at) FROM plays WHERE song_id = s.id) AS x_last_played,
                    (SELECT COUNT(*) FROM song_videos WHERE song_id = s.id) AS x_videos
@@ -700,6 +700,7 @@ class Library:
                     extra["plays"],
                     extra["last_played"],
                     extra["videos"],
+                    extra["album_cover"],
                 )
             )
         return out

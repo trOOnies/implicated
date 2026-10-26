@@ -737,6 +737,18 @@ def test_missing_lyrics_filters(client: TestClient, client_lib: Library, web_sam
     assert 'name="missing" value="1" checked' in client.get("/albums?missing=1").text
 
 
+def test_song_rows_show_the_album_cover(
+    client: TestClient, client_lib: Library, web_sample: Sample, image
+):
+    rows = client.get("/fragments/songs").text
+    assert '<span class="cover mini none" aria-hidden="true">♪</span>\nDummy</a>' in rows
+    client_lib.set_cover(web_sample.album_id, image())
+    cover = client_lib.get_album(web_sample.album_id).cover
+    rows = client.get("/fragments/songs").text
+    src = f"/api/albums/{web_sample.album_id}/cover?v={cover}"
+    assert f'<img class="cover mini" src="{src}"' in rows
+
+
 def test_discography_is_full_width(client: TestClient, web_sample: Sample):
     page = client.get(f"/artists/{web_sample.artist_id}").text
     discography = page.index("<h2>Discography</h2>")
