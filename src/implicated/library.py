@@ -297,7 +297,16 @@ class Library:
 
     # Artists
 
-    def list_artists(self, q: str | None = None) -> list[ArtistSummary]:
+    def list_artists(
+        self,
+        q: str | None = None,
+        *,
+        country: str | None = None,
+        genre: str | None = None,
+        language: str | None = None,
+    ) -> list[ArtistSummary]:
+        """Artists, optionally only those from ``country`` or with ``genre`` or ``language``
+        among theirs (all ignoring case)."""
         sql = """
             SELECT a.*,
                    (SELECT COUNT(*) FROM albums WHERE artist_id = a.id) AS x_albums,
@@ -306,10 +315,21 @@ class Library:
                      WHERE s.artist_id = a.id) AS x_plays
               FROM artists a
              WHERE (:q IS NULL OR a.name LIKE '%' || :q || '%')
+               AND (:country IS NULL OR a.country = :country COLLATE NOCASE)
+               AND (:genre IS NULL OR EXISTS (SELECT 1 FROM json_each(a.genres)
+                                               WHERE value = :genre COLLATE NOCASE))
+               AND (:language IS NULL OR EXISTS (SELECT 1 FROM json_each(a.languages)
+                                                  WHERE value = :language COLLATE NOCASE))
              ORDER BY a.favorite DESC, a.name COLLATE NOCASE
         """
+        params = {
+            "q": q or None,
+            "country": country or None,
+            "genre": genre or None,
+            "language": language or None,
+        }
         with self.connect() as conn:
-            rows = conn.execute(sql, {"q": q or None}).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         out = []
         for row in rows:
             own, extra = _split(row, "x_")

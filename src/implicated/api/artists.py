@@ -10,8 +10,14 @@ router = APIRouter(prefix="/artists", tags=["Artists"])
 
 
 @router.get("")
-def list_artists(lib: Lib, q: str | None = None) -> list[ArtistSummary]:
-    return lib.list_artists(q)
+def list_artists(
+    lib: Lib,
+    q: str | None = None,
+    country: str | None = None,
+    genre: str | None = None,
+    language: str | None = None,
+) -> list[ArtistSummary]:
+    return lib.list_artists(q, country=country, genre=genre, language=language)
 
 
 @router.post("", status_code=201)

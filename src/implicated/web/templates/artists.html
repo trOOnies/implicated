@@ -4,13 +4,22 @@
 {% block content %}
 <div class="page-head">
   <h1>Artists</h1>
-  <input type="search" name="q" value="{{ q }}" placeholder="Filter artists…"
-         hx-get="/fragments/artists" hx-trigger="input changed delay:300ms, search"
-         hx-target="#artists" hx-swap="innerHTML">
+  <form id="artist-filters" class="filters" hx-get="/fragments/artists" hx-target="#artists"
+        hx-swap="innerHTML" hx-trigger="input changed delay:300ms, change, search">
+    <input type="search" name="q" value="{{ q }}" placeholder="Filter artists…">
+    {% for name, label, options, selected in (('country', 'origin', countries, country),
+                                              ('genre', 'genre', genres, genre),
+                                              ('language', 'language', languages, language)) %}
+    <select name="{{ name }}" aria-label="{{ label | capitalize }}">
+      <option value="">Any {{ label }}</option>
+      {% for value in options %}<option value="{{ value }}" {% if value | lower == selected | lower %}selected{% endif %}>{{ value }}</option>{% endfor %}
+    </select>
+    {% endfor %}
+  </form>
 </div>
 <div class="layout">
   <section id="artists" hx-get="/fragments/artists" hx-trigger="artists-changed from:body"
-           hx-include="[name='q']" hx-swap="innerHTML">
+           hx-include="#artist-filters" hx-swap="innerHTML">
     {% include "_artists.html" %}
   </section>
   <aside class="card">

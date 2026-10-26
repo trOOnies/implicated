@@ -252,14 +252,59 @@ def help_page(request: Request):
 # Artists
 
 
+def _artist_options(lib: Library) -> dict[str, list[str]]:
+    """The origins, genres and languages of every artist, for the Artists page filters."""
+    artists = [a.artist for a in lib.list_artists()]
+
+    def sorted_set(values) -> list[str]:
+        unique = {v.casefold(): v for v in values if v}
+        return sorted(unique.values(), key=str.casefold)
+
+    return {
+        "countries": sorted_set(a.country for a in artists),
+        "genres": sorted_set(g for a in artists for g in a.genres),
+        "languages": sorted_set(lang for a in artists for lang in a.languages),
+    }
+
+
+def _artists_query(
+    q: str | None, country: str | None, genre: str | None, language: str | None
+) -> dict:
+    return {"q": q or None, "country": country, "genre": genre, "language": language}
+
+
 @router.get("/artists")
-def artists_page(request: Request, lib: Lib, q: str | None = None):
-    return render(request, "artists.html", artists=lib.list_artists(q), q=q or "")
+def artists_page(
+    request: Request,
+    lib: Lib,
+    q: str | None = None,
+    country: str | None = None,
+    genre: str | None = None,
+    language: str | None = None,
+):
+    return render(
+        request,
+        "artists.html",
+        artists=lib.list_artists(**_artists_query(q, country, genre, language)),
+        q=q or "",
+        country=country or "",
+        genre=genre or "",
+        language=language or "",
+        **_artist_options(lib),
+    )
 
 
 @router.get("/fragments/artists")
-def artists_fragment(request: Request, lib: Lib, q: str | None = None):
-    return render(request, "_artists.html", artists=lib.list_artists(q))
+def artists_fragment(
+    request: Request,
+    lib: Lib,
+    q: str | None = None,
+    country: str | None = None,
+    genre: str | None = None,
+    language: str | None = None,
+):
+    artists = lib.list_artists(**_artists_query(q, country, genre, language))
+    return render(request, "_artists.html", artists=artists)
 
 
 @router.post("/artists")

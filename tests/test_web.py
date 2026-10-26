@@ -712,6 +712,19 @@ def test_song_page_shows_the_album_cover(
     assert "/cover?v=" not in single_page
 
 
+def test_artist_filters(client: TestClient, client_lib: Library, web_sample: Sample):
+    client_lib.create_artist(ArtistIn("Soda Stereo", "Argentina", None, ["Rock"], ["Spanish"]))
+    page = client.get("/artists", params={"genre": "rock"}).text
+    assert '<option value="Argentina" >Argentina</option>' in page
+    assert '<option value="Rock" selected>Rock</option>' in page
+    assert '<option value="Spanish" >Spanish</option>' in page
+    assert "Soda Stereo" in page and "Portishead" not in page
+    origin = client.get("/fragments/artists", params={"country": "United Kingdom"}).text
+    assert "Portishead" in origin and "Soda Stereo" not in origin
+    nobody = client.get("/fragments/artists", params={"language": "Spanish", "genre": "Trip hop"})
+    assert "No artists" in nobody.text
+
+
 def test_discography_is_full_width(client: TestClient, web_sample: Sample):
     page = client.get(f"/artists/{web_sample.artist_id}").text
     discography = page.index("<h2>Discography</h2>")

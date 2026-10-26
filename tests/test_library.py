@@ -823,3 +823,18 @@ def test_reload_lyrics(files_lib: Library, lib: Library, sample: Sample):
     # Without an info folder there are no files.
     assert lib.lyrics_path(sample.song_ids[0]) is None
     assert lib.reload_lyrics(sample.song_ids[0]).lyrics is None
+
+
+def test_list_artists_by_origin_genre_and_language(lib: Library, sample: Sample):
+    lib.create_artist(ArtistIn("Soda Stereo", "Argentina", genres=["Rock"], languages=["Spanish"]))
+    lib.create_artist(ArtistIn("Air", "France", genres=["Trip hop"], languages=["English"]))
+
+    def names(**filters):
+        return [a.artist.name for a in lib.list_artists(**filters)]
+
+    assert names(country="argentina") == ["Soda Stereo"]
+    assert names(genre="trip HOP") == ["Air", "Portishead"]
+    assert names(language="English") == ["Air"]
+    assert names(genre="Trip hop", country="France") == ["Air"]
+    assert names(genre="Rock", language="English") == []
+    assert names(country="", genre=None) == ["Air", "Portishead", "Soda Stereo"]
