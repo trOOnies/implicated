@@ -52,4 +52,4 @@ song) have no words, so they are never missing lyrics and do not count in that s
 - `src/implicated/library.py`: SQLite storage and stats
 - `src/implicated/importer.py`: YAML importer for artists, members, albums, songs, covers and lyrics
 - `src/implicated/api/`: JSON routes under `/api/...`, one router (and API page tag) per resource
-- `src/implicated/web/`: server-rendered pages (Jinja2 + vendored htmx, plain CSS, no build step)
+- `src/implicated/web/`: server-rendered pages (Jinja2 + vendored htmx, plain CSS, a little plain JS for sortable tables, no build step)

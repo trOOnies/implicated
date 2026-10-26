@@ -5,14 +5,14 @@
   {% if ctx == 'album' %}<td class="muted">{{ s.song.track_number or '' }}</td>{% endif %}
   <td><button type="button" class="play" title="Log a listen" hx-post="/songs/{{ s.song.id }}/play"
               hx-target="closest tr" hx-swap="outerHTML">▶</button></td>
-  <td><a href="/songs/{{ s.song.id }}">{{ s.song.title }}</a>{% if ctx == 'album' %}{% if s.song.no_lyrics %} {{ none_tag }}{% elif not s.song.lyrics %} {{ missing_tag }}{% endif %}{% endif %}{% if s.song.notes %} <small class="muted" title="{{ s.song.notes }}">✎</small>{% endif %}</td>
+  <td data-sort="{{ s.song.title }}"><a href="/songs/{{ s.song.id }}">{{ s.song.title }}</a>{% if ctx == 'album' %}{% if s.song.no_lyrics %} {{ none_tag }}{% elif not s.song.lyrics %} {{ missing_tag }}{% endif %}{% endif %}{% if s.song.notes %} <small class="muted" title="{{ s.song.notes }}">✎</small>{% endif %}</td>
   {% if ctx == 'all' %}<td><a href="/artists/{{ s.song.artist_id }}">{{ s.artist_name }}</a></td>{% endif %}
   {% if ctx != 'album' %}<td>{% if s.song.album_id %}<a href="/albums/{{ s.song.album_id }}">{{ s.album_title }}</a>{% else %}<span class="muted">single</span>{% endif %}</td>{% endif %}
-  {% if ctx == 'all' %}{% if s.song.no_lyrics %}<td>{{ none_tag }}</td>{% elif not s.song.lyrics %}<td>{{ missing_tag }}</td>{% else %}<td></td>{% endif %}{% endif %}
-  <td>{{ s.song.duration_seconds | duration }}</td>
-  <td class="stars">{{ s.song.rating | stars }}</td>
+  {% if ctx == 'all' %}{% if s.song.no_lyrics %}<td data-sort="1">{{ none_tag }}</td>{% elif not s.song.lyrics %}<td data-sort="2">{{ missing_tag }}</td>{% else %}<td data-sort="0"></td>{% endif %}{% endif %}
+  <td data-sort="{{ s.song.duration_seconds or '' }}">{{ s.song.duration_seconds | duration }}</td>
+  <td class="stars" data-sort="{{ s.song.rating if s.song.rating is not none else '' }}">{{ s.song.rating | stars }}</td>
   <td>{{ s.play_count }}</td>
-  <td class="muted">{{ s.last_played | when }}</td>
+  <td class="muted" data-sort="{{ s.last_played or '' }}">{{ s.last_played | when }}</td>
   <td class="actions">
     {% with kind='song', record_id=s.song.id, favorite=s.song.favorite %}{% include "_fav.html" %}{% endwith %}
     <button type="button" class="link" hx-get="/fragments/songs/{{ s.song.id }}/edit"

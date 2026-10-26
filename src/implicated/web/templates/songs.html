@@ -7,7 +7,7 @@
   <form class="filters" hx-get="/fragments/songs" hx-target="#songs" hx-swap="innerHTML"
         hx-trigger="input changed delay:300ms, change, songs-changed from:body">
     <input type="search" name="q" value="{{ q }}" placeholder="Search title, artist, album…">
-    <select name="order">
+    <select name="order" data-sort-reset="songs">
       <option value="title" {% if order == 'title' %}selected{% endif %}>A–Z</option>
       <option value="plays" {% if order == 'plays' %}selected{% endif %}>Most played</option>
       <option value="recent" {% if order == 'recent' %}selected{% endif %}>Recently played</option>

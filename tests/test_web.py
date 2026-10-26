@@ -187,8 +187,8 @@ def test_lyrics_on_album_pages(client: TestClient, client_lib: Library, web_samp
     assert "missing lyrics</span>" not in client.get(f"/artists/{web_sample.artist_id}").text
     songs = client.get("/songs").text
     assert "Missing lyrics</th>" in songs
-    assert songs.count('<td><span class="tag missing"') == 1
-    assert songs.count("<td></td>") == 1
+    assert songs.count('<td data-sort="2"><span class="tag missing"') == 1
+    assert songs.count('<td data-sort="0"></td>') == 1
 
 
 def test_songs_with_no_lyrics(client: TestClient, client_lib: Library, web_sample: Sample):
@@ -199,7 +199,7 @@ def test_songs_with_no_lyrics(client: TestClient, client_lib: Library, web_sampl
     assert "0% with lyrics" in page and "1 have none to have" in page
     assert page.count("missing lyrics</span>") == 1 and page.count("no lyrics</span>") == 1
     songs = client.get("/songs").text
-    assert songs.count('<td><span class="tag none"') == 1
+    assert songs.count('<td data-sort="1"><span class="tag none"') == 1
     assert "This song has no lyrics." in client.get(f"/songs/{sour_times.id}").text
 
     client_lib.lyrics_path(web_sample.song_ids[0]).write_text("Take a ride")
@@ -219,6 +219,15 @@ def test_songs_with_no_lyrics(client: TestClient, client_lib: Library, web_sampl
     added = {"artist_id": web_sample.artist_id, "title": "Interlude", "no_lyrics": "on"}
     assert client.post("/songs", data=added).status_code == 200
     assert client_lib.find_song(web_sample.artist_id, None, "Interlude").no_lyrics
+
+
+def test_tables_are_sortable(client: TestClient, web_sample: Sample):
+    page = client.get(f"/artists/{web_sample.artist_id}").text
+    assert page.count('<table class="sortable">') == 1  # discography
+    assert page.count('<table class="songs sortable">') == 1
+    assert "/static/sort.js" in page
+    assert '<th data-type="number">Plays</th>' in page
+    assert client.get("/static/sort.js").status_code == 200
 
 
 def test_song_page(client: TestClient, client_lib: Library, web_sample: Sample):

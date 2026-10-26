@@ -1,15 +1,15 @@
 {# ctx is "all", "artist" or "album"; it decides which columns rows show. #}
 {% if songs %}
-<table class="songs">
+<table class="songs sortable">
   <thead>
     <tr>
-      {% if ctx == 'album' %}<th>#</th>{% endif %}
+      {% if ctx == 'album' %}<th data-type="number">#</th>{% endif %}
       <th></th><th>Title</th>
       {% if ctx == 'all' %}<th>Artist</th>{% endif %}
       {% if ctx != 'album' %}<th>Album</th>{% endif %}
-      {% if ctx == 'all' %}<th>Missing lyrics</th>{% endif %}
-      <th>Length</th><th>Rating</th>
-      <th>Plays</th><th>Last played</th><th></th>
+      {% if ctx == 'all' %}<th data-type="number">Missing lyrics</th>{% endif %}
+      <th data-type="number">Length</th><th data-type="number">Rating</th>
+      <th data-type="number">Plays</th><th>Last played</th><th></th>
     </tr>
   </thead>
   <tbody hx-vals='{"ctx": "{{ ctx }}"}'>

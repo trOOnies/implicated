@@ -208,6 +208,12 @@ th, td { text-align: left; padding: .45rem .5rem; border-bottom: 1px solid var(-
 th { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
 tbody tr:last-child td { border-bottom: none; }
 td.actions { white-space: nowrap; text-align: right; }
+th button.sort { all: unset; cursor: pointer; }
+th button.sort:hover { color: var(--text); }
+th button.sort:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+th button.sort::after { content: " ↕"; opacity: .35; }
+th[aria-sort="ascending"] button.sort::after { content: " ▲"; opacity: 1; }
+th[aria-sort="descending"] button.sort::after { content: " ▼"; opacity: 1; }
 tr.editing td { background: var(--accent-soft); }
 
 /* Charts */
