@@ -328,8 +328,10 @@ def artist_songs(request: Request, lib: Lib, artist_id: int):
 async def update_artist(request: Request, lib: Lib, artist_id: int):
     form = await request.form()
     artist = found(lib.get_artist, artist_id)
+    data = artist_from_form(form)
+    data.rating = artist.rating  # set with the stars (see ``set_rating``)
     try:
-        found(lib.update_artist, artist_id, artist_from_form(form))
+        found(lib.update_artist, artist_id, data)
     except ValueError as exc:
         return render(request, "_artist_edit.html", status_code=422, error=str(exc), artist=artist)
     return render(
@@ -460,8 +462,9 @@ async def update_album(request: Request, lib: Lib, album_id: int):
     form = await request.form()
     album = found(lib.get_album, album_id)
     data = album_from_form(form)
-    # CD and vinyl have their own selectors (see ``set_album_format``), not edit form fields.
-    data.cd, data.vinyl = album.cd, album.vinyl
+    # The rating, CD and vinyl have their own controls (see ``set_rating`` and
+    # ``set_album_format``), not edit form fields.
+    data.rating, data.cd, data.vinyl = album.rating, album.cd, album.vinyl
     try:
         found(lib.update_album, album_id, data)
     except ValueError as exc:
@@ -847,6 +850,7 @@ async def update_song(request: Request, lib: Lib, song_id: int):
     song = found(lib.get_song, song_id)
     data = song_from_form(form)
     data.artist_id = song.artist_id
+    data.rating = song.rating  # set with the stars (see ``set_rating``)
     try:
         found(lib.update_song, song_id, data)
     except ValueError as exc:
@@ -893,6 +897,30 @@ async def play_song(request: Request, lib: Lib, song_id: int):
 def delete_song(lib: Lib, song_id: int):
     found(lib.delete_song, song_id)
     return Response(headers={"HX-Trigger": "songs-changed, library-changed"})
+
+
+# Ratings
+
+
+@router.post("/rating/{kind}/{record_id}")
+async def set_rating(request: Request, lib: Lib, kind: str, record_id: int):
+    """Rate with the stars; an empty ``rating`` takes the rating away."""
+    if kind not in ("artist", "album", "song"):
+        raise HTTPException(404)
+    form = await request.form()
+    try:
+        rating = found(lib.set_rating, kind, record_id, _int(form, "rating"))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return render(
+        request,
+        "_rating.html",
+        trigger=("library-changed",),
+        kind=kind,
+        record_id=record_id,
+        rating=rating,
+        size="big" if form.get("size") == "big" else None,
+    )
 
 
 # Favorites and listen later

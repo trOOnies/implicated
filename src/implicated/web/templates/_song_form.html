@@ -20,7 +20,7 @@
   <label>Rating
     <select name="rating">
       <option value="">–</option>
-      {% for r in range(5, -1, -1) %}<option value="{{ r }}" {% if form.get('rating') == r | string %}selected{% endif %}>{{ r | stars }}</option>{% endfor %}
+      {% for r in range(5, 0, -1) %}<option value="{{ r }}" {% if form.get('rating') == r | string %}selected{% endif %}>{{ r | stars }}</option>{% endfor %}
     </select>
   </label>
   <label>Music video <input name="mv" placeholder="YouTube link or id" value="{{ form.get('mv', '') }}"></label>

@@ -10,7 +10,7 @@
   {% if ctx != 'album' %}<td>{% if s.song.album_id %}<a href="/albums/{{ s.song.album_id }}">{{ s.album_title }}</a>{% else %}<span class="muted">single</span>{% endif %}</td>{% endif %}
   {% if ctx == 'all' %}{% if s.song.no_lyrics %}<td data-sort="1">{{ none_tag }}</td>{% elif not s.song.lyrics %}<td data-sort="2">{{ missing_tag }}</td>{% else %}<td data-sort="0"></td>{% endif %}{% endif %}
   <td data-sort="{{ s.song.duration_seconds or '' }}">{{ s.song.duration_seconds | duration }}</td>
-  <td class="stars" data-sort="{{ s.song.rating if s.song.rating is not none else '' }}">{{ s.song.rating | stars }}</td>
+  <td data-sort="{{ s.song.rating or '' }}">{% with kind='song', record_id=s.song.id, rating=s.song.rating, size=None %}{% include "_rating.html" %}{% endwith %}</td>
   <td>{{ s.play_count }}</td>
   <td class="muted" data-sort="{{ s.last_played or '' }}">{{ s.last_played | when }}</td>
   <td class="actions">

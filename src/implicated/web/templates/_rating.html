@@ -1,0 +1,13 @@
+{# Clickable 1–5 stars rating the `kind` ("artist", "album", "song") `record_id`; clicking the
+   current rating takes it away. `size` is "big" on the artist, album and song pages. #}
+<span class="rating{% if size %} {{ size }}{% endif %}" role="group" aria-label="Rating: {{ rating ~ ' of 5' if rating else 'none' }}">
+  {%- for n in range(1, 6) %}
+  <button type="button" class="star{% if rating and n <= rating %} on{% endif %}"
+          hx-post="/rating/{{ kind }}/{{ record_id }}"
+          hx-vals='{"rating": "{{ '' if rating == n else n }}"{% if size %}, "size": "{{ size }}"{% endif %}}'
+          hx-target="closest .rating" hx-swap="outerHTML"
+          aria-pressed="{{ 'true' if rating == n else 'false' }}"
+          aria-label="{{ 'Remove the rating' if rating == n else n ~ (' star' if n == 1 else ' stars') }}"
+          title="{{ 'Remove the rating' if rating == n else n ~ (' star' if n == 1 else ' stars') }}"></button>
+  {%- endfor %}
+</span>

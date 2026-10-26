@@ -12,12 +12,6 @@
         </select>
       </label>
       <label>Length <input name="duration" placeholder="3:45" class="narrow" value="{{ s.song.duration_seconds | duration if s.song.duration_seconds else '' }}"></label>
-      <label>Rating
-        <select name="rating">
-          <option value="">–</option>
-          {% for r in range(5, -1, -1) %}<option value="{{ r }}" {% if s.song.rating == r %}selected{% endif %}>{{ r | stars }}</option>{% endfor %}
-        </select>
-      </label>
       <label>Notes <input name="notes" value="{{ s.song.notes or '' }}"></label>
       <label>Music video <input name="mv" placeholder="YouTube link or id" value="{{ s.song.mv or '' }}"></label>
       <label class="check"><input type="checkbox" name="favorite" {% if s.song.favorite %}checked{% endif %}> Favorite</label>

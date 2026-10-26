@@ -9,7 +9,7 @@
       <td><a href="/albums/{{ a.album.id }}">{{ a.album.title }}</a></td>
       {% if show_artist %}<td>{{ a.artist_name }}</td>{% endif %}
       <td><span class="tag">{{ a.album.kind }}</span></td>
-      <td class="stars" data-sort="{{ a.album.rating if a.album.rating is not none else '' }}">{{ a.album.rating | stars }}</td>
+      <td data-sort="{{ a.album.rating or '' }}">{% with kind='album', record_id=a.album.id, rating=a.album.rating, size=None %}{% include "_rating.html" %}{% endwith %}</td>
       <td>{{ a.song_count }}</td>
       {% set with_words = a.song_count - a.no_lyrics_count %}
       <td title="{{ a.lyrics_count }} of {{ with_words }} songs have lyrics{% if a.no_lyrics_count %}; {{ a.no_lyrics_count }} have none to have{% endif %}" data-sort="{{ a.lyrics_count / with_words if with_words else '' }}">{{ a.lyrics_count | percent(with_words) }}</td>

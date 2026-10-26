@@ -153,10 +153,13 @@ def test_album_forms(client: TestClient, client_lib: Library, web_sample: Sample
     assert client.post("/albums", data=bad_kind).status_code == 422
 
     url = f"/albums/{third.id}"
-    update = {"artist_id": web_sample.artist_id, "title": "Third", "rating": "4", "notes": "!"}
+    client_lib.set_rating("album", third.id, 4)
+    assert 'name="rating"' not in client.get(f"/fragments/albums/{third.id}/edit").text
+    update = {"artist_id": web_sample.artist_id, "title": "Third", "rating": "1", "notes": "!"}
     response = client.post(url, data=update)
-    assert response.status_code == 200 and "★★★★☆" in response.text
-    assert client.post(url, data={**update, "rating": "8"}).status_code == 422
+    assert response.status_code == 200 and response.text.count('class="star on"') == 4
+    assert client_lib.get_album(third.id).rating == 4  # the stars rate, not the form
+    assert client.post(url, data={**update, "title": " "}).status_code == 422
 
     deleted = client.post(f"{url}/delete")
     assert deleted.headers["hx-redirect"] == f"/artists/{web_sample.artist_id}"
@@ -291,10 +294,12 @@ def test_song_rows(client: TestClient, client_lib: Library, web_sample: Sample):
     edit = client.get(f"/fragments/songs/{song_id}/edit", params={"ctx": "nonsense"}).text
     assert 'value="all"' in edit and "Dummy" in edit
 
-    form = {"title": "Mysterons", "album_id": web_sample.album_id, "rating": "5", "ctx": "artist"}
+    assert 'name="rating"' not in edit
+    client_lib.set_rating("song", song_id, 5)
+    form = {"title": "Mysterons", "album_id": web_sample.album_id, "rating": "2", "ctx": "artist"}
     updated = client.post(f"/songs/{song_id}", data=form)
-    assert updated.status_code == 200 and "★★★★★" in updated.text
-    assert client.post(f"/songs/{song_id}", data=form | {"rating": "7"}).status_code == 422
+    assert updated.status_code == 200 and updated.text.count('class="star on"') == 5
+    assert client.post(f"/songs/{song_id}", data=form | {"title": " "}).status_code == 422
     assert client.post("/songs/99", data=form).status_code == 404
 
     played = client.post(f"/songs/{song_id}/play", data={"ctx": "all"})
@@ -657,3 +662,34 @@ def test_built_in_playlist_pages(client: TestClient, client_lib: Library, web_sa
     client.post(f"/albums/{web_sample.album_id}/playlists", data={"playlist_id": later})
     assert all(s.song.listen_later for s in client_lib.list_songs())
     assert 'id="song-info-slot"' in client.get(f"/songs/{first}").text
+
+
+def test_rating_stars(client: TestClient, client_lib: Library, web_sample: Sample):
+    records = {
+        "artist": (web_sample.artist_id, f"/artists/{web_sample.artist_id}"),
+        "album": (web_sample.album_id, f"/albums/{web_sample.album_id}"),
+        "song": (web_sample.song_ids[0], f"/songs/{web_sample.song_ids[0]}"),
+    }
+    for kind, (record_id, page) in records.items():
+        assert 'class="rating big"' in client.get(page).text
+        url = f"/rating/{kind}/{record_id}"
+        rated = client.post(url, data={"rating": "3", "size": "big"})
+        assert rated.status_code == 200 and "library-changed" in rated.headers["hx-trigger"]
+        assert rated.text.count('class="star on"') == 3 and 'class="rating big"' in rated.text
+        assert 'aria-label="Rating: 3 of 5"' in rated.text
+        # Clicking the current rating offers to take it away.
+        assert '"rating": ""' in rated.text and 'aria-label="Remove the rating"' in rated.text
+        cleared = client.post(url, data={"rating": ""})
+        assert 'class="star on"' not in cleared.text and 'class="rating"' in cleared.text
+        assert (
+            client.post(url, data={"rating": "3", "size": "x onclick=1"}).text.count("onclick") == 0
+        )
+        for bad in ("0", "6", "x"):
+            assert client.post(url, data={"rating": bad}).status_code == 422
+        assert client.post(f"/rating/{kind}/99", data={"rating": "3"}).status_code == 404
+    assert client.post("/rating/playlist/1", data={"rating": "3"}).status_code == 404
+
+    client.post(f"/rating/artist/{web_sample.artist_id}", data={"rating": "5"})
+    assert 'class="star on"' in client.get("/artists").text
+    edit = client.post(f"/artists/{web_sample.artist_id}", data={"name": "Portishead"})
+    assert edit.status_code == 200 and client_lib.get_artist(web_sample.artist_id).rating == 5

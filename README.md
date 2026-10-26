@@ -51,6 +51,7 @@ song) have no words, so they are never missing lyrics and do not count in that s
 
 Besides what the import brings, the app keeps:
 
+- **Ratings** of artists, albums and songs, from 1 to 5 stars, set by clicking the stars.
 - **Notes** on artists, albums and songs (artists' notes are separate from their imported description).
 - **CD and vinyl ownership** of albums: each format is unset, wanted or owned, picked with a
   selector on the album page and in the artist's discography. The Albums page filters by

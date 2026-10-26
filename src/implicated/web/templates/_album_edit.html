@@ -10,12 +10,6 @@
           {% for k in album_kinds %}<option value="{{ k }}" {% if album.kind == k %}selected{% endif %}>{{ k }}</option>{% endfor %}
         </select>
       </label>
-      <label>Rating
-        <select name="rating">
-          <option value="">–</option>
-          {% for r in range(5, -1, -1) %}<option value="{{ r }}" {% if album.rating == r %}selected{% endif %}>{{ r | stars }}</option>{% endfor %}
-        </select>
-      </label>
     </div>
     <label>Notes <textarea name="notes" rows="4">{{ album.notes or '' }}</textarea></label>
     <div class="row">

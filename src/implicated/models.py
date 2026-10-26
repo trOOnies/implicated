@@ -59,6 +59,7 @@ class ArtistIn:
     # Your own notes, unlike ``bio``, which the importer keeps up to date.
     notes: str | None = None
     listen_later: bool = False
+    rating: int | None = None
 
 
 @dataclass
@@ -253,8 +254,8 @@ def lyrics_file_name(title: str) -> str:
 
 
 def validate_rating(rating: int | None) -> None:
-    if rating is not None and not 0 <= rating <= 5:
-        raise ValueError("rating must be between 0 and 5")
+    if rating is not None and not 1 <= rating <= 5:
+        raise ValueError("rating must be between 1 and 5")
 
 
 def validate_kind(kind: str) -> None:

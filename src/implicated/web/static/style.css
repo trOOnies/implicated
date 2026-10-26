@@ -116,8 +116,14 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 2rem; }
 .tag.wanted, .tag.later { background: transparent; border: 1px dashed var(--accent); color: var(--accent); }
 .lyrics { white-space: pre-line; margin: 0; max-width: 70ch; line-height: 1.6; }
 
-.stars { color: var(--accent); white-space: nowrap; letter-spacing: .05em; }
-.stars.big { font-size: 1.3rem; }
+/* Ratings: five stars, filled up to the rating, or up to the one under the pointer */
+.rating { display: inline-flex; white-space: nowrap; vertical-align: middle; }
+.rating .star { background: none; border: none; border-radius: 0; padding: 0 .06rem; color: var(--accent); font-size: 1.05rem; line-height: 1; }
+.rating .star::before { content: "☆"; }
+.rating .star.on::before, .rating:hover .star::before { content: "★"; }
+.rating .star:hover ~ .star::before { content: "☆"; }
+.rating .star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.rating.big .star { font-size: 1.45rem; }
 
 /* Tiles */
 .tiles { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 1rem; }

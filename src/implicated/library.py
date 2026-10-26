@@ -58,7 +58,8 @@ CREATE TABLE IF NOT EXISTS artists (
     created_at  TEXT NOT NULL,
     image       TEXT,
     notes       TEXT,
-    listen_later INTEGER NOT NULL DEFAULT 0
+    listen_later INTEGER NOT NULL DEFAULT 0,
+    rating      INTEGER
 );
 CREATE TABLE IF NOT EXISTS albums (
     id          INTEGER PRIMARY KEY,
@@ -152,6 +153,7 @@ MIGRATIONS = [
     ("songs", "mv", "TEXT"),
     ("songs", "listen_later", "INTEGER NOT NULL DEFAULT 0"),
     ("playlists", "kind", "TEXT"),
+    ("artists", "rating", "INTEGER"),
 ]
 # Columns that changed names: (table, old name, new name), renamed before ``MIGRATIONS`` run.
 RENAMES = [("songs", "youtube", "mv")]
@@ -334,9 +336,10 @@ class Library:
         with self.connect() as conn:
             cur = conn.execute(
                 """INSERT INTO artists (name, country, formed_year, genres, languages, bio,
-                                        wiki, favorite, notes, listen_later, created_at)
+                                        wiki, favorite, notes, listen_later, rating,
+                                        created_at)
                    VALUES (:name, :country, :formed_year, :genres, :languages, :bio,
-                           :wiki, :favorite, :notes, :listen_later, :now)""",
+                           :wiki, :favorite, :notes, :listen_later, :rating, :now)""",
                 {**values, "now": _now()},
             )
         return self.get_artist(cur.lastrowid)
@@ -348,7 +351,8 @@ class Library:
                 """UPDATE artists SET name = :name, country = :country,
                        formed_year = :formed_year, genres = :genres,
                        languages = :languages, bio = :bio, wiki = :wiki,
-                       favorite = :favorite, notes = :notes, listen_later = :listen_later
+                       favorite = :favorite, notes = :notes, listen_later = :listen_later,
+                       rating = :rating
                    WHERE id = :id""",
                 {**self._artist_values(data), "id": artist_id},
             )
@@ -385,6 +389,7 @@ class Library:
             raise ValueError("name is required")
         wiki = data.wiki.strip() if data.wiki else None
         validate_wiki(wiki)
+        validate_rating(data.rating)
         values = asdict(data)
         values["name"] = data.name.strip()
         values["wiki"] = wiki
@@ -1125,6 +1130,16 @@ class Library:
             self._sync_marks(record_id)
         return value
 
+    def set_rating(self, kind: str, record_id: int, rating: int | None) -> int | None:
+        """Rate an artist, album or song from 1 to 5 stars; ``None`` takes the rating away."""
+        table = FAVORITE_TABLES[kind]
+        validate_rating(rating)
+        with self.connect() as conn:
+            cur = conn.execute(f"UPDATE {table} SET rating = ? WHERE id = ?", (rating, record_id))
+        if cur.rowcount == 0:
+            raise NotFound(f"{kind} {record_id} not found")
+        return rating
+
     def _delete(self, table: str, record_id: int) -> None:
         with self.connect() as conn:
             cur = conn.execute(f"DELETE FROM {table} WHERE id = ?", (record_id,))
@@ -1185,7 +1200,7 @@ class Library:
             songs_per_artist=[Point(name, n) for name, n in songs_per_artist],
             genres=_count_genres(genre_lists, top),
             albums_per_decade=[Point(f"{decade}s", n) for decade, n in decades],
-            ratings=[Point("★" * r if r else "–", ratings.get(r, 0)) for r in range(5, -1, -1)],
+            ratings=[Point("★" * r, ratings.get(r, 0)) for r in range(5, 0, -1)],
         )
 
 

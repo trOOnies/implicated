@@ -13,6 +13,7 @@
       {{ a.artist.country or '' }}{% if a.artist.country and a.artist.formed_year %} · {% endif %}{{ a.artist.formed_year or '' }}
     </p>
     {% if a.artist.genres %}<p>{% for g in a.artist.genres %}<span class="tag">{{ g }}</span>{% endfor %}</p>{% endif %}
+    <p>{% with kind='artist', record_id=a.artist.id, rating=a.artist.rating, size=None %}{% include "_rating.html" %}{% endwith %}</p>
     <p class="small">{{ a.album_count }} albums · {{ a.song_count }} songs · {{ a.play_count }} plays</p>
   </li>
   {% endfor %}

@@ -358,6 +358,23 @@ def test_toggle_favorite(lib: Library, sample: Sample, kind: str):
         lib.toggle_favorite(kind, 99)
 
 
+def test_set_rating(lib: Library, sample: Sample):
+    records = {"artist": sample.artist_id, "album": sample.album_id, "song": sample.song_ids[0]}
+    for kind, record_id in records.items():
+        assert lib.set_rating(kind, record_id, 4) == 4
+        assert lib.set_rating(kind, record_id, None) is None
+        for bad in (0, 6):
+            with pytest.raises(ValueError, match="between 1 and 5"):
+                lib.set_rating(kind, record_id, bad)
+        with pytest.raises(NotFound):
+            lib.set_rating(kind, 99, 3)
+    lib.set_rating("artist", sample.artist_id, 2)
+    assert lib.get_artist(sample.artist_id).rating == 2
+    assert lib.list_artists()[0].artist.rating == 2
+    with pytest.raises(ValueError, match="rating"):
+        lib.create_artist(ArtistIn("X", rating=9))
+
+
 @pytest.mark.parametrize("kind", ["artist", "album", "song"])
 def test_toggle_listen_later(lib: Library, sample: Sample, kind: str):
     record_id = {"artist": sample.artist_id, "album": sample.album_id, "song": sample.song_ids[0]}
@@ -726,6 +743,7 @@ def test_old_databases_get_new_columns(tmp_path):
     assert (lib.get_artist(1).wiki, lib.get_artist(1).image) == (None, None)
     assert lib.get_song(1).lyrics is None
     assert (lib.get_artist(1).notes, lib.get_artist(1).listen_later) == (None, False)
+    assert lib.get_artist(1).rating is None
     album = lib.get_album(1)
     assert (album.cd, album.vinyl, album.listen_later) == (None, None, False)
     assert (lib.get_song(1).mv, lib.get_song(1).listen_later) == (None, False)

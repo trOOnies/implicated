@@ -261,6 +261,7 @@ def _import_artist(lib: Library, data: dict, report: Report) -> int:
         favorite=bool(existing and existing.favorite),
         notes=existing and existing.notes,
         listen_later=bool(existing and existing.listen_later),
+        rating=existing and existing.rating,
     )
     if existing:
         artist = lib.update_artist(existing.id, artist_in)

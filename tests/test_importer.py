@@ -190,6 +190,7 @@ def test_reimport_keeps_personal_data(lib: Library, info: Path):
     album = lib.find_album(mcr.id, "Danger Days")
     song = lib.find_song(mcr.id, album.id, "Sing")
     lib.toggle_favorite("artist", mcr.id)
+    lib.set_rating("artist", mcr.id, 5)
     lib.update_artist(mcr.id, replace(lib.get_artist(mcr.id), notes="Mine", listen_later=True))
     lib.update_album(album.id, replace(album, cd="owned", vinyl="wanted", listen_later=True))
     lib.update_song(song.id, replace(song, rating=5))
@@ -203,6 +204,7 @@ def test_reimport_keeps_personal_data(lib: Library, info: Path):
     assert report.created == {"artists": 0, "albums": 0, "songs": 0}
     assert report.updated == {"artists": 2, "albums": 3, "songs": 5}
     assert lib.get_artist(mcr.id).favorite
+    assert lib.get_artist(mcr.id).rating == 5
     assert (lib.get_artist(mcr.id).notes, lib.get_artist(mcr.id).listen_later) == ("Mine", True)
     kept = lib.get_album(album.id)
     assert (kept.cd, kept.vinyl, kept.listen_later) == ("owned", "wanted", True)

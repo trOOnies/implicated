@@ -13,6 +13,7 @@
     <button type="button" class="danger" hx-post="/artists/{{ artist.id }}/delete"
             hx-confirm="Delete {{ artist.name }} with all their albums, songs and plays?">Delete</button>
   </div>
+  <p>{% with kind='artist', record_id=artist.id, rating=artist.rating, size='big' %}{% include "_rating.html" %}{% endwith %}</p>
   <p class="muted">
     {{ artist.country or 'Unknown origin' }}{% if artist.formed_year %} · since {{ artist.formed_year }}{% endif %}
   </p>

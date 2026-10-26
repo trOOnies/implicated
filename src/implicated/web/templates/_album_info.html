@@ -19,7 +19,7 @@
     · <span title="{{ lyrics_count }} of {{ with_words }} songs have lyrics{% if no_lyrics_count %}; {{ no_lyrics_count }} have none to have{% endif %}">{{ lyrics_count | percent(with_words) }} with lyrics</span>
     · {{ play_count }} plays
   </p>
-  <p class="stars big">{{ album.rating | stars }}</p>
+  <p>{% with kind='album', record_id=album.id, rating=album.rating, size='big' %}{% include "_rating.html" %}{% endwith %}</p>
   <div class="pickers">
     {% for fmt in ('cd', 'vinyl') %}{% include "_format_picker.html" %}{% endfor %}
   </div>
