@@ -794,3 +794,12 @@ def test_bad_numbers_in_edit_forms_are_422(client: TestClient, web_sample: Sampl
         f"/artists/{web_sample.artist_id}", data={"name": "Portishead", "formed_year": "x"}
     )
     assert artist.status_code == 422 and "formed year must be a number" in artist.text
+
+
+def test_favicon(client: TestClient):
+    page = client.get("/").text
+    assert 'rel="icon" type="image/svg+xml"' in page
+    assert "/static/favicon.svg" in page
+    response = client.get("/static/favicon.svg")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/svg+xml")
