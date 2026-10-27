@@ -30,7 +30,7 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-"implicated.web" = ["templates/*.html", "static/*"]
+"implicated.web" = ["templates/*.html", "static/*", "static/alphatab/*", "static/alphatab/*/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

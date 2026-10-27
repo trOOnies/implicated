@@ -31,6 +31,7 @@ info/
   bands/<artist name>/band.jpg    # picture of the artist (.jpg, .png, .webp, .avif, ...)
   bands/<artist name>/covers/     # cover images, matched to albums by file name
   bands/<artist name>/songs/      # lyrics, one <song title>.txt per song (empty = missing)
+  bands/<artist name>/tabs/       # optional guitar tabs, <song title>.gp5 (or .gp, .gpx, .gp4, .gp3)
 ```
 
 Re-importing updates what changed and keeps your ratings, notes, favorites, CD and vinyl
@@ -49,6 +50,13 @@ to open the file in your default text editor (under WSL, the Windows one) and to
 pages mark the songs still missing lyrics, and album lists show the share of songs that have them.
 The Albums and Songs pages can show only the albums and songs still missing lyrics. Songs with `no_lyrics` (set in `albums.yaml`, or with the No lyrics box when adding or editing a
 song) have no words, so they are never missing lyrics and do not count in that share.
+
+Songs can have a guitar tab: a Guitar Pro file in `bands/<artist name>/tabs/`, named like the
+lyrics file but ending in `.gp5` (or `.gp`, `.gpx`, `.gp4`, `.gp3`). In TuxGuitar, use File > Save
+As and pick Guitar Pro 5; its own `.tg` files cannot be read. The song page draws the tab as
+notation and tablature with [alphaTab](https://www.alphatab.net/) (bundled in
+`src/implicated/web/static/alphatab/`, MPL-2.0), can play it back, lets you pick the track when the
+file holds several, and has buttons to open the file in TuxGuitar and to reload it after saving.
 
 Albums without a cover of their own are tagged *no cover* (the ♪ placeholder shows instead) or
 *shared cover* (the same image as another album, say a deluxe edition that matched the original's

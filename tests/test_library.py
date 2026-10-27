@@ -850,6 +850,46 @@ def test_reload_lyrics(files_lib: Library, lib: Library, sample: Sample):
     assert lib.reload_lyrics(sample.song_ids[0]).lyrics is None
 
 
+def test_tab_path(files_lib: Library, lib: Library, sample: Sample, tmp_path):
+    song_id = add_sample(files_lib).song_ids[0]
+    folder = tmp_path / "info" / "bands" / "Portishead" / "tabs"
+    assert files_lib.tab_path(song_id) is None  # no tabs folder yet
+    assert files_lib.new_tab_path(song_id) == folder / "Mysterons.gp5"
+
+    folder.mkdir()
+    (folder / "Sour Times.gp5").write_bytes(b"other song")
+    (folder / "MYSTERONS.gpx").write_bytes(b"gpx")
+    assert files_lib.tab_path(song_id) == folder / "MYSTERONS.gpx"  # case does not matter
+    (folder / "Mysterons.gp5").write_bytes(b"gp5")
+    assert files_lib.tab_path(song_id) == folder / "Mysterons.gp5"  # .gp5 goes first
+    with pytest.raises(NotFound):
+        files_lib.tab_path(99)
+
+    # Without an info folder there are no tabs.
+    assert lib.tab_path(sample.song_ids[0]) is None
+    assert lib.new_tab_path(sample.song_ids[0]) is None
+
+
+def test_renaming_a_song_moves_its_tab(files_lib: Library, tmp_path):
+    sample = add_sample(files_lib)
+    folder = tmp_path / "info" / "bands" / "Portishead" / "tabs"
+    folder.mkdir()
+    (folder / "Sour Times.gp").write_bytes(b"tab")
+    song = files_lib.get_song(sample.song_ids[1])
+    files_lib.update_song(song.id, replace(song, title="Sour Times (Nobody Loves Me)"))
+    assert [p.name for p in folder.iterdir()] == ["Sour Times (Nobody Loves Me).gp"]
+
+    # The same song on another album shares the tab, so renaming one copies it.
+    single = files_lib.create_song(SongIn(sample.artist_id, "Sour Times (Nobody Loves Me)"))
+    files_lib.update_song(single.id, replace(single, title="Sour Times (Edit)"))
+    assert files_lib.tab_path(single.id) == folder / "Sour Times (Edit).gp"
+    assert files_lib.tab_path(song.id) == folder / "Sour Times (Nobody Loves Me).gp"
+
+    # Deleting a song keeps its tab, like lyrics someone wrote.
+    files_lib.delete_song(single.id)
+    assert (folder / "Sour Times (Edit).gp").read_bytes() == b"tab"
+
+
 def test_list_artists_by_origin_genre_and_language(lib: Library, sample: Sample):
     lib.create_artist(ArtistIn("Soda Stereo", "Argentina", genres=["Rock"], languages=["Spanish"]))
     lib.create_artist(ArtistIn("Air", "France", genres=["Trip hop"], languages=["English"]))

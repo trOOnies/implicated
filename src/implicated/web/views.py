@@ -706,6 +706,19 @@ def _lyrics_context(lib: Library, song_id: int, **extra) -> dict:
     return {"s": lib.get_song_summary(song_id), "lyrics_path": lib.lyrics_path(song_id), **extra}
 
 
+def _tab_context(lib: Library, song_id: int, **extra) -> dict:
+    """The song's tab file, looked up again so a newly saved one shows straight away."""
+    tab_path = found(lib.tab_path, song_id)
+    return {
+        "song_id": song_id,
+        "tab_path": tab_path,
+        "new_tab_path": lib.new_tab_path(song_id),
+        # Changes when the file is saved again, so the browser fetches the new version.
+        "tab_version": tab_path.stat().st_mtime_ns if tab_path else None,
+        **extra,
+    }
+
+
 def _song_info_context(lib: Library, song_id: int) -> dict:
     summary = found(lib.get_song_summary, song_id)
     album_id = summary.song.album_id
@@ -736,6 +749,7 @@ def song_page(request: Request, lib: Lib, song_id: int):
         "song.html",
         **_song_info_context(lib, song_id),
         **_song_playlists_context(lib, song_id),
+        **_tab_context(lib, song_id),
         videos=lib.list_videos(song_id),
         lyrics_path=context["lyrics_path"],
         error=context.get("error"),
@@ -922,6 +936,26 @@ def open_lyrics(request: Request, lib: Lib, song_id: int):
     except OSError as exc:
         return render(request, "_lyrics.html", **_lyrics_context(lib, song_id, error=str(exc)))
     return render(request, "_lyrics.html", **_lyrics_context(lib, song_id, opened=True))
+
+
+@router.get("/fragments/songs/{song_id}/tab")
+def song_tab(request: Request, lib: Lib, song_id: int):
+    return render(request, "_tab.html", **_tab_context(lib, song_id))
+
+
+@router.post("/songs/{song_id}/tab/open")
+def open_tab(request: Request, lib: Lib, song_id: int):
+    # Only the page's own buttons may open files: other sites cannot send this header.
+    if "hx-request" not in request.headers:
+        raise HTTPException(403, "open the tab from the song page")
+    path = found(lib.tab_path, song_id)
+    if path is None:
+        raise HTTPException(404, "the song has no tab")
+    try:
+        editor.open_file(path)
+    except OSError as exc:
+        return render(request, "_tab.html", **_tab_context(lib, song_id, error=str(exc)))
+    return render(request, "_tab.html", **_tab_context(lib, song_id, opened=True))
 
 
 @router.get("/fragments/songs/{song_id}")

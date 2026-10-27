@@ -12,6 +12,7 @@ and the song lyrics::
       bands/<artist name>/band.jpg          # any of ``IMAGE_TYPES``
       bands/<artist name>/covers/<image>.jpg
       bands/<artist name>/songs/<song title>.txt
+      bands/<artist name>/tabs/<song title>.gp5   # optional; any of ``TAB_TYPES``
 
 ``bands.yaml``::
 
@@ -45,6 +46,10 @@ Lyrics files are named after the song (see ``lyrics_file_name``): ``/`` becomes 
 characters Windows does not allow in file names (``<>:"\\|?*``) are left out, so "S/C/A/R/E/C/R/O/W"
 is ``S_C_A_R_E_C_R_O_W.txt`` and "Question...?" is ``Question....txt``. Case does not matter. An
 empty file means the lyrics are still missing; songs without a file get an empty one.
+
+Tabs are Guitar Pro files named like the lyrics file (``Sing.gp5``), shown and played on the song
+page. TuxGuitar saves them with File > Save As, choosing Guitar Pro 5 (``.gp5``); its own ``.tg``
+files cannot be read. Songs without a tab simply have none, and the import does not read them.
 
 Importing again updates what changed and never touches ratings, notes, favorites, CD and vinyl
 ownership, music videos, song videos, listen later marks, playlists or plays.

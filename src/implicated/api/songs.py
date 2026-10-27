@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, HTTPException, Response
+from fastapi.responses import FileResponse
 
 from implicated.api.deps import Lib, call
 from implicated.models import Song, SongIn, SongSummary
@@ -47,3 +48,18 @@ def update_song(lib: Lib, song_id: int, data: SongIn) -> Song:
 def delete_song(lib: Lib, song_id: int) -> Response:
     call(lib.delete_song, song_id)
     return Response(status_code=204)
+
+
+@router.get("/{song_id}/tab", response_class=FileResponse)
+def song_tab(lib: Lib, song_id: int) -> FileResponse:
+    """The song's tab, a Guitar Pro file (``.gp5`` from TuxGuitar, ``.gp``, ``.gpx``, ...)."""
+    path = call(lib.tab_path, song_id)
+    if path is None:
+        raise HTTPException(404, "the song has no tab")
+    # Read again on every visit, so a tab saved from TuxGuitar shows on the next reload.
+    return FileResponse(
+        path,
+        media_type="application/octet-stream",
+        filename=path.name,
+        headers={"Cache-Control": "no-cache"},
+    )

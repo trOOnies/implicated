@@ -334,6 +334,41 @@ def test_help_page_and_layout(client: TestClient):
     assert client.get("/docs").status_code == 200
 
 
+def test_song_tab(client: TestClient, client_lib: Library, web_sample: Sample, monkeypatch):
+    opened = []
+    monkeypatch.setattr(editor, "open_file", opened.append)
+    song_id = web_sample.song_ids[0]
+    target = client_lib.new_tab_path(song_id)
+    page = client.get(f"/songs/{song_id}").text
+    assert "alphatab/alphaTab.min.js" in page and "tab.js" in page
+    assert "No tab yet" in page and str(target) in page
+    assert client.get(f"/api/songs/{song_id}/tab").status_code == 404
+    assert (
+        client.post(f"/songs/{song_id}/tab/open", headers={"HX-Request": "true"}).status_code == 404
+    )
+
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"FICHIER GUITAR PRO")
+    card = client.get(f"/fragments/songs/{song_id}/tab").text
+    assert f'data-file="/api/songs/{song_id}/tab?v={target.stat().st_mtime_ns}"' in card
+    assert "alphatab/soundfont/sonivox.sf2" in card and "No tab yet" not in card
+    tab = client.get(f"/api/songs/{song_id}/tab")
+    assert tab.content == b"FICHIER GUITAR PRO"
+    assert tab.headers["cache-control"] == "no-cache"
+    assert client.get("/api/songs/99/tab").status_code == 404
+
+    url = f"/songs/{song_id}/tab/open"
+    assert client.post(url).status_code == 403  # not from the page
+    response = client.post(url, headers={"HX-Request": "true"})
+    assert "Opened <code>Mysterons.gp5</code>" in response.text and opened == [target]
+
+    def fail(path):
+        raise OSError("no program to open files with")
+
+    monkeypatch.setattr(editor, "open_file", fail)
+    assert "no program to open files with" in client.post(url, headers={"HX-Request": "true"}).text
+
+
 def test_open_lyrics_file(client: TestClient, client_lib: Library, web_sample: Sample, monkeypatch):
     opened = []
     monkeypatch.setattr(editor, "open_file", opened.append)

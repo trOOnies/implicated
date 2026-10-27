@@ -118,6 +118,14 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 2rem; }
 .tag.wanted, .tag.later { background: transparent; border: 1px dashed var(--accent); color: var(--accent); }
 .lyrics { white-space: pre-line; margin: 0; max-width: 70ch; line-height: 1.6; }
 
+/* Tabs, drawn by alphaTab in black, so on white in either theme */
+.tab-score { background: #fff; color: #000; border-radius: var(--radius); overflow-x: auto; }
+.tab-score:empty { display: none; }
+.tab-score .at-cursor-bar { background: rgba(255, 242, 0, .25); }
+.tab-score .at-selection div { background: rgba(64, 64, 255, .1); }
+.tab-score .at-cursor-beat { background: rgba(64, 64, 255, .75); width: 3px; }
+.tab-score .at-highlight * { fill: #0078ff; stroke: #0078ff; }
+
 /* Ratings: five stars, filled up to the rating, or up to the one under the pointer */
 .rating { display: inline-flex; white-space: nowrap; vertical-align: middle; }
 .rating .star { background: none; border: none; border-radius: 0; padding: 0 .06rem; color: var(--accent); font-size: 1.05rem; line-height: 1; }

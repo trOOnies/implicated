@@ -1,0 +1,32 @@
+{# The tab card of a song page. `tab_path` is the song's Guitar Pro file or None; `new_tab_path` is where one goes, or None when the library has no folder for them. static/tab.js draws the score. #}
+<section id="tab" class="card">
+  <div class="row">
+    <h2>Tab</h2>
+    <span class="spacer"></span>
+    {% if tab_path %}
+    <button type="button" data-tab-play disabled>Play</button>
+    <button type="button" class="secondary" data-tab-stop disabled>Stop</button>
+    <button type="button" class="secondary" hx-post="/songs/{{ song_id }}/tab/open"
+            hx-target="#tab" hx-swap="outerHTML" title="Open {{ tab_path.name }} in TuxGuitar (or the app that opens it)">Open tab file</button>
+    {% endif %}
+    {% if new_tab_path %}
+    <button type="button" class="secondary" hx-get="/fragments/songs/{{ song_id }}/tab"
+            hx-target="#tab" hx-swap="outerHTML" title="Look for the tab file again">Reload tab</button>
+    {% endif %}
+  </div>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  {% if opened %}<p class="muted">Opened <code>{{ tab_path.name }}</code>. Save it, then press Reload tab.</p>{% endif %}
+  {% if tab_path %}
+  <p class="row tab-tracks" hidden><label>Track <select data-tab-tracks></select></label></p>
+  <p class="muted" data-tab-status>Loading the tab…</p>
+  <div class="tab-score" data-file="/api/songs/{{ song_id }}/tab?v={{ tab_version }}"
+       data-fonts="{{ url_for('static', path='alphatab/font/') }}"
+       data-soundfont="{{ url_for('static', path='alphatab/soundfont/sonivox.sf2') }}"></div>
+  <p class="small">File: <code>{{ tab_path }}</code></p>
+  {% elif new_tab_path %}
+  <p class="empty">No tab yet. In TuxGuitar, save it as a Guitar Pro 5 file (.gp5) to the path below, then press Reload tab. Other Guitar Pro files (.gp, .gpx, .gp4, .gp3) with the same name work too.</p>
+  <p class="small">File: <code>{{ new_tab_path }}</code></p>
+  {% else %}
+  <p class="empty">No tab yet.</p>
+  {% endif %}
+</section>

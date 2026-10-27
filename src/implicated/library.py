@@ -196,6 +196,8 @@ IMAGE_TYPES = {
     ".webp": "image/webp",
     ".gif": "image/gif",
 }
+# Guitar Pro files a song's tab can be (TuxGuitar saves ``.gp5``); the first one found wins.
+TAB_TYPES = (".gp5", ".gp", ".gpx", ".gp4", ".gp3")
 
 
 class NotFound(LookupError):
@@ -246,6 +248,29 @@ def _song(row: sqlite3.Row) -> Song:
     data["no_lyrics"] = bool(data["no_lyrics"])
     data["listen_later"] = bool(data["listen_later"])
     return Song(**data)
+
+
+def _find_file(folder: Path, names: list[str]) -> Path | None:
+    """The first of ``names`` in ``folder``, matching exactly or else ignoring case, like the
+    importer does (an existing ``our lady of sorrows.txt`` is "Our Lady of Sorrows.txt")."""
+    for name in names:
+        if (folder / name).exists():
+            return folder / name
+    if not folder.is_dir():
+        return None
+    files = {path.name.casefold(): path for path in folder.iterdir()}
+    return next((files[n.casefold()] for n in names if n.casefold() in files), None)
+
+
+def _move_file(old: Path, new: Path, copy: bool) -> None:
+    """Move (or copy) ``old`` to ``new``, unless ``new`` is already there."""
+    if new.exists():
+        return
+    new.parent.mkdir(parents=True, exist_ok=True)
+    if copy:
+        new.write_bytes(old.read_bytes())
+    else:
+        old.rename(new)
 
 
 def _split(row: sqlite3.Row, prefix: str) -> tuple[dict, dict]:
@@ -839,6 +864,7 @@ class Library:
 
     def update_song(self, song_id: int, data: SongIn) -> Song:
         old_path = self.lyrics_path(song_id)
+        old_tab = self.tab_path(song_id)
         shared = self._shares_lyrics_file(self.get_song(song_id))
         with self.connect() as conn:
             conn.execute(
@@ -851,14 +877,13 @@ class Library:
                 {**self._song_values(data), "id": song_id},
             )
         self._sync_marks(song_id)
-        # A renamed song takes its lyrics file along (a copy, if another song still uses it).
+        # A renamed song takes its lyrics and tab files along (copies, if another song still
+        # uses them).
         new_path = self.lyrics_path(song_id)
-        if old_path and new_path and old_path.is_file() and not new_path.exists():
-            new_path.parent.mkdir(parents=True, exist_ok=True)
-            if shared:
-                new_path.write_bytes(old_path.read_bytes())
-            else:
-                old_path.rename(new_path)
+        if old_path and new_path and old_path.is_file():
+            _move_file(old_path, new_path, copy=shared)
+        if old_tab and self.tab_path(song_id) is None:
+            _move_file(old_tab, self.new_tab_path(song_id, old_tab.suffix), copy=shared)
         self.ensure_lyrics_file(song_id)
         return self.get_song(song_id)
 
@@ -879,14 +904,30 @@ class Library:
         song = self.get_song(song_id)
         if self.info_dir is None:
             return None
-        artist = self.get_artist(song.artist_id)
-        folder = self.info_dir / "bands" / artist.name / "songs"
+        folder = self._song_folder(song, "songs")
         name = lyrics_file_name(song.title)
-        if not (folder / name).exists() and folder.is_dir():
-            for path in folder.iterdir():
-                if path.name.casefold() == name.casefold():
-                    return path
-        return folder / name
+        return _find_file(folder, [name]) or folder / name
+
+    def tab_path(self, song_id: int) -> Path | None:
+        """The song's tab, a Guitar Pro file in ``bands/<artist>/tabs/`` named like its lyrics
+        file (any of ``TAB_TYPES``, ignoring case); ``None`` when it has none."""
+        song = self.get_song(song_id)
+        if self.info_dir is None:
+            return None
+        stem = lyrics_file_name(song.title).removesuffix(".txt")
+        return _find_file(self._song_folder(song, "tabs"), [stem + t for t in TAB_TYPES])
+
+    def new_tab_path(self, song_id: int, suffix: str = ".gp5") -> Path | None:
+        """Where a tab for the song goes; ``None`` without ``info_dir``."""
+        song = self.get_song(song_id)
+        if self.info_dir is None:
+            return None
+        stem = lyrics_file_name(song.title).removesuffix(".txt")
+        return self._song_folder(song, "tabs") / f"{stem}{suffix}"
+
+    def _song_folder(self, song: Song, kind: str) -> Path:
+        assert self.info_dir is not None
+        return self.info_dir / "bands" / self.get_artist(song.artist_id).name / kind
 
     def _shares_lyrics_file(self, song: Song) -> bool:
         """Whether another song of the artist (the same song on a deluxe edition, say) has the
