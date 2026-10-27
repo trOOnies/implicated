@@ -9,7 +9,7 @@ import threading
 from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import asdict
+from dataclasses import asdict, fields
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -592,6 +592,34 @@ class Library:
                 {**values, "now": _now()},
             )
         return self.get_album(cur.lastrowid)
+
+    def copy_album(self, album_id: int, title: str) -> Album:
+        """Make a new album of the same artist called ``title`` with everything the album has:
+        its details, cover and songs, with their details, lyrics and videos. Plays and playlist
+        entries stay with the original (copied favorites and listen later marks still land in
+        those playlists)."""
+        album = self.get_album(album_id)
+        title = title.strip()
+        if _dashless(title).casefold() == _dashless(album.title).casefold():
+            raise ValueError("the copy needs a name of its own")
+        if self.find_album(album.artist_id, title):
+            raise ValueError(f"there is already an album called {title}")
+        details = {f.name: getattr(album, f.name) for f in fields(AlbumIn)}
+        songs = self.list_songs(album_id=album_id, order="track")
+        with self.transaction():
+            copy = self.create_album(AlbumIn(**{**details, "title": title}))
+            if album.cover:
+                copy = self.set_cover(copy.id, self.covers_dir / album.cover)
+            for summary in songs:
+                song = summary.song
+                values = {f.name: getattr(song, f.name) for f in fields(SongIn)}
+                new = self.create_song(SongIn(**{**values, "album_id": copy.id}))
+                self.set_lyrics(new.id, song.lyrics)
+                for video in self.list_videos(song.id):
+                    self.add_video(
+                        new.id, SongVideoIn(video.youtube, video.title, video.start_seconds)
+                    )
+        return copy
 
     def update_album(self, album_id: int, data: AlbumIn) -> Album:
         self.get_album(album_id)

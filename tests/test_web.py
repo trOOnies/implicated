@@ -755,6 +755,24 @@ def test_missing_lyrics_filters(client: TestClient, client_lib: Library, web_sam
     assert 'name="missing" value="1" checked' in client.get("/albums?missing=1").text
 
 
+def test_copy_album_button(client: TestClient, client_lib: Library, web_sample: Sample):
+    page = client.get(f"/albums/{web_sample.album_id}").text
+    assert f'hx-post="/albums/{web_sample.album_id}/copy"' in page
+    assert 'hx-prompt="Name of the copy of Dummy"' in page
+    url = f"/albums/{web_sample.album_id}/copy"
+    response = client.post(url, headers={"HX-Prompt": "Dummy (Deluxe)"})
+    copy = client_lib.find_album(web_sample.artist_id, "Dummy (Deluxe)")
+    assert response.headers["HX-Redirect"] == f"/albums/{copy.id}"
+    assert "Sour Times" in client.get(f"/fragments/albums/{copy.id}/songs").text
+    response = client.post(url, headers={"HX-Prompt": "Dummy"})
+    assert response.status_code == 422
+    assert '<p class="error">the copy needs a name of its own</p>' in response.text
+    client_lib.create_album(AlbumIn(web_sample.artist_id, "<b>Roseland</b>"))
+    response = client.post(url, headers={"HX-Prompt": "<b>Roseland</b>"})
+    assert "already an album called &lt;b&gt;Roseland&lt;/b&gt;" in response.text
+    assert client.post("/albums/99/copy", headers={"HX-Prompt": "x"}).status_code == 404
+
+
 def test_albums_without_their_own_cover(
     client: TestClient, client_lib: Library, web_sample: Sample, image
 ):

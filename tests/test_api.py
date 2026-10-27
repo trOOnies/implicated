@@ -98,6 +98,15 @@ def test_album_cover_route(client: TestClient, client_lib: Library, web_sample: 
     assert albums == [] and client.get("/api/albums").json()[0]["shared_cover"] is False
 
 
+def test_copy_album_route(client: TestClient, web_sample: Sample):
+    url = f"/api/albums/{web_sample.album_id}/copy"
+    response = client.post(url, json={"title": "Dummy Live"})
+    assert response.status_code == 201
+    assert (response.json()["title"], response.json()["rating"]) == ("Dummy Live", 5)
+    assert client.post(url, json={"title": "Dummy"}).status_code == 422
+    assert client.post("/api/albums/99/copy", json={"title": "x"}).status_code == 404
+
+
 def test_song_routes(client: TestClient, web_sample: Sample):
     body = {"artist_id": web_sample.artist_id, "title": "Roads", "album_id": web_sample.album_id}
     song = client.post("/api/songs", json=body).json()

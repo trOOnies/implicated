@@ -4,6 +4,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Response
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from implicated.api.deps import Lib, call, image
 from implicated.models import Album, AlbumIn, AlbumSummary, PlaylistDetail
@@ -11,6 +12,10 @@ from implicated.models import Album, AlbumIn, AlbumSummary, PlaylistDetail
 router = APIRouter(prefix="/albums", tags=["Albums"])
 
 Ownership = Literal["wanted", "owned"]
+
+
+class AlbumCopy(BaseModel):
+    title: str
 
 
 @router.get("")
@@ -52,6 +57,12 @@ def add_album_to_playlist(lib: Lib, album_id: int, playlist_id: int) -> Playlist
     """Append the album's songs to the playlist, in track order; songs already there stay."""
     call(lib.add_album_to_playlist, playlist_id, album_id)
     return lib.get_playlist_detail(playlist_id)
+
+
+@router.post("/{album_id}/copy", status_code=201)
+def copy_album(lib: Lib, album_id: int, data: AlbumCopy) -> Album:
+    """Copy the album, with its cover, songs, lyrics and song videos, under a new title."""
+    return call(lib.copy_album, album_id, data.title)
 
 
 @router.post("", status_code=201)

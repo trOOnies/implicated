@@ -8,9 +8,12 @@
     <span class="spacer"></span>
     <button type="button" class="secondary" hx-get="/fragments/albums/{{ album.id }}/edit"
             hx-target="#album-info" hx-swap="outerHTML">Edit</button>
+    <button type="button" class="secondary" hx-post="/albums/{{ album.id }}/copy"
+            hx-prompt="Name of the copy of {{ album.title }}" hx-target="#copy-error">Copy</button>
     <button type="button" class="danger" hx-post="/albums/{{ album.id }}/delete"
             hx-confirm="Delete {{ album.title }} and its songs?">Delete</button>
   </div>
+  <div id="copy-error"></div>
   <p class="muted">
     <a href="/artists/{{ artist.id }}">{{ artist.name }}</a>
     {% if album.year %} · {{ album.year }}{% endif %} · <span class="tag">{{ album.kind }}</span>{% if album.unreleased %} <span class="tag unreleased" title="Never officially released">unreleased</span>{% endif %}{% if not album.cover or same_cover %} {% with shared=same_cover | length > 0 %}{% include "_cover_tag.html" %}{% endwith %}{% endif %}

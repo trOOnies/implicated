@@ -865,6 +865,52 @@ def test_list_artists_by_origin_genre_and_language(lib: Library, sample: Sample)
     assert names(country="", genre=None) == ["Air", "Portishead", "Soda Stereo"]
 
 
+def test_copy_album(lib: Library, sample: Sample, image):
+    first, second = sample.song_ids
+    lib.update_album(
+        sample.album_id,
+        AlbumIn(sample.artist_id, "Dummy", 1994, rating=5, notes="Bristol", cd="owned"),
+    )
+    lib.set_cover(sample.album_id, image("dummy.jpg", b"dummy"))
+    lib.toggle_favorite("song", first)
+    lib.set_lyrics(first, "Did you really want")
+    lib.add_video(first, SongVideoIn("aaaaaaaaaaa", "Lesson", 12))
+    lib.record_play(second)
+
+    copy = lib.copy_album(sample.album_id, " Dummy (Deluxe) ")
+    assert copy.id != sample.album_id
+    assert (copy.title, copy.year, copy.rating, copy.notes, copy.cd) == (
+        "Dummy (Deluxe)",
+        1994,
+        5,
+        "Bristol",
+        "owned",
+    )
+    assert copy.cover and copy.cover != lib.get_album(sample.album_id).cover
+    assert lib.same_cover_albums(copy.id)[0].id == sample.album_id
+    songs = lib.list_songs(album_id=copy.id, order="track")
+    assert [(s.song.title, s.song.track_number, s.song.duration_seconds) for s in songs] == [
+        ("Mysterons", 1, 302),
+        ("Sour Times", 2, 251),
+    ]
+    mysterons, sour_times = (s.song for s in songs)
+    assert (mysterons.favorite, mysterons.lyrics) == (True, "Did you really want")
+    video = lib.list_videos(mysterons.id)[0]
+    assert (video.youtube, video.title, video.start_seconds) == ("aaaaaaaaaaa", "Lesson", 12)
+    assert songs[1].play_count == 0  # plays stay with the original
+    assert len(lib.list_songs(album_id=sample.album_id)) == 2
+
+
+def test_copy_album_needs_a_new_name(lib: Library, sample: Sample):
+    lib.create_album(AlbumIn(sample.artist_id, "Third"))
+    for title in ("Dummy", " dummy ", "", "third"):
+        with pytest.raises(ValueError):
+            lib.copy_album(sample.album_id, title)
+    with pytest.raises(NotFound):
+        lib.copy_album(99, "Anything")
+    assert len(lib.list_albums()) == 2
+
+
 def test_no_own_cover_filter(lib: Library, sample: Sample, image):
     deluxe = lib.create_album(AlbumIn(sample.artist_id, "Dummy (Deluxe)"))
     third = lib.create_album(AlbumIn(sample.artist_id, "Third"))

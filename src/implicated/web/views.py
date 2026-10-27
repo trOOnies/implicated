@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from dataclasses import fields
 from datetime import datetime
+from html import escape
 from pathlib import Path
 from typing import Annotated
 
@@ -588,6 +589,19 @@ async def add_album_to_playlist(request: Request, lib: Lib, album_id: int):
         playlists=lib.list_playlists(),
         **context,
     )
+
+
+@router.post("/albums/{album_id}/copy")
+def copy_album(request: Request, lib: Lib, album_id: int):
+    # The new title comes from the button's ``hx-prompt``.
+    title = request.headers.get("HX-Prompt", "")
+    try:
+        copy = lib.copy_album(album_id, title)
+    except ValueError as exc:
+        return HTMLResponse(f'<p class="error">{escape(str(exc))}</p>', status_code=422)
+    except NotFound:
+        raise HTTPException(404) from None
+    return Response(headers={"HX-Redirect": f"/albums/{copy.id}"})
 
 
 @router.post("/albums/{album_id}/delete")
