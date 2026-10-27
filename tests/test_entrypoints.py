@@ -32,3 +32,14 @@ def test_serve_cli(monkeypatch: pytest.MonkeyPatch):
     assert calls == [
         {"factory": True, "host": "127.0.0.1", "port": 9000, "reload": True},
     ]
+
+
+def test_serve_cli_stops_on_missing_info(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    calls = []
+    monkeypatch.setattr(web_main.uvicorn, "run", lambda *args, **kwargs: calls.append(kwargs))
+    monkeypatch.setenv("IMPLICATED_INFO", str(tmp_path / "fresh"))
+    monkeypatch.setattr(sys, "argv", ["implicated.web", "--reload"])
+    with pytest.raises(SystemExit, match="bands.yaml"):
+        web_main.main()
+    assert calls == []  # uvicorn, and its reloader, never start
+    assert (tmp_path / "fresh" / "bands.yaml").is_file()

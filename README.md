@@ -16,7 +16,9 @@ Album covers and artist images are stored next to it, in `local/covers/` and `lo
 ## Importing artists
 
 `make serve` imports `info/` every time it starts (set `IMPLICATED_INFO` to use another folder),
-so edits to the YAML files show up after a restart. `make import` (or
+so edits to the YAML files show up after a restart. If the folder, its `bands.yaml` or its
+`bands/` folder is missing, startup creates them (`bands.yaml` with a commented example), lists
+them and stops, so you can fill them in and start again. `make import` (or
 `python -m implicated.importer <dir>`) runs the same import on its own. The folder looks like this:
 
 ```

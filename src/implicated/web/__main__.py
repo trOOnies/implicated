@@ -1,8 +1,13 @@
 """Run the web app: ``python -m implicated.web [--host H] [--port P] [--reload]``."""
 
 import argparse
+import os
+import sys
 
 import uvicorn
+
+from implicated.importer import MissingInfoError, ensure_info_dir
+from implicated.web import DEFAULT_INFO
 
 
 def main() -> None:
@@ -11,6 +16,12 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--reload", action="store_true")
     args = parser.parse_args()
+    # Checked here too, before uvicorn starts: with --reload its reloader would otherwise keep
+    # running after the app failed to load.
+    try:
+        ensure_info_dir(os.environ.get("IMPLICATED_INFO", DEFAULT_INFO))
+    except MissingInfoError as exc:
+        sys.exit(f"error: {exc}")
     uvicorn.run(
         "implicated.web:create_app",
         factory=True,

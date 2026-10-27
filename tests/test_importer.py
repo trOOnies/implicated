@@ -5,7 +5,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from implicated import importer
-from implicated.importer import import_dir, lyrics_file_name, match_cover, parse_duration
+from implicated.importer import (
+    BANDS_TEMPLATE,
+    MissingInfoError,
+    import_dir,
+    lyrics_file_name,
+    match_cover,
+    parse_duration,
+)
 from implicated.library import Library
 from implicated.models import SongVideoIn
 from implicated.web import create_app, sync_info
@@ -449,9 +456,41 @@ def test_app_imports_info_on_startup(tmp_path: Path, info: Path, monkeypatch):
     app = create_app(tmp_path / "app.db")
     assert app.state.library.find_artist("My Chemical Romance")
 
-    # An explicit folder wins over the environment, and a folder without bands.yaml is skipped.
-    other = create_app(tmp_path / "other.db", info_dir=tmp_path / "empty")
+    # An explicit folder wins over the environment.
+    other = create_app(tmp_path / "other.db", info_dir=tmp_path / "app-info")
     assert other.state.library.list_artists() == []
+
+
+@pytest.mark.parametrize("existing", [[], ["bands.yaml"], ["bands/"]])
+def test_startup_creates_missing_info_and_stops(tmp_path: Path, existing: list[str]):
+    info = tmp_path / "fresh"
+    info.mkdir()
+    if "bands.yaml" in existing:
+        (info / "bands.yaml").write_text("bands: []\n")
+    if "bands/" in existing:
+        (info / "bands").mkdir()
+
+    with pytest.raises(MissingInfoError) as caught:
+        create_app(tmp_path / "app.db", info_dir=info)
+    missing = [name for name in ("bands.yaml", "bands/") if name not in existing]
+    assert caught.value.created == missing
+    for name in missing:
+        assert str(info / name) in str(caught.value)
+    assert "start again" in str(caught.value)
+    assert (info / "bands").is_dir()
+    if "bands.yaml" in missing:
+        assert (info / "bands.yaml").read_text() == BANDS_TEMPLATE
+
+    # Once everything is there, even as created, the app starts with an empty library.
+    app = create_app(tmp_path / "app.db", info_dir=info)
+    assert app.state.library.list_artists() == []
+
+
+def test_startup_creates_a_missing_info_folder(tmp_path: Path):
+    with pytest.raises(MissingInfoError):
+        create_app(tmp_path / "app.db", info_dir=tmp_path / "nowhere" / "info")
+    assert (tmp_path / "nowhere" / "info" / "bands.yaml").is_file()
+    assert (tmp_path / "nowhere" / "info" / "bands").is_dir()
 
 
 def test_broken_info_does_not_stop_the_app(

@@ -11,8 +11,12 @@ from implicated.web import create_app
 
 @pytest.fixture(autouse=True)
 def no_info_import(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep ``create_app`` from importing the developer's own ``info/`` folder."""
-    monkeypatch.setenv("IMPLICATED_INFO", str(tmp_path / "no-info"))
+    """Keep ``create_app`` from importing the developer's own ``info/`` folder: give it an empty
+    one that passes the startup check."""
+    info = tmp_path / "app-info"
+    (info / "bands").mkdir(parents=True)
+    (info / "bands.yaml").write_text("bands: []\n")
+    monkeypatch.setenv("IMPLICATED_INFO", str(info))
 
 
 @pytest.fixture

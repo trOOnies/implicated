@@ -201,6 +201,66 @@ def match_cover(title: str, files: list[Path]) -> Path | None:
     return best if best_score[0] >= 0.5 else None
 
 
+# The info folder
+
+BANDS_TEMPLATE = """\
+# The artists to import; each one gets a folder in bands/ named exactly like it, holding its
+# albums.yaml, picture, covers/ and songs/. The full format is described in
+# src/implicated/importer.py.
+#
+# bands:
+# - name: My Chemical Romance
+#   origin: American
+#   creation_year: 2001
+#   languages: English
+#   genres: [Alternative Rock, Emo]
+#   description: My Chemical Romance is an American rock band from New Jersey.
+#   wiki: https://en.wikipedia.org/wiki/My_Chemical_Romance
+#   members:
+#   - name: Frank Iero
+#     roles: Rhythm guitar
+#     from: 2002
+bands: []
+"""
+
+# What every info folder needs: file names map to the text a new one starts with, folder names
+# (ending in "/") to None.
+INFO_LAYOUT: dict[str, str | None] = {"bands.yaml": BANDS_TEMPLATE, "bands/": None}
+
+
+class MissingInfoError(RuntimeError):
+    """The info folder lacked files or folders, which were created and now need filling."""
+
+    def __init__(self, info_dir: Path, created: list[str]) -> None:
+        self.info_dir = info_dir
+        self.created = created
+        lines = "\n".join(f"  {info_dir / name}" for name in created)
+        super().__init__(
+            f"{info_dir} was missing some files and folders, so they were created:\n{lines}\n"
+            "Fill them with your artists (bands.yaml has an example, src/implicated/importer.py "
+            "the full format) and start again."
+        )
+
+
+def ensure_info_dir(info_dir: str | Path) -> None:
+    """Create whatever ``INFO_LAYOUT`` names that ``info_dir`` lacks, then raise
+    ``MissingInfoError`` listing it so nothing runs on a folder that was never filled."""
+    info_dir = Path(info_dir)
+    created = []
+    for name, template in INFO_LAYOUT.items():
+        path = info_dir / name
+        if template is None:
+            if not path.is_dir():
+                path.mkdir(parents=True)
+                created.append(name)
+        elif not path.is_file():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(template, encoding="utf-8")
+            created.append(name)
+    if created:
+        raise MissingInfoError(info_dir, created)
+
+
 # Importing
 
 
