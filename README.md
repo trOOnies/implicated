@@ -1,4 +1,4 @@
-# implicated
+# <img src="src/implicated/web/static/favicon.svg" alt="" width="36" height="36"> implicated
 App for managing and exploring your music taste
 
 ## Quick start

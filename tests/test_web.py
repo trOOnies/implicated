@@ -335,6 +335,7 @@ def test_help_page_and_layout(client: TestClient):
     page = client.get("/help")
     assert page.status_code == 200
     assert "Importing from files" in page.text
+    assert 'class="help-logo" src="http://testserver/static/favicon.svg"' in page.text
     assert 'href="/help" aria-current="page"' in page.text
     assert 'href="/docs">API</a>' in page.text
     assert "© 2026 Implicated by trOOnies" in page.text

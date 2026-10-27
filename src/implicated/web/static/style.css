@@ -316,3 +316,4 @@ details.budget > .row { margin-top: .5rem; }
 .stepper span { min-width: 1.5ch; text-align: center; }
 .prompt { margin-bottom: 1rem; border-color: var(--warn); }
 .prompt ul { margin: .5rem 0; padding-left: 1.25rem; }
+.help-logo { float: right; margin: 0 0 .5rem 1rem; }
