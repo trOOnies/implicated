@@ -140,7 +140,7 @@ def test_routes_are_grouped_by_tag(client: TestClient):
     schema = client.get("/openapi.json").json()
     assert [t["name"] for t in schema["tags"]] == [
         "Artists", "Members", "Albums", "Songs", "Song videos", "Playlists", "Plays",
-        "Stats",
+        "Budget", "Stats",
     ]  # fmt: skip
     tags = {
         (method, path): op["tags"]
@@ -152,6 +152,7 @@ def test_routes_are_grouped_by_tag(client: TestClient):
     assert tags[("get", "/api/albums/{album_id}/cover")] == ["Albums"]
     assert tags[("post", "/api/songs/{song_id}/plays")] == ["Plays"]
     assert tags[("put", "/api/playlists/{playlist_id}/songs")] == ["Playlists"]
+    assert tags[("post", "/api/budget/cart/items")] == ["Budget"]
     assert tags[("get", "/api/stats")] == ["Stats"]
     assert all(len(t) == 1 for t in tags.values())
     assert not any(path.startswith("/fragments") for path in schema["paths"])
@@ -274,3 +275,73 @@ def test_song_video_routes(client: TestClient, web_sample: Sample):
     assert client.delete(f"{url}/{vid}").status_code == 204
     assert client.get(url).json() == []
     assert client.delete(f"{url}/{vid}").status_code == 404
+
+
+def test_budget(client: TestClient, web_sample: Sample):
+    options = client.get("/api/budget/options", params={"format": "vinyl"}).json()
+    assert [(o["album"]["title"], o["format"]) for o in options] == [("Dummy", "vinyl")]
+    assert len(client.get("/api/budget/options").json()) == 2
+    assert client.get("/api/budget/options", params={"format": "tape"}).status_code == 422
+
+    body = {
+        "album_id": web_sample.album_id,
+        "format": "vinyl",
+        "price": 31.5,
+        "link": "shop.example/d",
+        "quantity": 2,
+    }
+    item = client.post("/api/budget/cart/items", json=body)
+    assert item.status_code == 201 and item.json()["link"] == "https://shop.example/d"
+    item_id = item.json()["id"]
+    assert client.post("/api/budget/cart/items", json=body).status_code == 422  # already in it
+    assert (
+        client.post(
+            "/api/budget/cart/items", json=body | {"format": "cd", "quantity": 0}
+        ).status_code
+        == 422
+    )
+
+    cart = client.get("/api/budget/cart").json()
+    assert cart["total"] == 63 and cart["lines"][0]["owned"] is False and cart["editing"] is None
+    put = client.put(f"/api/budget/cart/items/{item_id}", json=body | {"price": 28})
+    assert put.json()["price"] == 28
+    assert client.get(f"/api/budget/cart/items/{item_id}").json()["quantity"] == 2
+
+    budget = client.post("/api/budget/cart/save", json={"name": "Wishlist"})
+    assert budget.status_code == 201
+    budget_id = budget.json()["id"]
+    assert client.get("/api/budget/cart").json()["lines"] == []
+    assert client.post("/api/budget/cart/save", json={"name": "Again"}).status_code == 422
+    assert client.get(f"/api/budget/budgets/{budget_id}").json()["total"] == 56
+    assert [b["budget"]["name"] for b in client.get("/api/budget/budgets").json()] == ["Wishlist"]
+
+    edited = client.post(f"/api/budget/budgets/{budget_id}/edit").json()
+    assert edited["editing"]["id"] == budget_id and len(edited["lines"]) == 1
+    assert client.delete("/api/budget/cart").status_code == 204
+    bought = client.post(f"/api/budget/budgets/{budget_id}/buy").json()
+    assert bought["bought_at"]
+    assert client.get(f"/api/albums/{web_sample.album_id}").json()["vinyl"] == "owned"
+    assert client.post(f"/api/budget/budgets/{budget_id}/buy").status_code == 422
+
+    client.post("/api/budget/cart/items", json=body | {"format": "cd"})
+    now = client.post("/api/budget/cart/buy", json={"name": "Now"})
+    assert now.status_code == 201 and now.json()["bought_at"]
+    assert client.delete(f"/api/budget/budgets/{budget_id}").status_code == 204
+    assert client.get(f"/api/budget/budgets/{budget_id}").status_code == 404
+    assert client.delete(f"/api/budget/cart/items/{item_id}").status_code == 404
+
+
+def test_budget_overlaps(client: TestClient, web_sample: Sample):
+    item = {"album_id": web_sample.album_id, "format": "cd", "price": 10}
+    client.post("/api/budget/cart/items", json=item)
+    saved = client.post("/api/budget/cart/save", json={"name": "Saved"}).json()
+    client.post("/api/budget/cart/items", json=item)
+    overlaps = client.get("/api/budget/cart/overlaps").json()
+    assert [(o["budget"]["name"], o["emptied"]) for o in overlaps] == [("Saved", True)]
+    assert client.get(f"/api/budget/budgets/{saved['id']}/overlaps").json() == []
+    bought = client.post(
+        "/api/budget/cart/buy", json={"name": "Now"}, params={"drop_from_other_budgets": True}
+    )
+    assert bought.status_code == 201
+    assert client.get(f"/api/budget/budgets/{saved['id']}").status_code == 404
+    assert client.get("/api/budget/budgets/99/overlaps").status_code == 404

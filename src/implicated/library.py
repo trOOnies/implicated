@@ -14,6 +14,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from implicated.models import (
+    FORMATS,
     SPECIAL_PLAYLISTS,
     Album,
     AlbumIn,
@@ -21,6 +22,16 @@ from implicated.models import (
     Artist,
     ArtistIn,
     ArtistSummary,
+    Budget,
+    BudgetDetail,
+    BudgetIn,
+    BudgetItem,
+    BudgetOverlap,
+    Cart,
+    CartItem,
+    CartItemIn,
+    CartLine,
+    CartOption,
     LibraryStats,
     Member,
     MemberIn,
@@ -36,8 +47,11 @@ from implicated.models import (
     SongVideo,
     SongVideoIn,
     lyrics_file_name,
+    shop_link,
     validate_kind,
     validate_ownership,
+    validate_price,
+    validate_quantity,
     validate_rating,
     validate_wiki,
     youtube_id,
@@ -128,6 +142,33 @@ CREATE TABLE IF NOT EXISTS playlist_songs (
     position    INTEGER NOT NULL,
     PRIMARY KEY (playlist_id, song_id)
 );
+CREATE TABLE IF NOT EXISTS cart_items (
+    id          INTEGER PRIMARY KEY,
+    album_id    INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+    format      TEXT NOT NULL,
+    price_cents INTEGER NOT NULL,
+    quantity    INTEGER NOT NULL DEFAULT 1,
+    link        TEXT,
+    created_at  TEXT NOT NULL,
+    UNIQUE (album_id, format)
+);
+CREATE TABLE IF NOT EXISTS budgets (
+    id         INTEGER PRIMARY KEY,
+    name       TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    bought_at  TEXT,
+    in_cart    INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS budget_items (
+    id          INTEGER PRIMARY KEY,
+    budget_id   INTEGER NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
+    album_id    INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+    format      TEXT NOT NULL,
+    price_cents INTEGER NOT NULL,
+    quantity    INTEGER NOT NULL DEFAULT 1,
+    link        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_budget_items_budget ON budget_items(budget_id);
 CREATE INDEX IF NOT EXISTS idx_albums_artist ON albums(artist_id);
 CREATE INDEX IF NOT EXISTS idx_members_artist ON members(artist_id);
 CREATE INDEX IF NOT EXISTS idx_songs_album ON songs(album_id);
@@ -156,6 +197,7 @@ MIGRATIONS = [
     ("playlists", "kind", "TEXT"),
     ("artists", "rating", "INTEGER"),
     ("albums", "unreleased", "INTEGER NOT NULL DEFAULT 0"),
+    ("cart_items", "quantity", "INTEGER NOT NULL DEFAULT 1"),
 ]
 # Columns that changed names: (table, old name, new name), renamed before ``MIGRATIONS`` run.
 RENAMES = [("songs", "youtube", "mv")]
@@ -240,6 +282,42 @@ def _album(row: sqlite3.Row) -> Album:
     data["listen_later"] = bool(data["listen_later"])
     data["unreleased"] = bool(data["unreleased"])
     return Album(**data)
+
+
+def _cents(price: float) -> int:
+    return round(price * 100)
+
+
+def _cart_item(row: sqlite3.Row) -> CartItem:
+    data = dict(row)
+    data["price"] = data.pop("price_cents") / 100
+    return CartItem(**data)
+
+
+def _budget_item(row: sqlite3.Row) -> BudgetItem:
+    data = dict(row)
+    data["price"] = data.pop("price_cents") / 100
+    return BudgetItem(**data)
+
+
+def _budget(row: sqlite3.Row) -> Budget:
+    data = dict(row)
+    data["in_cart"] = bool(data["in_cart"])
+    return Budget(**data)
+
+
+def _budget_name(data: BudgetIn) -> str:
+    name = (data.name or "").strip()
+    if not name:
+        raise ValueError("name is required")
+    if len(name) > 100:
+        raise ValueError("name must be at most 100 characters")
+    return name
+
+
+def _total(lines: list[CartLine]) -> float:
+    # Added up in cents, so 0.1 + 0.2 makes 0.3.
+    return sum(round(line.subtotal * 100) for line in lines) / 100
 
 
 def _song(row: sqlite3.Row) -> Song:
@@ -724,7 +802,7 @@ class Library:
     def set_format(self, album_id: int, fmt: str, state: str | None) -> Album:
         """Say whether you want or own the album on ``fmt`` ("cd" or "vinyl"); ``None`` for
         neither."""
-        if fmt not in ("cd", "vinyl"):
+        if fmt not in FORMATS:
             raise ValueError("format must be cd or vinyl")
         validate_ownership(fmt, state)
         self.get_album(album_id)
@@ -1085,6 +1163,245 @@ class Library:
                 "SELECT * FROM plays ORDER BY played_at DESC LIMIT ?", (limit,)
             ).fetchall()
         return [(Play(**dict(row)), self.get_song_summary(row["song_id"])) for row in rows]
+
+    # Budget
+
+    def get_cart(self) -> Cart:
+        """The albums in the Budget cart, in the order they were added, with their total and
+        the budget it is editing, if any."""
+        with self.connect() as conn:
+            rows = conn.execute("SELECT * FROM cart_items ORDER BY id").fetchall()
+            editing = conn.execute("SELECT * FROM budgets WHERE in_cart = 1").fetchone()
+        lines = [self._cart_line(_cart_item(row)) for row in rows]
+        return Cart(lines, _total(lines), _budget(editing) if editing else None)
+
+    def cart_options(self, fmt: str | None = None) -> list[CartOption]:
+        """Every album on every format (or only on ``fmt``) that is not in the cart yet: the
+        wanted ones first, then the ones neither wanted nor owned, then the owned ones; by
+        artist, year and title."""
+        if fmt is not None and fmt not in FORMATS:
+            raise ValueError(f"format must be one of {', '.join(FORMATS)}")
+        with self.connect() as conn:
+            taken = {tuple(row) for row in conn.execute("SELECT album_id, format FROM cart_items")}
+            rows = conn.execute(
+                """SELECT al.*, ar.name AS x_artist FROM albums al
+                     JOIN artists ar ON ar.id = al.artist_id
+                    ORDER BY ar.name COLLATE NOCASE, al.year IS NULL, al.year,
+                             al.title COLLATE NOCASE, al.id"""
+            ).fetchall()
+        options = []
+        for row in rows:
+            own, extra = _split(row, "x_")
+            album = _album(own)
+            for each in [fmt] if fmt else FORMATS:
+                if (album.id, each) not in taken:
+                    options.append(CartOption(album, extra["artist"], each, getattr(album, each)))
+        rank = {"wanted": 0, None: 1, "owned": 2}
+        return sorted(options, key=lambda option: rank[option.state])  # stable: keeps the order
+
+    def get_cart_item(self, item_id: int) -> CartItem:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM cart_items WHERE id = ?", (item_id,)).fetchone()
+        if row is None:
+            raise NotFound(f"cart item {item_id} not found")
+        return _cart_item(row)
+
+    def add_to_cart(self, data: CartItemIn) -> CartItem:
+        values = self._cart_values(data)
+        try:
+            with self.connect() as conn:
+                cur = conn.execute(
+                    """INSERT INTO cart_items (album_id, format, price_cents, quantity, link,
+                                               created_at)
+                       VALUES (:album_id, :format, :price_cents, :quantity, :link, :now)""",
+                    {**values, "now": _now()},
+                )
+        except sqlite3.IntegrityError:
+            raise ValueError(self._in_cart_message(data)) from None
+        return self.get_cart_item(cur.lastrowid)
+
+    def update_cart_item(self, item_id: int, data: CartItemIn) -> CartItem:
+        self.get_cart_item(item_id)
+        values = self._cart_values(data)
+        try:
+            with self.connect() as conn:
+                conn.execute(
+                    """UPDATE cart_items SET album_id = :album_id, format = :format,
+                           price_cents = :price_cents, quantity = :quantity, link = :link
+                       WHERE id = :id""",
+                    {**values, "id": item_id},
+                )
+        except sqlite3.IntegrityError:
+            raise ValueError(self._in_cart_message(data)) from None
+        return self.get_cart_item(item_id)
+
+    def remove_from_cart(self, item_id: int) -> None:
+        self._delete("cart_items", item_id)
+
+    def change_cart_quantity(self, item_id: int, offset: int) -> CartItem | None:
+        """Buy ``offset`` more copies (fewer when negative); with none left the item leaves the
+        cart, and ``None`` is returned."""
+        item = self.get_cart_item(item_id)
+        if item.quantity + offset < 1:
+            self.remove_from_cart(item_id)
+            return None
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE cart_items SET quantity = quantity + ? WHERE id = ?", (offset, item_id)
+            )
+        return self.get_cart_item(item_id)
+
+    def clear_cart(self) -> None:
+        """Empty the cart. A budget it was editing stays as it was saved."""
+        with self.connect() as conn:
+            conn.execute("DELETE FROM cart_items")
+            conn.execute("UPDATE budgets SET in_cart = 0")
+
+    def make_budget(self, data: BudgetIn) -> Budget:
+        """Save the cart as a budget, or back into the budget it is editing, and empty it."""
+        name = _budget_name(data)
+        cart = self.get_cart()
+        if not cart.lines:
+            raise ValueError("the cart is empty: add albums to it first")
+        with self.transaction(), self.connect() as conn:
+            if cart.editing:
+                budget_id = cart.editing.id
+                conn.execute("UPDATE budgets SET name = ? WHERE id = ?", (name, budget_id))
+                conn.execute("DELETE FROM budget_items WHERE budget_id = ?", (budget_id,))
+            else:
+                cur = conn.execute(
+                    "INSERT INTO budgets (name, created_at) VALUES (?, ?)", (name, _now())
+                )
+                budget_id = cur.lastrowid
+            conn.execute(
+                """INSERT INTO budget_items (budget_id, album_id, format, price_cents, quantity,
+                                             link)
+                   SELECT ?, album_id, format, price_cents, quantity, link
+                     FROM cart_items ORDER BY id""",
+                (budget_id,),
+            )
+            self.clear_cart()
+        return self.get_budget(budget_id)
+
+    def buy_cart(self, data: BudgetIn, drop_from_others: bool = False) -> Budget:
+        """Save the cart as a budget (see ``make_budget``) and buy it (see ``buy_budget``)."""
+        with self.transaction():
+            budget = self.make_budget(data)
+            return self.buy_budget(budget.id, drop_from_others)
+
+    def list_budgets(self) -> list[BudgetDetail]:
+        """Every budget, the ones still to buy first, newest first."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT id FROM budgets ORDER BY bought_at IS NOT NULL, bought_at DESC, id DESC"
+            ).fetchall()
+        return [self.get_budget_detail(budget_id) for (budget_id,) in rows]
+
+    def get_budget(self, budget_id: int) -> Budget:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM budgets WHERE id = ?", (budget_id,)).fetchone()
+        if row is None:
+            raise NotFound(f"budget {budget_id} not found")
+        return _budget(row)
+
+    def get_budget_detail(self, budget_id: int) -> BudgetDetail:
+        budget = self.get_budget(budget_id)
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM budget_items WHERE budget_id = ? ORDER BY id", (budget_id,)
+            ).fetchall()
+        lines = [self._cart_line(_budget_item(row), bought=bool(budget.bought_at)) for row in rows]
+        return BudgetDetail(budget, lines, _total(lines))
+
+    def edit_budget(self, budget_id: int) -> Cart:
+        """Load the budget into the cart, replacing what the cart held, to change it there."""
+        self._open_budget(budget_id, "edited")
+        with self.transaction(), self.connect() as conn:
+            self.clear_cart()
+            conn.execute(
+                """INSERT INTO cart_items (album_id, format, price_cents, quantity, link,
+                                           created_at)
+                   SELECT album_id, format, price_cents, quantity, link, ? FROM budget_items
+                    WHERE budget_id = ? ORDER BY id""",
+                (_now(), budget_id),
+            )
+            conn.execute("UPDATE budgets SET in_cart = 1 WHERE id = ?", (budget_id,))
+        return self.get_cart()
+
+    def buy_budget(self, budget_id: int, drop_from_others: bool = False) -> Budget:
+        """Mark the budget bought, and every album in it owned on its format. With
+        ``drop_from_others``, those albums also leave the other budgets still to buy (see
+        ``budget_overlaps``), and the budgets that leaves empty are deleted."""
+        budget = self._open_budget(budget_id, "bought")
+        if budget.in_cart:
+            raise ValueError(f"{budget.name} is being edited in the cart: save or delete it there")
+        with self.transaction(), self.connect() as conn:
+            if drop_from_others:
+                for overlap in self.budget_overlaps(budget_id):
+                    if overlap.emptied:
+                        self.delete_budget(overlap.budget.id)
+                    for line in overlap.lines:
+                        conn.execute("DELETE FROM budget_items WHERE id = ?", (line.item.id,))
+            for line in self.get_budget_detail(budget_id).lines:
+                self.set_format(line.album.id, line.item.format, "owned")
+            conn.execute("UPDATE budgets SET bought_at = ? WHERE id = ?", (_now(), budget_id))
+        return self.get_budget(budget_id)
+
+    def budget_overlaps(self, budget_id: int | None = None) -> list[BudgetOverlap]:
+        """The other budgets still to buy that hold some of the same albums on the same formats
+        as the budget (or as the cart, without ``budget_id``), with those albums. Bought budgets
+        are records and never count, nor does the budget the cart is editing."""
+        if budget_id is None:
+            cart = self.get_cart()
+            lines, exclude = cart.lines, cart.editing.id if cart.editing else None
+        else:
+            lines, exclude = self.get_budget_detail(budget_id).lines, budget_id
+        wanted = {(line.item.album_id, line.item.format) for line in lines}
+        overlaps = []
+        for detail in self.list_budgets():
+            if detail.budget.bought_at or detail.budget.id == exclude:
+                continue
+            same = [
+                line for line in detail.lines if (line.item.album_id, line.item.format) in wanted
+            ]
+            if same:
+                overlaps.append(BudgetOverlap(detail.budget, same, len(same) == len(detail.lines)))
+        return overlaps
+
+    def delete_budget(self, budget_id: int) -> None:
+        """Delete the budget. If the cart is editing it, the cart keeps its items unsaved."""
+        self._delete("budgets", budget_id)
+
+    def _open_budget(self, budget_id: int, change: str) -> Budget:
+        budget = self.get_budget(budget_id)
+        if budget.bought_at:
+            raise ValueError(f"{budget.name} was already bought and cannot be {change}")
+        return budget
+
+    def _cart_line(self, item: CartItem | BudgetItem, bought: bool = False) -> CartLine:
+        album = self.get_album(item.album_id)
+        artist = self.get_artist(album.artist_id)
+        owned = not bought and getattr(album, item.format) == "owned"
+        subtotal = _cents(item.price) * item.quantity / 100
+        return CartLine(item, album, artist.name, owned, subtotal)
+
+    def _cart_values(self, data: CartItemIn) -> dict:
+        self.get_album(data.album_id)
+        if data.format not in FORMATS:
+            raise ValueError(f"format must be one of {', '.join(FORMATS)}")
+        validate_price(data.price)
+        validate_quantity(data.quantity)
+        return {
+            "album_id": data.album_id,
+            "format": data.format,
+            "price_cents": _cents(data.price),
+            "quantity": data.quantity,
+            "link": shop_link(data.link),
+        }
+
+    def _in_cart_message(self, data: CartItemIn) -> str:
+        album = self.get_album(data.album_id)
+        return f"{album.title} on {FORMATS[data.format]} is already in the cart"
 
     # Playlists
 

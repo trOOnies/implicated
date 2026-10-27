@@ -6,7 +6,17 @@ import pytest
 from conftest import Sample, add_sample
 
 from implicated.library import Library, NotFound
-from implicated.models import AlbumIn, ArtistIn, MemberIn, PlaylistIn, SongIn, SongVideoIn
+from implicated.models import (
+    AlbumIn,
+    ArtistIn,
+    BudgetIn,
+    Cart,
+    CartItemIn,
+    MemberIn,
+    PlaylistIn,
+    SongIn,
+    SongVideoIn,
+)
 
 # Artists
 
@@ -986,3 +996,173 @@ def test_missing_lyrics_filters(lib: Library, sample: Sample):
     assert (songs(), albums()) == (["Sour Times"], ["Dummy"])
     lib.set_lyrics(second, "Nobody loves me")
     assert (songs(), albums()) == ([], [])
+
+
+def test_cart(lib: Library, sample: Sample):
+    other = lib.create_album(AlbumIn(sample.artist_id, "Portishead", 1997, cd="wanted"))
+    lib.set_format(sample.album_id, "cd", "owned")
+    options = [(o.album.title, o.format, o.state) for o in lib.cart_options()]
+    assert options == [
+        ("Portishead", "cd", "wanted"),  # wanted first
+        ("Dummy", "vinyl", None),
+        ("Portishead", "vinyl", None),
+        ("Dummy", "cd", "owned"),  # owned last
+    ]
+    assert [(o.album.title, o.state) for o in lib.cart_options("cd")] == [
+        ("Portishead", "wanted"),
+        ("Dummy", "owned"),
+    ]
+    with pytest.raises(ValueError, match="format must be one of cd, vinyl"):
+        lib.cart_options("tape")
+
+    lib.add_to_cart(CartItemIn(other.id, "cd", 19.99, "shop.example/portishead"))
+    owned = lib.add_to_cart(CartItemIn(sample.album_id, "cd", 0.1, quantity=3))
+    lib.add_to_cart(CartItemIn(sample.album_id, "vinyl", 0.2))
+    cart = lib.get_cart()
+    assert cart.total == 20.49  # added up in cents, so no 20.490000000000002
+    assert [
+        (line.album.title, line.item.format, line.subtotal, line.owned) for line in cart.lines
+    ] == [
+        ("Portishead", "cd", 19.99, False),
+        ("Dummy", "cd", 0.3, True),
+        ("Dummy", "vinyl", 0.2, False),
+    ]
+    assert cart.lines[0].item.link == "https://shop.example/portishead"
+    assert cart.editing is None
+    assert [(o.album.title, o.format) for o in lib.cart_options()] == [("Portishead", "vinyl")]
+
+    with pytest.raises(ValueError, match="Dummy on CD is already in the cart"):
+        lib.add_to_cart(CartItemIn(sample.album_id, "cd", 5))
+    with pytest.raises(ValueError, match="format must be one of cd, vinyl"):
+        lib.add_to_cart(CartItemIn(other.id, "tape", 5))
+    with pytest.raises(ValueError, match="price must be a number, 0 or more"):
+        lib.add_to_cart(CartItemIn(other.id, "vinyl", -1))
+    for quantity in (0, -2, True):
+        with pytest.raises(ValueError, match="quantity must be a whole number, 1 or more"):
+            lib.add_to_cart(CartItemIn(other.id, "vinyl", 5, quantity=quantity))
+    with pytest.raises(ValueError, match="link must be a web address"):
+        lib.add_to_cart(CartItemIn(other.id, "vinyl", 5, "javascript:alert(1)"))
+    with pytest.raises(NotFound):
+        lib.add_to_cart(CartItemIn(99, "cd", 5))
+
+    updated = lib.update_cart_item(owned.id, replace(owned, price=12.5, link=None, quantity=2))
+    assert (updated.price, updated.link, updated.quantity) == (12.5, None, 2)
+    lib.remove_from_cart(owned.id)
+    with pytest.raises(NotFound):
+        lib.remove_from_cart(owned.id)
+    lib.delete_album(other.id)  # takes its cart item along
+    assert [line.item.format for line in lib.get_cart().lines] == ["vinyl"]
+    lib.clear_cart()
+    assert lib.get_cart().lines == []
+
+
+def test_budgets(lib: Library, sample: Sample):
+    with pytest.raises(ValueError, match="the cart is empty"):
+        lib.make_budget(BudgetIn("Nothing"))
+    lib.set_format(sample.album_id, "cd", "owned")
+    lib.add_to_cart(CartItemIn(sample.album_id, "vinyl", 30, quantity=2))
+    lib.add_to_cart(CartItemIn(sample.album_id, "cd", 10, "shop.example/cd"))
+    with pytest.raises(ValueError, match="name is required"):
+        lib.make_budget(BudgetIn("  "))
+    birthday = lib.make_budget(BudgetIn(" Birthday "))
+    assert birthday.name == "Birthday" and not birthday.bought_at
+    assert lib.get_cart().lines == []  # saved and emptied
+    detail = lib.get_budget_detail(birthday.id)
+    assert detail.total == 70
+    assert [(line.item.format, line.item.quantity, line.owned) for line in detail.lines] == [
+        ("vinyl", 2, False),
+        ("cd", 1, True),
+    ]
+    assert detail.lines[1].item.link == "https://shop.example/cd"
+
+    # Editing loads it into the cart, replacing what was there; saving puts it back.
+    lib.add_to_cart(CartItemIn(sample.album_id, "vinyl", 1))
+    cart = lib.edit_budget(birthday.id)
+    assert cart.editing.name == "Birthday" and cart.total == 70
+    with pytest.raises(ValueError, match="Birthday is being edited in the cart"):
+        lib.buy_budget(birthday.id)
+    cd = cart.lines[1].item
+    lib.remove_from_cart(cd.id)
+    saved = lib.make_budget(BudgetIn("Birthday gift"))
+    assert saved.id == birthday.id and saved.name == "Birthday gift" and not saved.in_cart
+    assert lib.get_budget_detail(birthday.id).total == 60
+    assert lib.get_cart() == Cart()
+
+    # Deleting the cart while editing leaves the budget as it was saved.
+    lib.edit_budget(birthday.id)
+    lib.clear_cart()
+    assert not lib.get_budget(birthday.id).in_cart
+    assert lib.get_budget_detail(birthday.id).total == 60
+
+    # Buying marks the albums owned and keeps the budget, bought.
+    bought = lib.buy_budget(birthday.id)
+    assert bought.bought_at
+    assert lib.get_album(sample.album_id).vinyl == "owned"
+    for change in (lib.buy_budget, lib.edit_budget):
+        with pytest.raises(ValueError, match="already bought"):
+            change(birthday.id)
+    assert not any(line.owned for line in lib.get_budget_detail(birthday.id).lines)
+
+    # Buying the cart saves it as a bought budget.
+    other = lib.create_album(AlbumIn(sample.artist_id, "Portishead", 1997, vinyl="wanted"))
+    lib.add_to_cart(CartItemIn(other.id, "vinyl", 25))
+    later = lib.make_budget(BudgetIn("Later"))
+    lib.add_to_cart(CartItemIn(other.id, "cd", 15))
+    now = lib.buy_cart(BudgetIn("Now"))
+    assert now.bought_at and lib.get_album(other.id).cd == "owned"
+    assert lib.get_album(other.id).vinyl == "wanted"  # only in Later, not bought yet
+    assert [b.budget.name for b in lib.list_budgets()] == ["Later", "Now", "Birthday gift"]
+
+    lib.delete_budget(later.id)
+    with pytest.raises(NotFound):
+        lib.get_budget(later.id)
+    with pytest.raises(NotFound):
+        lib.edit_budget(99)
+
+
+def test_cart_quantity_steps(lib: Library, sample: Sample):
+    item = lib.add_to_cart(CartItemIn(sample.album_id, "cd", 10))
+    assert lib.change_cart_quantity(item.id, 1).quantity == 2
+    assert lib.change_cart_quantity(item.id, -1).quantity == 1
+    assert lib.change_cart_quantity(item.id, -1) is None  # no copies left: out of the cart
+    assert lib.get_cart().lines == []
+    with pytest.raises(NotFound):
+        lib.change_cart_quantity(item.id, 1)
+
+
+def test_buying_drops_albums_from_other_budgets(lib: Library, sample: Sample):
+    other = lib.create_album(AlbumIn(sample.artist_id, "Portishead", 1997))
+
+    def budget(name, *items):
+        for album_id, fmt in items:
+            lib.add_to_cart(CartItemIn(album_id, fmt, 10))
+        return lib.make_budget(BudgetIn(name))
+
+    only_dummy = budget("Only Dummy", (sample.album_id, "cd"))
+    both = budget("Both", (sample.album_id, "cd"), (other.id, "cd"))
+    vinyl = budget("Vinyl", (sample.album_id, "vinyl"))  # another format: not the same
+    bought = budget("Bought", (sample.album_id, "cd"))
+    lib.buy_budget(bought.id)  # a record, never touched
+
+    lib.add_to_cart(CartItemIn(sample.album_id, "cd", 12))
+    overlaps = lib.budget_overlaps()
+    assert [
+        (o.budget.name, [line.album.title for line in o.lines], o.emptied) for o in overlaps
+    ] == [
+        ("Both", ["Dummy"], False),
+        ("Only Dummy", ["Dummy"], True),
+    ]
+    # The budget being bought, or edited in the cart, is not another budget.
+    assert [o.budget.name for o in lib.budget_overlaps(only_dummy.id)] == ["Both"]
+    lib.buy_cart(BudgetIn("Today"), drop_from_others=True)
+    with pytest.raises(NotFound):
+        lib.get_budget(only_dummy.id)  # left empty, so deleted
+    assert [line.album.title for line in lib.get_budget_detail(both.id).lines] == ["Portishead"]
+    assert len(lib.get_budget_detail(vinyl.id).lines) == 1
+    assert len(lib.get_budget_detail(bought.id).lines) == 1
+
+    # Without dropping, the other budgets keep them.
+    lib.add_to_cart(CartItemIn(other.id, "cd", 9))
+    lib.buy_cart(BudgetIn("Keep"))
+    assert [line.album.title for line in lib.get_budget_detail(both.id).lines] == ["Portishead"]
+    assert lib.budget_overlaps(both.id) == []  # the others holding it were bought

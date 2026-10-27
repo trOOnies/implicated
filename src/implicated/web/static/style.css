@@ -7,6 +7,7 @@
   --accent: #7d6607;
   --accent-soft: #f1e7bf;
   --danger: #b3261e;
+  --warn: #9a5b00;
   --fav: #c2185b;
   --radius: 10px;
   color-scheme: light dark;
@@ -22,6 +23,7 @@
     --accent: #e0c04a;
     --accent-soft: #3d3412;
     --danger: #f2827a;
+    --warn: #f0b45a;
     --fav: #f48fb1;
   }
 }
@@ -101,6 +103,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 2rem; }
 .small, small { font-size: .85rem; color: var(--muted); }
 .empty { color: var(--muted); font-style: italic; }
 .error { color: var(--danger); font-weight: 600; }
+.warning { color: var(--warn); font-weight: 600; font-size: .85rem; margin: .25rem 0 0; }
 .bio { white-space: pre-line; margin-top: .5rem; max-width: 70ch; }
 
 .tag {
@@ -292,3 +295,24 @@ tr.editing td { background: var(--accent-soft); }
 .bar-track { background: var(--bg); border-radius: 4px; height: .8rem; overflow: hidden; }
 .bar { display: block; height: 100%; background: var(--accent); border-radius: 4px; min-width: 2px; }
 .bar-value { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Budget */
+th.num, td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cart tfoot th { font-size: .95rem; color: var(--text); text-transform: none; letter-spacing: 0; border-bottom: none; }
+.cart tr.owned-line td { background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.cart td form label { display: block; }
+.notice { background: var(--accent-soft); border-radius: var(--radius); padding: .5rem .75rem; margin: 0 0 1rem; }
+.cart-actions { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--border); }
+.cart-actions .row { align-items: flex-end; }
+.budgets { margin-top: 1rem; }
+details.budget { border-top: 1px solid var(--border); padding: .6rem 0; }
+details.budget > summary { cursor: pointer; list-style: none; align-items: baseline; }
+details.budget > summary::-webkit-details-marker { display: none; }
+details.budget > summary::before { content: "▸"; color: var(--muted); }
+details.budget[open] > summary::before { content: "▾"; }
+details.budget > .row { margin-top: .5rem; }
+.stepper { display: inline-flex; align-items: center; gap: .35rem; }
+.stepper button { font-size: 1.05rem; line-height: 1; padding: 0 .3rem; }
+.stepper span { min-width: 1.5ch; text-align: center; }
+.prompt { margin-bottom: 1rem; border-color: var(--warn); }
+.prompt ul { margin: .5rem 0; padding-left: 1.25rem; }

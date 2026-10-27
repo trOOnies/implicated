@@ -8,7 +8,17 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from implicated.api import albums, artists, members, playlists, plays, songs, stats, videos
+from implicated.api import (
+    albums,
+    artists,
+    budget,
+    members,
+    playlists,
+    plays,
+    songs,
+    stats,
+    videos,
+)
 from implicated.api.deps import get_library
 
 __all__ = ["TAGS", "get_library", "router"]
@@ -31,9 +41,14 @@ TAGS = [
         "name": "Plays",
         "description": "Listening history; a play clears the song's listen later mark.",
     },
+    {
+        "name": "Budget",
+        "description": "A cart of albums to buy on CD or vinyl, with their prices, quantities, "
+        "where to buy them and the total, and the budgets saved from it.",
+    },
     {"name": "Stats", "description": "Totals and chart data for the whole library."},
 ]
 
 router = APIRouter(prefix="/api")
-for module in (artists, members, albums, songs, videos, playlists, plays, stats):
+for module in (artists, members, albums, songs, videos, playlists, plays, budget, stats):
     router.include_router(module.router)

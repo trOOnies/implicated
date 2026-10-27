@@ -7,6 +7,7 @@ The ``*In`` variants are the writable fields, used as API request bodies and for
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -14,6 +15,8 @@ from urllib.parse import parse_qs, unquote, urlsplit
 ALBUM_KINDS = ("album", "ep", "single", "live", "compilation")
 # Whether you have an album on a format (CD or vinyl); ``None`` means neither.
 OWNERSHIP = ("wanted", "owned")
+# The formats an album can be wanted, owned or bought on: field of ``AlbumIn`` -> name.
+FORMATS = {"cd": "CD", "vinyl": "Vinyl"}
 
 # YouTube video ids are 11 characters long; links to them come in many shapes.
 YOUTUBE_ID = re.compile(r"[A-Za-z0-9_-]{11}")
@@ -178,6 +181,47 @@ class Playlist(PlaylistIn):
     kind: str | None = None
 
 
+@dataclass
+class CartItemIn:
+    """An album on one format (see ``FORMATS``) in the Budget cart, at the price one copy sells
+    for, and how many copies to buy."""
+
+    album_id: int
+    format: str
+    price: float
+    # Where to buy it, such as the album's page on a record shop's website.
+    link: str | None = None
+    quantity: int = 1
+
+
+@dataclass
+class CartItem(CartItemIn):
+    id: int = 0
+    created_at: str = ""
+
+
+@dataclass
+class BudgetIn:
+    name: str
+
+
+@dataclass
+class Budget(BudgetIn):
+    """A cart saved under a name. ``bought_at`` is set once it was bought (its albums are then
+    owned on their formats); ``in_cart`` while it is loaded in the cart to be edited."""
+
+    id: int = 0
+    created_at: str = ""
+    bought_at: str | None = None
+    in_cart: bool = False
+
+
+@dataclass
+class BudgetItem(CartItemIn):
+    id: int = 0
+    budget_id: int = 0
+
+
 # Read-side views: records joined with the context a page needs.
 
 
@@ -230,6 +274,54 @@ class PlaylistDetail:
 
 
 @dataclass
+class CartLine:
+    """A cart or budget item with its album. ``owned`` warns that you already have it on that
+    format (never set on a bought budget, whose albums you bought); ``subtotal`` is its price
+    times its quantity."""
+
+    item: CartItem | BudgetItem
+    album: Album
+    artist_name: str
+    owned: bool = False
+    subtotal: float = 0.0
+
+
+@dataclass
+class Cart:
+    lines: list[CartLine] = field(default_factory=list)
+    total: float = 0.0
+    # The budget the cart was loaded from to be edited; saving the cart saves it back there.
+    editing: Budget | None = None
+
+
+@dataclass
+class BudgetDetail:
+    budget: Budget
+    lines: list[CartLine] = field(default_factory=list)
+    total: float = 0.0
+
+
+@dataclass
+class BudgetOverlap:
+    """The ``lines`` of another budget that hold albums being bought; ``emptied`` when they are
+    all of its lines, so dropping them leaves it empty."""
+
+    budget: Budget
+    lines: list[CartLine] = field(default_factory=list)
+    emptied: bool = False
+
+
+@dataclass
+class CartOption:
+    """An album on a format that can go in the cart; ``state`` is its ``OWNERSHIP`` there."""
+
+    album: Album
+    artist_name: str
+    format: str
+    state: str | None = None
+
+
+@dataclass
 class Point:
     """One data point of a chart."""
 
@@ -271,6 +363,37 @@ def validate_kind(kind: str) -> None:
 def validate_ownership(name: str, value: str | None) -> None:
     if value is not None and value not in OWNERSHIP:
         raise ValueError(f"{name} must be one of {', '.join(OWNERSHIP)}, or empty")
+
+
+def validate_price(price: float) -> None:
+    if not isinstance(price, (int, float)) or not math.isfinite(price) or price < 0:
+        raise ValueError("price must be a number, 0 or more")
+
+
+def validate_quantity(quantity: int) -> None:
+    if isinstance(quantity, bool) or not isinstance(quantity, int) or quantity < 1:
+        raise ValueError("quantity must be a whole number, 1 or more")
+
+
+def shop_link(value: str | None) -> str | None:
+    """A web link to buy something at (``https://`` is added when missing); ``None`` for no
+    value. Only plain ``http`` and ``https`` links to a named site are accepted."""
+    if value is None or not value.strip():
+        return None
+    value = value.strip()
+    error = ValueError("link must be a web address, like https://shop.example/album")
+    if len(value) > 2000 or WIKI_BAD_CHARS.search(value):
+        raise error
+    if "://" not in value:
+        value = f"https://{value}"
+    parts = urlsplit(value)
+    try:
+        parts.port  # noqa: B018 - raises on a broken port
+    except ValueError:
+        raise error from None
+    if parts.scheme not in ("http", "https") or parts.username or "." not in (parts.hostname or ""):
+        raise error
+    return value
 
 
 def youtube_id(value: str | None, name: str = "video") -> str | None:

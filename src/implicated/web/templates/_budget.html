@@ -1,0 +1,188 @@
+{# The Budget page body: the cart with its Add form, and the saved budgets. `editing` is the id of the cart item being edited; `budget_name` is what saving the cart names its budget. #}
+{% macro fields(v) %}
+<div class="row wrap">
+  <label>Price <input name="price" class="narrow" inputmode="decimal" required placeholder="24.99" value="{{ v.get('price') or '' }}"></label>
+  <label>Quantity <input name="quantity" class="narrow" type="number" min="1" step="1" required value="{{ v.get('quantity') or 1 }}"></label>
+</div>
+<label>Link (optional) <input name="link" inputmode="url" placeholder="https://shop.example/album" value="{{ v.get('link') or '' }}"></label>
+{% endmacro %}
+{% macro lines_table(lines, total, edit=False) %}
+<table class="cart">
+  <thead><tr><th></th><th>Album</th><th>Format</th><th class="num">Price</th><th class="num">Qty</th><th class="num">Subtotal</th><th></th></tr></thead>
+  <tbody>
+  {% for line in lines %}
+    {% set item = line.item %}
+    {% set fmt = format_names[item.format] %}
+    <tr{% if line.owned %} class="owned-line"{% endif %}>
+      <td class="cover-cell"><a href="/albums/{{ line.album.id }}">{% with album=line.album, size='thumb' %}{% include "_cover.html" %}{% endwith %}</a></td>
+      <td>
+        <a href="/albums/{{ line.album.id }}">{{ line.album.title }}</a>
+        <div class="small">{{ line.artist_name }}{% if line.album.year %} · {{ line.album.year }}{% endif %}</div>
+        {% if line.owned %}<p class="warning">⚠ You already own this on {{ fmt }}.</p>{% endif %}
+      </td>
+      <td>{{ fmt }}</td>
+      {% if edit and item.id == editing %}
+      <td colspan="4">
+        <form class="stack" hx-post="/budget/items/{{ item.id }}" hx-target="#budget" hx-swap="outerHTML">
+          {% if edit_error %}<p class="error">{{ edit_error }}</p>{% endif %}
+          {{ fields({'price': '%.2f' % item.price, 'quantity': item.quantity, 'link': item.link}) }}
+          <div class="row">
+            <button type="submit">Save</button>
+            <button type="button" class="secondary" hx-get="/fragments/budget"
+                    hx-target="#budget" hx-swap="outerHTML">Cancel</button>
+          </div>
+        </form>
+      </td>
+      {% else %}
+      <td class="num">{{ item.price | money }}</td>
+      {% if edit %}
+      <td class="num">
+        <span class="stepper">
+          <button type="button" class="link" hx-post="/budget/items/{{ item.id }}/quantity" hx-vals='{"offset": -1}'
+                  hx-target="#budget" hx-swap="outerHTML" aria-label="One copy fewer" title="One copy fewer"
+                  {% if item.quantity == 1 %}hx-confirm="That was the last copy. Remove {{ line.album.title }} ({{ fmt }}) from the cart?"{% endif %}>−</button>
+          <span>{{ item.quantity }}</span>
+          <button type="button" class="link" hx-post="/budget/items/{{ item.id }}/quantity" hx-vals='{"offset": 1}'
+                  hx-target="#budget" hx-swap="outerHTML" aria-label="One copy more" title="One copy more">+</button>
+        </span>
+      </td>
+      {% else %}
+      <td class="num">{{ item.quantity }}</td>
+      {% endif %}
+      <td class="num">{{ line.subtotal | money }}</td>
+      <td class="actions">
+        {% if item.link %}<a class="small" href="{{ item.link }}" target="_blank" rel="noopener noreferrer"
+           title="{{ item.link }}">Shop ↗</a>{% endif %}
+        {% if edit %}
+        <button type="button" class="link" hx-get="/fragments/budget/items/{{ item.id }}/edit"
+                hx-target="#budget" hx-swap="outerHTML">Edit</button>
+        <button type="button" class="link danger" hx-post="/budget/items/{{ item.id }}/delete"
+                hx-target="#budget" hx-swap="outerHTML">Remove</button>
+        {% endif %}
+      </td>
+      {% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot>
+    {% set copies = lines | sum(attribute='item.quantity') %}
+    <tr>
+      <th colspan="4">Total · {{ copies }} {{ 'item' if copies == 1 else 'items' }}</th>
+      <th></th>
+      <th class="num">{{ total | money }}</th>
+      <th></th>
+    </tr>
+  </tfoot>
+</table>
+{% set owned = lines | selectattr('owned') | list %}
+{% if owned %}<p class="warning">⚠ {{ owned | length }} of these {{ 'is' if owned | length == 1 else 'are' }} already in your collection on that format.</p>{% endif %}
+{% endmacro %}
+<div id="budget">
+  {% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
+  {% if buy_prompt %}
+  {% set emptied = buy_prompt.overlaps | selectattr('emptied') | list %}
+  <section class="card prompt" role="alertdialog" aria-labelledby="buy-prompt-title" aria-describedby="buy-prompt-text">
+    <h2 id="buy-prompt-title">⚠ Some of these albums are in other budgets</h2>
+    <ul>
+      {% for o in buy_prompt.overlaps %}
+      <li><strong>{{ o.budget.name }}</strong>:
+        {% for line in o.lines %}{{ line.album.title }} ({{ format_names[line.item.format] }}){{ ', ' if not loop.last }}{% endfor %}
+        {% if o.emptied %}<span class="warning">· holds nothing else, so it would be deleted</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    <p id="buy-prompt-text">Drop them from those budgets, now that you are buying them?{% if emptied %} Budgets left empty are deleted.{% endif %}</p>
+    <form class="row wrap" hx-post="{{ buy_prompt.action }}" hx-target="#budget" hx-swap="outerHTML">
+      {% if buy_prompt.name %}<input type="hidden" name="name" value="{{ buy_prompt.name }}">{% endif %}
+      <button type="submit" name="others" value="drop">Drop them and buy</button>
+      <button type="submit" name="others" value="keep" class="secondary">Keep them and buy</button>
+      <button type="button" class="secondary" hx-get="/fragments/budget" hx-target="#budget" hx-swap="outerHTML">Cancel</button>
+    </form>
+  </section>
+  {% endif %}
+  <div class="layout">
+    <section class="card">
+      <div class="row">
+        <h2>🛒 Cart</h2>
+        {% if cart.editing %}<span class="tag">Editing {{ cart.editing.name }}</span>{% endif %}
+      </div>
+      {% if cart.lines %}
+      {{ lines_table(cart.lines, cart.total, edit=True) }}
+      {% elif cart.editing %}
+      <p class="empty">The cart is empty. Add albums to {{ cart.editing.name }}, or press Delete to stop editing it (it stays as it was saved).</p>
+      {% else %}
+      <p class="empty">The cart is empty. Add the CDs and vinyls you want to buy to see what they cost together, then buy them or save them as a budget.</p>
+      {% endif %}
+      {% if cart.lines or cart.editing %}
+      {# Enter in the name saves the budget. #}
+      <form class="cart-actions" hx-post="/budget/cart/save" hx-target="#budget" hx-swap="outerHTML">
+        {% if cart_error %}<p class="error">{{ cart_error }}</p>{% endif %}
+        <div class="row wrap">
+          <label>Budget name <input name="name" required maxlength="100" value="{{ budget_name }}"></label>
+          <span class="spacer"></span>
+          <button type="button" hx-post="/budget/cart/buy"{% if not cart.lines %} disabled{% endif %}
+                  hx-confirm="Buy these albums? They will be marked as owned on their formats, and the cart is kept as a bought budget."
+                  title="Mark every album owned on its format and keep the cart as a bought budget">Buy</button>
+          <button type="submit" class="secondary"{% if not cart.lines %} disabled{% endif %}
+                  title="Save the cart as a budget and empty it">{{ 'Save Budget' if cart.editing else 'Make Budget' }}</button>
+          <button type="button" class="danger" hx-post="/budget/cart/delete"
+                  hx-confirm="{{ 'Discard the changes to ' ~ cart.editing.name ~ '? It stays as it was saved.' if cart.editing else 'Empty the cart?' }}"
+                  title="Empty the cart">Delete</button>
+        </div>
+      </form>
+      {% endif %}
+    </section>
+    <aside class="card">
+      <h2>Add to cart</h2>
+      <form class="stack" hx-post="/budget/items" hx-target="#budget" hx-swap="outerHTML">
+        {% if error %}<p class="error">{{ error }}</p>{% endif %}
+        <label>Format
+          <select name="format" required hx-get="/fragments/budget/albums" hx-trigger="change"
+                  hx-target="#cart-album" hx-swap="outerHTML">
+            <option value="">Pick a format…</option>
+            {% for fmt, name in format_names.items() %}
+            <option value="{{ fmt }}"{% if form.get('format') == fmt %} selected{% endif %}>{{ name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        {% include "_cart_albums.html" %}
+        {{ fields(form) }}
+        <button type="submit">Add to cart</button>
+      </form>
+      <p class="small">Albums marked <em>Wanted</em> on that format come first. Mark them from their pages.</p>
+    </aside>
+  </div>
+  <section class="card budgets">
+    <h2>🧾 Budgets</h2>
+    {% if budget_error %}<p class="error">{{ budget_error }}</p>{% endif %}
+    {% for b in budgets %}
+    {% set budget = b.budget %}
+    <details class="budget"{% if budget.in_cart %} open{% endif %}>
+      <summary class="row wrap">
+        <strong>{{ budget.name }}</strong>
+        {% if budget.bought_at %}<span class="tag owned">Bought {{ budget.bought_at | when }}</span>
+        {% elif budget.in_cart %}<span class="tag wanted">Being edited in the cart</span>{% endif %}
+        <span class="small">{{ b.lines | sum(attribute='item.quantity') }} items · made {{ budget.created_at | when }}</span>
+        {% if b.lines | selectattr('owned') | list %}<span class="warning">⚠ has albums you own</span>{% endif %}
+        <span class="spacer"></span>
+        <strong class="num">{{ b.total | money }}</strong>
+      </summary>
+      {% if b.lines %}{{ lines_table(b.lines, b.total) }}{% else %}<p class="empty">No albums: their albums were deleted.</p>{% endif %}
+      <div class="row">
+        <span class="spacer"></span>
+        <button type="button" hx-post="/budget/budgets/{{ budget.id }}/buy" hx-target="#budget" hx-swap="outerHTML"
+                {% if budget.bought_at or budget.in_cart or not b.lines %}disabled{% endif %}
+                title="{{ 'Already bought' if budget.bought_at else 'Being edited in the cart: save it there first' if budget.in_cart else 'Mark every album owned on its format' }}"
+                hx-confirm="Buy {{ budget.name }}? Its albums will be marked as owned on their formats.">Buy</button>
+        <button type="button" class="secondary" hx-post="/budget/budgets/{{ budget.id }}/edit" hx-target="#budget" hx-swap="outerHTML"
+                {% if budget.bought_at or budget.in_cart %}disabled{% endif %}
+                title="{{ 'Already bought' if budget.bought_at else 'Already in the cart' if budget.in_cart else 'Load it into the cart to change it' }}"
+                {% if cart.lines %}hx-confirm="Replace what is in the cart with {{ budget.name }}? The cart's albums{{ ' (and the changes to ' ~ cart.editing.name ~ ')' if cart.editing }} are discarded."{% endif %}>Edit</button>
+        <button type="button" class="danger" hx-post="/budget/budgets/{{ budget.id }}/delete" hx-target="#budget" hx-swap="outerHTML"
+                hx-confirm="Delete the budget {{ budget.name }}?{{ ' The albums stay owned.' if budget.bought_at }}">Delete</button>
+      </div>
+    </details>
+    {% else %}
+    <p class="empty">No budgets yet. Fill the cart and press Make Budget to save one for later.</p>
+    {% endfor %}
+  </section>
+</div>

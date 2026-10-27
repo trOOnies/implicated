@@ -5,7 +5,15 @@ from conftest import Sample
 from fastapi.testclient import TestClient
 
 from implicated.library import Library
-from implicated.models import AlbumIn, ArtistIn, Member, MemberIn, SongIn
+from implicated.models import (
+    AlbumIn,
+    ArtistIn,
+    BudgetIn,
+    CartItemIn,
+    Member,
+    MemberIn,
+    SongIn,
+)
 from implicated.web import editor
 from implicated.web.views import duration, percent, stars, tenure, when
 
@@ -877,3 +885,141 @@ def test_favicon(client: TestClient):
     response = client.get("/static/favicon.svg")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("image/svg+xml")
+
+
+def test_budget_page(client: TestClient, client_lib: Library, web_sample: Sample):
+    album_id = web_sample.album_id
+    client_lib.set_format(album_id, "cd", "owned")
+    client_lib.set_format(album_id, "vinyl", "wanted")
+    page = client.get("/budget").text
+    assert 'href="/budget" aria-current="page">Budget</a>' in page
+    assert "The cart is empty" in page and "No budgets yet" in page
+    assert "Pick a format first" in page  # the Album picker waits for the format
+
+    albums = client.get("/fragments/budget/albums", params={"format": "cd"}).text
+    assert '<optgroup label="Already owned">' in albums and "Portishead – Dummy ⚠ owned" in albums
+    assert "Wanted" not in albums
+    assert "Pick a format first" in client.get("/fragments/budget/albums").text
+
+    def add(**data):
+        return client.post("/budget/items", data={"format": "cd", "album_id": album_id} | data)
+
+    for price, error in [("abc", "must be a number"), ("1.234", "can have at most two decimals")]:
+        added = add(price=price)
+        assert added.status_code == 422 and f"price {error}" in added.text
+    bad = add(price="3", quantity="0")
+    assert bad.status_code == 422 and "quantity must be a whole number" in bad.text
+    assert add(format="", price="3").status_code == 422
+    assert "Pick an album." in add(album_id="", price="3").text
+    assert add(album_id="99", price="3").status_code == 404
+
+    cart = add(price="12,5", quantity="2").text
+    assert 'option value="cd" selected' in cart  # the format stays picked
+    assert "Every album is already in the cart on CD" in cart
+    cart = add(format="vinyl", price="$1,029.99", link="shop.example/dummy").text
+    assert "You already own this on CD." in cart and cart.count("You already own this") == 1
+    assert "1 of these is already in your collection" in cart
+    assert "25.00" in cart and "1,029.99" in cart and "1,054.99" in cart  # subtotal and total
+    assert "Total · 3 items" in cart
+    assert 'href="https://shop.example/dummy"' in cart
+    assert "Make Budget" in cart and 'hx-post="/budget/cart/buy"' in cart
+
+    item = client_lib.get_cart().lines[0].item
+    edit = client.get(f"/fragments/budget/items/{item.id}/edit").text
+    assert f'hx-post="/budget/items/{item.id}"' in edit and 'value="12.50"' in edit
+    bad = client.post(f"/budget/items/{item.id}", data={"price": ""})
+    assert bad.status_code == 422 and "price is required" in bad.text
+    client.post(f"/budget/items/{item.id}", data={"price": "10", "quantity": "3"})
+    assert client_lib.get_cart_item(item.id).quantity == 3
+
+    # Make Budget saves the cart under its name and empties it.
+    missing = client.post("/budget/cart/save", data={"name": ""})
+    assert missing.status_code == 422 and "name is required" in missing.text
+    saved = client.post("/budget/cart/save", data={"name": "Xmas"}).text
+    assert "Saved Xmas." in saved and "The cart is empty" in saved
+    assert "<strong>Xmas</strong>" in saved and "1,059.99" in saved
+    budget = client_lib.list_budgets()[0].budget
+
+    # Edit loads it into the cart, asking first when the cart has albums.
+    client.post("/budget/items", data={"format": "cd", "album_id": album_id, "price": "1"})
+    assert "Replace what is in the cart with Xmas?" in client.get("/fragments/budget").text
+    edited = client.post(f"/budget/budgets/{budget.id}/edit").text
+    assert "Editing Xmas" in edited and "Save Budget" in edited and 'value="Xmas"' in edited
+    assert "Being edited in the cart" in edited
+    refused = client.post(f"/budget/budgets/{budget.id}/buy")
+    assert refused.status_code == 422 and "is being edited in the cart" in refused.text
+    discarded = client.post("/budget/cart/delete").text
+    assert "Editing Xmas" not in discarded and "The cart is empty" in discarded
+
+    bought = client.post(f"/budget/budgets/{budget.id}/buy")
+    assert "Bought Xmas: its albums are now owned." in bought.text
+    assert bought.headers["hx-trigger"] == "albums-changed, library-changed"
+    assert client_lib.get_album(album_id).vinyl == "owned"
+    assert "Bought " in bought.text and "disabled" in bought.text
+
+    client.post("/budget/items", data={"format": "cd", "album_id": album_id, "price": "1"})
+    now = client.post("/budget/cart/buy", data={"name": "Now"})
+    assert "Bought Now" in now.text and len(client_lib.list_budgets()) == 2
+    empty = client.post("/budget/cart/buy", data={"name": "Empty"})
+    assert empty.status_code == 422
+
+    assert client.post(f"/budget/budgets/{budget.id}/fly").status_code == 404
+    assert client.post("/budget/budgets/99/delete").status_code == 404
+    gone = client.post(f"/budget/budgets/{budget.id}/delete").text
+    assert "<strong>Xmas</strong>" not in gone and "<strong>Now</strong>" in gone
+
+
+def test_cart_quantity_buttons(client: TestClient, client_lib: Library, web_sample: Sample):
+    item = client_lib.add_to_cart(CartItemIn(web_sample.album_id, "cd", 10))
+    url = f"/budget/items/{item.id}/quantity"
+    page = client.get("/budget").text
+    assert "🛒 Cart" in page and "🧾 Budgets" in page
+    assert page.count(f'hx-post="{url}"') == 2
+    assert "That was the last copy. Remove Dummy (CD) from the cart?" in page  # - at 1 asks
+
+    more = client.post(url, data={"offset": "1"}).text
+    assert client_lib.get_cart_item(item.id).quantity == 2 and "20.00" in more
+    assert "That was the last copy" not in more  # at 2, - just takes one off
+    client.post(url, data={"offset": "-1"})
+    gone = client.post(url, data={"offset": "-1"}).text
+    assert "The cart is empty" in gone and client_lib.get_cart().lines == []
+    assert client.post(url, data={"offset": "1"}).status_code == 404
+
+
+def test_buy_asks_about_other_budgets(client: TestClient, client_lib: Library, web_sample: Sample):
+    album_id = web_sample.album_id
+    other = client_lib.create_album(AlbumIn(web_sample.artist_id, "Portishead", 1997))
+    for name, albums in [("Gifts", [album_id]), ("Mix", [album_id, other.id])]:
+        for each in albums:
+            client_lib.add_to_cart(CartItemIn(each, "cd", 10))
+        client_lib.make_budget(BudgetIn(name))
+    client_lib.add_to_cart(CartItemIn(album_id, "cd", 12))
+
+    asked = client.post("/budget/cart/buy", data={"name": "Today"}).text
+    assert "Some of these albums are in other budgets" in asked
+    assert (
+        "<strong>Gifts</strong>:" in asked and "holds nothing else, so it would be deleted" in asked
+    )
+    assert asked.count("holds nothing else") == 1  # Mix keeps Portishead
+    assert 'name="others" value="drop"' in asked and 'value="Today"' in asked
+    assert client_lib.get_cart().lines  # nothing bought yet
+
+    bought = client.post("/budget/cart/buy", data={"name": "Today", "others": "drop"}).text
+    assert "Bought Today" in bought and "Took them out of Mix." in bought
+    assert "Deleted Gifts, which held nothing else." in bought
+    assert [b.budget.name for b in client_lib.list_budgets()] == ["Mix", "Today"]
+
+    # Buying a saved budget asks too; "keep" leaves the others alone.
+    client_lib.add_to_cart(CartItemIn(other.id, "cd", 8))
+    client_lib.make_budget(BudgetIn("Again"))
+    mix = client_lib.list_budgets()[1].budget
+    assert mix.name == "Mix"
+    url = f"/budget/budgets/{mix.id}/buy"
+    assert "<strong>Again</strong>:" in client.post(url).text
+    kept = client.post(url, data={"others": "keep"}).text
+    assert "Bought Mix" in kept and "Took them out" not in kept
+    assert "<strong>Again</strong>" in kept and client_lib.get_album(other.id).cd == "owned"
+
+    # With nothing in common, Buy goes straight through.
+    client_lib.add_to_cart(CartItemIn(album_id, "vinyl", 30))
+    assert "Bought Solo" in client.post("/budget/cart/buy", data={"name": "Solo"}).text

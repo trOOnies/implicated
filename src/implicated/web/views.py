@@ -14,8 +14,8 @@ so they refresh themselves:
 
 from __future__ import annotations
 
-from dataclasses import fields
-from datetime import datetime
+from dataclasses import fields, replace
+from datetime import date, datetime
 from html import escape
 from pathlib import Path
 from typing import Annotated
@@ -29,10 +29,16 @@ from implicated.api import get_library
 from implicated.library import Library, NotFound
 from implicated.models import (
     ALBUM_KINDS,
+    FORMATS,
     OWNERSHIP,
     Album,
     AlbumIn,
     ArtistIn,
+    Budget,
+    BudgetIn,
+    BudgetOverlap,
+    CartItemIn,
+    CartOption,
     Member,
     PlaylistIn,
     Point,
@@ -99,10 +105,21 @@ def formats(album: Album) -> list[tuple[str, str]]:
     ]
 
 
+def money(amount: float) -> str:
+    """``1299.5`` -> ``1,299.50``; no currency, since prices are in whatever the shops use."""
+    return f"{amount:,.2f}"
+
+
 templates.env.filters.update(
-    duration=duration, stars=stars, when=when, tenure=tenure, percent=percent, formats=formats
+    duration=duration,
+    stars=stars,
+    when=when,
+    tenure=tenure,
+    percent=percent,
+    formats=formats,
+    money=money,
 )
-templates.env.globals.update(album_kinds=ALBUM_KINDS, ownership=OWNERSHIP)
+templates.env.globals.update(album_kinds=ALBUM_KINDS, ownership=OWNERSHIP, format_names=FORMATS)
 
 
 def render(
@@ -1194,3 +1211,226 @@ async def move_in_playlist(request: Request, lib: Lib, playlist_id: int, song_id
         raise HTTPException(422, str(exc)) from exc
     found(lib.move_in_playlist, playlist_id, song_id, offset)
     return Response(headers={"HX-Trigger": "playlists-changed"})
+
+
+# Budget
+
+# The groups of the Add to cart picker, in order: ownership state -> heading.
+CART_GROUPS = {"wanted": "Wanted", None: "Neither wanted nor owned", "owned": "Already owned"}
+
+
+def _price(form: FormData, key: str) -> float | None:
+    """Accept ``12.99``, ``12,99``, ``$ 1,299.00``, ``1.299,00`` and the like: the last ``.`` or
+    ``,`` is the decimal point, and there are at most two decimals."""
+    value = _text(form, key)
+    if value is None:
+        return None
+    value = value.lstrip("$€£¥ ").replace(" ", "")
+    whole, point, decimals = value.replace(",", ".").rpartition(".")
+    if not point:
+        whole, decimals = decimals, ""
+    whole = whole.replace(".", "")
+    if not (whole or decimals).isdigit() or not (decimals == "" or decimals.isdigit()):
+        raise ValueError("price must be a number, like 12.99")
+    if len(decimals) > 2:
+        raise ValueError("price can have at most two decimals, like 12.99")
+    return float(f"{whole or 0}.{decimals or 0}")
+
+
+def _quantity(form: FormData) -> int:
+    quantity = _int(form, "quantity")
+    return 1 if quantity is None else quantity
+
+
+def _cart_groups(lib: Library, fmt: str | None) -> list[tuple[str, list[CartOption]]]:
+    """What can go in the cart on ``fmt``, in ``CART_GROUPS`` (leaving out the empty ones);
+    nothing until a format is picked."""
+    if fmt not in FORMATS:
+        return []
+    options = lib.cart_options(fmt)
+    groups = [
+        (label, [o for o in options if o.state == state]) for state, label in CART_GROUPS.items()
+    ]
+    return [(label, opts) for label, opts in groups if opts]
+
+
+def _budget(
+    request: Request,
+    lib: Library,
+    *,
+    status_code: int = 200,
+    form: FormData | None = None,
+    **extra,
+) -> HTMLResponse:
+    """The cart, its Add form and the saved budgets. ``extra`` can say which cart item is being
+    edited (``editing``) and what went wrong: ``error`` for the Add form, ``edit_error`` for the
+    item being edited, ``cart_error`` for the cart's buttons, ``budget_error`` for the budgets."""
+    return render(
+        request, "_budget.html", status_code=status_code, **_budget_context(lib, form), **extra
+    )
+
+
+def _budget_context(lib: Library, form: FormData | dict | None = None) -> dict:
+    form = form or {}
+    cart = lib.get_cart()
+    return {
+        "cart": cart,
+        "budgets": lib.list_budgets(),
+        "groups": _cart_groups(lib, form.get("format")),
+        "form": form,
+        # What Make Budget and Buy name the budget: the one being edited keeps its name.
+        "budget_name": cart.editing.name if cart.editing else f"Budget {date.today()}",
+    }
+
+
+@router.get("/budget")
+def budget_page(request: Request, lib: Lib):
+    return render(request, "budget.html", **_budget_context(lib))
+
+
+@router.get("/fragments/budget")
+def budget_fragment(request: Request, lib: Lib):
+    return _budget(request, lib)
+
+
+@router.get("/fragments/budget/albums")
+def cart_albums(request: Request, lib: Lib, format: str = ""):
+    """The Album picker of the Add form, for the format just picked."""
+    return render(
+        request, "_cart_albums.html", groups=_cart_groups(lib, format), form={"format": format}
+    )
+
+
+@router.post("/budget/items")
+async def add_to_cart(request: Request, lib: Lib):
+    form = await request.form()
+    try:
+        fmt = _text(form, "format")
+        if fmt not in FORMATS:
+            raise ValueError("Pick a format first.")
+        album_id = _int(form, "album_id")
+        if album_id is None:
+            raise ValueError("Pick an album.")
+        price = _price(form, "price")
+        if price is None:
+            raise ValueError("price is required")
+        data = CartItemIn(album_id, fmt, price, _text(form, "link"), _quantity(form))
+        found(lib.add_to_cart, data)
+    except ValueError as exc:
+        return _budget(request, lib, status_code=422, error=str(exc), form=form)
+    # Keep the format picked, to add more albums on it.
+    return _budget(request, lib, form={"format": fmt})
+
+
+@router.get("/fragments/budget/items/{item_id}/edit")
+def cart_item_edit(request: Request, lib: Lib, item_id: int):
+    found(lib.get_cart_item, item_id)
+    return _budget(request, lib, editing=item_id)
+
+
+@router.post("/budget/items/{item_id}")
+async def update_cart_item(request: Request, lib: Lib, item_id: int):
+    form = await request.form()
+    item = found(lib.get_cart_item, item_id)
+    try:
+        price = _price(form, "price")
+        if price is None:
+            raise ValueError("price is required")
+        data = replace(item, price=price, link=_text(form, "link"), quantity=_quantity(form))
+        lib.update_cart_item(item_id, data)
+    except ValueError as exc:
+        return _budget(request, lib, status_code=422, editing=item_id, edit_error=str(exc))
+    return _budget(request, lib)
+
+
+@router.post("/budget/items/{item_id}/delete")
+def remove_from_cart(request: Request, lib: Lib, item_id: int):
+    found(lib.remove_from_cart, item_id)
+    return _budget(request, lib)
+
+
+@router.post("/budget/items/{item_id}/quantity")
+async def change_cart_quantity(request: Request, lib: Lib, item_id: int):
+    """The cart's + and - buttons; the page asks before - takes the last copy out."""
+    form = await request.form()
+    offset = 1 if _text(form, "offset") == "1" else -1
+    found(lib.change_cart_quantity, item_id, offset)
+    return _budget(request, lib)
+
+
+@router.post("/budget/cart/save")
+async def save_cart(request: Request, lib: Lib):
+    form = await request.form()
+    try:
+        budget = lib.make_budget(BudgetIn(_text(form, "name") or ""))
+    except ValueError as exc:
+        return _budget(request, lib, status_code=422, cart_error=str(exc))
+    return _budget(request, lib, message=f"Saved {budget.name}.")
+
+
+def _bought(request: Request, lib: Library, budget: Budget, overlaps: list[BudgetOverlap]):
+    """The page after buying ``budget``, saying what was dropped from ``overlaps``."""
+    message = f"Bought {budget.name}: its albums are now owned."
+    if kept := [o.budget.name for o in overlaps if not o.emptied]:
+        message += f" Took them out of {', '.join(kept)}."
+    if emptied := [o.budget.name for o in overlaps if o.emptied]:
+        message += f" Deleted {', '.join(emptied)}, which held nothing else."
+    return _budget(request, lib, trigger=("albums-changed", "library-changed"), message=message)
+
+
+def _others(form: FormData) -> str | None:
+    """What to do with the albums being bought that other budgets hold too: "drop" them from
+    those budgets, "keep" them, or ``None`` when the user was not asked yet."""
+    others = _text(form, "others")
+    return others if others in ("drop", "keep") else None
+
+
+@router.post("/budget/cart/buy")
+async def buy_cart(request: Request, lib: Lib):
+    form = await request.form()
+    name = _text(form, "name") or ""
+    overlaps = lib.budget_overlaps()
+    if overlaps and _others(form) is None and name:
+        prompt = {"action": "/budget/cart/buy", "name": name, "overlaps": overlaps}
+        return _budget(request, lib, buy_prompt=prompt)
+    drop = _others(form) == "drop"
+    try:
+        budget = lib.buy_cart(BudgetIn(name), drop_from_others=drop)
+    except ValueError as exc:
+        return _budget(request, lib, status_code=422, cart_error=str(exc))
+    return _bought(request, lib, budget, overlaps if drop else [])
+
+
+@router.post("/budget/cart/delete")
+def delete_cart(request: Request, lib: Lib):
+    lib.clear_cart()
+    return _budget(request, lib)
+
+
+@router.post("/budget/budgets/{budget_id}/buy")
+async def buy_budget(request: Request, lib: Lib, budget_id: int):
+    form = await request.form()
+    found(lib.get_budget, budget_id)
+    overlaps = lib.budget_overlaps(budget_id)
+    if overlaps and _others(form) is None:
+        prompt = {"action": f"/budget/budgets/{budget_id}/buy", "overlaps": overlaps}
+        return _budget(request, lib, buy_prompt=prompt)
+    drop = _others(form) == "drop"
+    try:
+        budget = lib.buy_budget(budget_id, drop_from_others=drop)
+    except ValueError as exc:
+        return _budget(request, lib, status_code=422, budget_error=str(exc))
+    return _bought(request, lib, budget, overlaps if drop else [])
+
+
+@router.post("/budget/budgets/{budget_id}/{action}")
+def budget_action(request: Request, lib: Lib, budget_id: int, action: str):
+    actions = {"edit": lib.edit_budget, "delete": lib.delete_budget}
+    if action not in actions:
+        raise HTTPException(404)
+    found(lib.get_budget, budget_id)
+    try:
+        actions[action](budget_id)
+    except ValueError as exc:
+        return _budget(request, lib, status_code=422, budget_error=str(exc))
+    return _budget(request, lib)
