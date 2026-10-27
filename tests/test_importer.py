@@ -259,6 +259,27 @@ def test_reimport_unreleased(lib: Library, info: Path):
     assert any("unreleased must be true or false" in w for w in report.warnings)
 
 
+def test_reimport_with_other_dashes_renames(lib: Library, info: Path):
+    albums = info / "bands" / "My Chemical Romance" / "albums.yaml"
+    albums.write_text(
+        albums.read_text()
+        + "Conventional Weapons \u2013 Part 1:\n  songs:\n  - name: Boy Division \u2014 Demo\n"
+    )
+    import_dir(lib, info)
+    mcr = lib.find_artist("My Chemical Romance")
+    weapons = lib.find_album(mcr.id, "Conventional Weapons - Part 1")
+    song = lib.find_song(mcr.id, weapons.id, "boy division - demo")
+    lib.set_rating("album", weapons.id, 4)
+    albums.write_text(albums.read_text().replace("\u2013", "-").replace("\u2014", "-"))
+
+    report = import_dir(lib, info)
+    assert report.created == {"artists": 0, "albums": 0, "songs": 0}
+    renamed = lib.get_album(weapons.id)
+    assert (renamed.title, renamed.rating) == ("Conventional Weapons - Part 1", 4)
+    assert lib.get_song(song.id).title == "Boy Division - Demo"
+    assert len(lib.list_albums(mcr.id)) == 3
+
+
 def test_reimport_updates_lyrics(lib: Library, info: Path):
     import_dir(lib, info)
     mcr = lib.find_artist("My Chemical Romance")

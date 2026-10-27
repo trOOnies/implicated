@@ -164,6 +164,25 @@ RENAMES = [("songs", "youtube", "mv")]
 # share a cover when their names agree after the first dash. Compares ``al`` with ``o``.
 SAME_COVER = "substr(o.cover, instr(o.cover, '-')) = substr(al.cover, instr(al.cover, '-'))"
 
+# Dashes that count as the same one when looking a title up, so an en dash turned into a hyphen
+# in ``albums.yaml`` renames the album instead of importing it again. See ``_same_title``.
+DASHES = ("\u2013", "\u2014")
+
+
+def _same_title(column: str) -> str:
+    """SQL matching ``column`` to a ``_dashless`` title, ignoring case and kinds of dash."""
+    for dash in DASHES:
+        column = f"replace({column}, '{dash}', '-')"
+    return f"{column} = ? COLLATE NOCASE"
+
+
+def _dashless(title: str) -> str:
+    title = title.strip()
+    for dash in DASHES:
+        title = title.replace(dash, "-")
+    return title
+
+
 FAVORITE_TABLES = {"artist": "artists", "album": "albums", "song": "songs"}
 # Yes/no marks that can be switched with one click.
 FLAGS = ("favorite", "listen_later")
@@ -553,12 +572,12 @@ class Library:
         return _album(row)
 
     def find_album(self, artist_id: int, title: str) -> Album | None:
-        """Look one of the artist's albums up by title, ignoring case."""
+        """Look one of the artist's albums up by title, ignoring case and kinds of dash."""
         with self.connect() as conn:
             row = conn.execute(
-                """SELECT * FROM albums WHERE artist_id = ? AND title = ? COLLATE NOCASE
-                    ORDER BY id""",
-                (artist_id, title.strip()),
+                f"""SELECT * FROM albums WHERE artist_id = ? AND {_same_title("title")}
+                     ORDER BY id""",
+                (artist_id, _dashless(title)),
             ).fetchone()
         return _album(row) if row else None
 
@@ -756,12 +775,13 @@ class Library:
         )
 
     def find_song(self, artist_id: int, album_id: int | None, title: str) -> Song | None:
-        """Look a song up by title within an album (or the artist's singles), ignoring case."""
+        """Look a song up by title within an album (or the artist's singles), ignoring case and
+        kinds of dash."""
         with self.connect() as conn:
             row = conn.execute(
-                """SELECT * FROM songs WHERE artist_id = ? AND album_id IS ?
-                      AND title = ? COLLATE NOCASE ORDER BY id""",
-                (artist_id, album_id, title.strip()),
+                f"""SELECT * FROM songs WHERE artist_id = ? AND album_id IS ?
+                       AND {_same_title("title")} ORDER BY id""",
+                (artist_id, album_id, _dashless(title)),
             ).fetchone()
         return _song(row) if row else None
 
