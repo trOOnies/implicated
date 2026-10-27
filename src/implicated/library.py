@@ -160,6 +160,10 @@ MIGRATIONS = [
 # Columns that changed names: (table, old name, new name), renamed before ``MIGRATIONS`` run.
 RENAMES = [("songs", "youtube", "mv")]
 
+# Cover file names are ``<album id>-<content hash><suffix>`` (see ``_store_image``), so two albums
+# share a cover when their names agree after the first dash. Compares ``al`` with ``o``.
+SAME_COVER = "substr(o.cover, instr(o.cover, '-')) = substr(al.cover, instr(al.cover, '-'))"
+
 FAVORITE_TABLES = {"artist": "artists", "album": "albums", "song": "songs"}
 # Yes/no marks that can be switched with one click.
 FLAGS = ("favorite", "listen_later")
@@ -470,11 +474,13 @@ class Library:
         vinyl: str | None = None,
         listen_later: bool = False,
         missing_lyrics: bool = False,
+        no_own_cover: bool = False,
     ) -> list[AlbumSummary]:
         """Albums, optionally only those with the given CD or vinyl ownership (see
-        ``OWNERSHIP``), the favorites, the ones marked to listen to later or the ones with songs
-        still missing their lyrics."""
-        sql = """
+        ``OWNERSHIP``), the favorites, the ones marked to listen to later, the ones with songs
+        still missing their lyrics or the ones without a cover of their own (none, or the same
+        image as another album)."""
+        sql = f"""
             SELECT al.*, ar.name AS x_artist,
                    (SELECT COUNT(*) FROM songs WHERE album_id = al.id) AS x_songs,
                    (SELECT COALESCE(SUM(duration_seconds), 0) FROM songs
@@ -484,7 +490,9 @@ class Library:
                    (SELECT COUNT(*) FROM songs WHERE album_id = al.id
                        AND lyrics IS NOT NULL AND no_lyrics = 0) AS x_lyrics,
                    (SELECT COUNT(*) FROM songs WHERE album_id = al.id
-                       AND no_lyrics = 1) AS x_no_lyrics
+                       AND no_lyrics = 1) AS x_no_lyrics,
+                   EXISTS (SELECT 1 FROM albums o WHERE o.id != al.id
+                              AND {SAME_COVER}) AS x_shared_cover
               FROM albums al JOIN artists ar ON ar.id = al.artist_id
              WHERE (:artist_id IS NULL OR al.artist_id = :artist_id)
                AND (:favorites = 0 OR al.favorite = 1)
@@ -493,6 +501,7 @@ class Library:
                AND (:vinyl IS NULL OR al.vinyl = :vinyl)
                AND (:missing_lyrics = 0 OR EXISTS (SELECT 1 FROM songs WHERE album_id = al.id
                                                        AND lyrics IS NULL AND no_lyrics = 0))
+               AND (:no_own_cover = 0 OR al.cover IS NULL OR x_shared_cover)
                AND (:q IS NULL OR al.title LIKE '%' || :q || '%'
                     OR ar.name LIKE '%' || :q || '%')
              ORDER BY al.year IS NULL, al.year, al.title COLLATE NOCASE
@@ -504,6 +513,7 @@ class Library:
             "cd": cd,
             "vinyl": vinyl,
             "missing_lyrics": int(missing_lyrics),
+            "no_own_cover": int(no_own_cover),
             "q": q or None,
         }
         with self.connect() as conn:
@@ -520,9 +530,20 @@ class Library:
                     extra["plays"],
                     extra["lyrics"],
                     extra["no_lyrics"],
+                    bool(extra["shared_cover"]),
                 )
             )
         return out
+
+    def same_cover_albums(self, album_id: int) -> list[Album]:
+        """The other albums whose cover is the same image as this album's."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""SELECT o.* FROM albums al JOIN albums o ON o.id != al.id AND {SAME_COVER}
+                     WHERE al.id = ? ORDER BY o.year IS NULL, o.year, o.title COLLATE NOCASE""",
+                (album_id,),
+            ).fetchall()
+        return [_album(row) for row in rows]
 
     def get_album(self, album_id: int) -> Album:
         with self.connect() as conn:

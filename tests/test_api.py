@@ -94,6 +94,8 @@ def test_album_cover_route(client: TestClient, client_lib: Library, web_sample: 
     assert response.headers["content-type"] == "image/png"
     assert "immutable" in response.headers["cache-control"]
     assert response.content == b"png!"
+    albums = client.get("/api/albums", params={"no_own_cover": True}).json()
+    assert albums == [] and client.get("/api/albums").json()[0]["shared_cover"] is False
 
 
 def test_song_routes(client: TestClient, web_sample: Sample):

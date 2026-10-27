@@ -199,6 +199,8 @@ class AlbumSummary:
     # Songs that have lyrics, and songs that have none to have (see ``SongIn.no_lyrics``).
     lyrics_count: int = 0
     no_lyrics_count: int = 0
+    # The cover is the same image as another album's (``album.cover`` is ``None`` without one).
+    shared_cover: bool = False
 
 
 @dataclass

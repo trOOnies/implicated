@@ -755,6 +755,27 @@ def test_missing_lyrics_filters(client: TestClient, client_lib: Library, web_sam
     assert 'name="missing" value="1" checked' in client.get("/albums?missing=1").text
 
 
+def test_albums_without_their_own_cover(
+    client: TestClient, client_lib: Library, web_sample: Sample, image
+):
+    deluxe = client_lib.create_album(AlbumIn(web_sample.artist_id, "Dummy (Deluxe)"))
+    grid = client.get("/fragments/albums").text
+    assert grid.count(">no cover</span>") == 2
+    client_lib.set_cover(web_sample.album_id, image("dummy.jpg", b"dummy"))
+    client_lib.set_cover(deluxe.id, image("dummy.jpg", b"dummy"))
+    grid = client.get("/fragments/albums", params={"nocover": "1"}).text
+    assert grid.count(">shared cover</span>") == 2 and "no cover" not in grid
+    assert (
+        'title="Same cover as Dummy (Deluxe)">shared cover'
+        in client.get(f"/albums/{web_sample.album_id}").text
+    )
+    assert ">shared cover</span>" in client.get(f"/artists/{web_sample.artist_id}").text
+    client_lib.set_cover(deluxe.id, image("deluxe.jpg", b"deluxe"))
+    assert "No albums here yet" in client.get("/fragments/albums", params={"nocover": "1"}).text
+    assert "shared cover" not in client.get(f"/albums/{web_sample.album_id}").text
+    assert 'name="nocover" value="1" checked' in client.get("/albums?nocover=1").text
+
+
 def test_song_rows_show_the_album_cover(
     client: TestClient, client_lib: Library, web_sample: Sample, image
 ):

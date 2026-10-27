@@ -403,12 +403,14 @@ def _albums_query(
     favorites: str | None,
     later: str | None,
     missing: str | None,
+    nocover: str | None,
 ) -> dict:
     query = {
         "q": q or None,
         "favorites": bool(favorites),
         "listen_later": bool(later),
         "missing_lyrics": bool(missing),
+        "no_own_cover": bool(nocover),
     }
     if own in FORMAT_FILTERS:
         fmt, state, _label = FORMAT_FILTERS[own]
@@ -425,16 +427,18 @@ def albums_page(
     favorites: str | None = None,
     later: str | None = None,
     missing: str | None = None,
+    nocover: str | None = None,
 ):
     return render(
         request,
         "albums.html",
-        albums=lib.list_albums(**_albums_query(q, own, favorites, later, missing)),
+        albums=lib.list_albums(**_albums_query(q, own, favorites, later, missing, nocover)),
         q=q or "",
         own=own if own in FORMAT_FILTERS else "",
         favorites=bool(favorites),
         later=bool(later),
         missing=bool(missing),
+        nocover=bool(nocover),
         format_filters=FORMAT_FILTERS,
     )
 
@@ -448,8 +452,9 @@ def albums_fragment(
     favorites: str | None = None,
     later: str | None = None,
     missing: str | None = None,
+    nocover: str | None = None,
 ):
-    albums = lib.list_albums(**_albums_query(q, own, favorites, later, missing))
+    albums = lib.list_albums(**_albums_query(q, own, favorites, later, missing, nocover))
     return render(request, "_album_grid.html", albums=albums)
 
 
@@ -483,6 +488,7 @@ def _album_context(lib: Library, album_id: int) -> dict:
     return {
         "playlists": lib.list_playlists(),
         "album": album,
+        "same_cover": lib.same_cover_albums(album_id),
         "artist": lib.get_artist(album.artist_id),
         "songs": songs,
         "total_seconds": sum(s.song.duration_seconds or 0 for s in songs),

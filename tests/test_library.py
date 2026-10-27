@@ -865,6 +865,25 @@ def test_list_artists_by_origin_genre_and_language(lib: Library, sample: Sample)
     assert names(country="", genre=None) == ["Air", "Portishead", "Soda Stereo"]
 
 
+def test_no_own_cover_filter(lib: Library, sample: Sample, image):
+    deluxe = lib.create_album(AlbumIn(sample.artist_id, "Dummy (Deluxe)"))
+    third = lib.create_album(AlbumIn(sample.artist_id, "Third"))
+
+    def albums():
+        return {a.album.title: a.shared_cover for a in lib.list_albums(no_own_cover=True)}
+
+    assert albums() == {"Dummy": False, "Dummy (Deluxe)": False, "Third": False}
+    lib.set_cover(sample.album_id, image("dummy.jpg", b"dummy"))
+    lib.set_cover(deluxe.id, image("dummy.jpg", b"dummy"))
+    assert albums() == {"Dummy": True, "Dummy (Deluxe)": True, "Third": False}
+    assert [a.title for a in lib.same_cover_albums(sample.album_id)] == ["Dummy (Deluxe)"]
+    assert lib.same_cover_albums(third.id) == []
+    lib.set_cover(deluxe.id, image("deluxe.jpg", b"deluxe"))
+    lib.set_cover(third.id, image("third.jpg", b"third"))
+    assert albums() == {}
+    assert not any(a.shared_cover for a in lib.list_albums())
+
+
 def test_missing_lyrics_filters(lib: Library, sample: Sample):
     first, second = sample.song_ids
     other = lib.create_album(AlbumIn(sample.artist_id, "Third"))

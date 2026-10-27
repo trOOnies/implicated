@@ -9,7 +9,7 @@
       <td class="muted">{{ a.album.year or '' }}</td>
       <td><a href="/albums/{{ a.album.id }}">{{ a.album.title }}</a></td>
       {% if show_artist %}<td>{{ a.artist_name }}</td>{% endif %}
-      <td><span class="tag">{{ a.album.kind }}</span>{% if a.album.unreleased %} <span class="tag unreleased" title="Never officially released">unreleased</span>{% endif %}</td>
+      <td><span class="tag">{{ a.album.kind }}</span>{% if a.album.unreleased %} <span class="tag unreleased" title="Never officially released">unreleased</span>{% endif %}{% if not a.album.cover or a.shared_cover %} {% with album=a.album, shared=a.shared_cover %}{% include "_cover_tag.html" %}{% endwith %}{% endif %}</td>
       <td data-sort="{{ a.album.rating or '' }}">{% with kind='album', record_id=a.album.id, rating=a.album.rating, size=None %}{% include "_rating.html" %}{% endwith %}</td>
       <td>{{ a.song_count }}</td>
       {% set with_words = a.song_count - a.no_lyrics_count %}

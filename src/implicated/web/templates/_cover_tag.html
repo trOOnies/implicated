@@ -1,0 +1,4 @@
+{# Marks an album without a cover of its own. Needs `album` and `shared` (whether another album
+   has the same cover); `same_cover`, the albums that share it, names them. #}
+{% if not album.cover %}<span class="tag missing" title="No cover image; the placeholder is shown">no cover</span>
+{%- elif shared %}<span class="tag missing" title="{% if same_cover %}Same cover as {{ same_cover | map(attribute='title') | join(', ') }}{% else %}Same cover as another album{% endif %}">shared cover</span>{% endif %}

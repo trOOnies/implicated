@@ -23,8 +23,10 @@ def list_albums(
     vinyl: Ownership | None = None,
     listen_later: bool = False,
     missing_lyrics: bool = False,
+    no_own_cover: bool = False,
 ) -> list[AlbumSummary]:
-    """Filter by CD or vinyl ownership with ``cd`` and ``vinyl`` (``wanted`` or ``owned``)."""
+    """Filter by CD or vinyl ownership with ``cd`` and ``vinyl`` (``wanted`` or ``owned``);
+    ``no_own_cover`` keeps the albums with no cover or the same one as another album."""
     return lib.list_albums(
         artist_id,
         favorites,
@@ -33,6 +35,7 @@ def list_albums(
         vinyl=vinyl,
         listen_later=listen_later,
         missing_lyrics=missing_lyrics,
+        no_own_cover=no_own_cover,
     )
 
 

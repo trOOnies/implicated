@@ -48,6 +48,10 @@ pages mark the songs still missing lyrics, and album lists show the share of son
 The Albums and Songs pages can show only the albums and songs still missing lyrics. Songs with `no_lyrics` (set in `albums.yaml`, or with the No lyrics box when adding or editing a
 song) have no words, so they are never missing lyrics and do not count in that share.
 
+Albums without a cover of their own are tagged *no cover* (the ♪ placeholder shows instead) or
+*shared cover* (the same image as another album, say a deluxe edition that matched the original's
+cover file), and the Albums page can show only those.
+
 ## Your own data
 
 Besides what the import brings, the app keeps:
