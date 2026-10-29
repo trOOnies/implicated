@@ -223,6 +223,33 @@ class BudgetItem(CartItemIn):
     budget_id: int = 0
 
 
+@dataclass
+class Concert:
+    """A concert from ``concerts.csv`` in the info folder (see ``implicated.concerts``)."""
+
+    date: date
+    band: str
+    country: str | None = None
+    city: str | None = None
+    want_to_go: bool = False
+    going: bool = False
+    tour: str | None = None
+    # Where it is in the file (the header is line 1), to change it there.
+    line: int = 0
+
+    def status(self, today: date) -> str:
+        """One of ``CONCERT_STATUSES`` for a concert still to come (``today`` included), or of
+        ``PAST_CONCERT_STATUSES`` once it is over."""
+        if self.date < today:
+            return "went" if self.going else ""
+        return "going" if self.going else "want" if self.want_to_go else ""
+
+
+# What you plan for a concert, and what became of it once it is over: value -> label.
+CONCERT_STATUSES = {"": "–", "want": "Want to go", "going": "Going"}
+PAST_CONCERT_STATUSES = {"": "–", "went": "Went"}
+
+
 # Read-side views: records joined with the context a page needs.
 
 

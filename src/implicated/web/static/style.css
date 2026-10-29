@@ -327,3 +327,6 @@ details.budget > .row { margin-top: .5rem; }
 .song-results li, .pending-songs li { display: flex; align-items: center; gap: .5rem; }
 .pending-songs li { display: list-item; }
 .pending-songs li button { margin-left: .4rem; }
+
+/* Concerts you are going to stand out */
+.concerts tr.going td { background: var(--accent-soft); }

@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from conftest import Sample
@@ -17,7 +17,7 @@ from implicated.models import (
     SongIn,
 )
 from implicated.web import editor
-from implicated.web.views import duration, money, percent, stars, tenure, when
+from implicated.web.views import days_until, duration, money, percent, stars, tenure, when
 
 # Template helpers
 
@@ -36,8 +36,12 @@ def test_stars_and_when():
     assert when("2024-05-01T13:45:10+00:00") == "2024-05-01 13:45"
 
 
-def test_money():
+def test_money_and_days_until():
     assert money(1299.5) == "$1,299.50" and money(0) == "$0.00"
+    today = date.today()
+    assert days_until(today) == "today" and days_until(today + timedelta(days=1)) == "tomorrow"
+    assert days_until(today + timedelta(days=9)) == "in 9 days"
+    assert days_until(today - timedelta(days=2)) == "2 days ago"
 
 
 def test_percent():
@@ -1142,3 +1146,52 @@ def test_add_songs_to_a_playlist(client: TestClient, client_lib: Library, web_sa
     assert client_lib.playlist_song_ids(pid) == [second, single.id, first]
 
     assert client.get("/fragments/playlists/99/add-songs").status_code == 404
+
+
+def test_concerts_page(client: TestClient, client_lib: Library, web_sample: Sample, image):
+    concerts = client_lib.info_dir / "concerts.csv"
+    empty = client.get("/concerts").text
+    assert 'href="/concerts" aria-current="page">Concerts</a>' in empty
+    assert "No concerts yet" in empty and str(concerts) in empty
+
+    today = date.today()
+    soon, gone = today + timedelta(days=3), today - timedelta(days=30)
+    client_lib.set_image(web_sample.artist_id, image("band.jpg"))
+    concerts.write_text(
+        "date;band;tour;country;city;Want to go;Going\n"
+        f"{soon};Portishead;Roseland Tour;Argentina;Buenos Aires;true;true\n"
+        f"{today};Air;;France;Paris;yes;false\n"
+        f"{gone};Portishead;;Spain;Madrid;false;true\n"
+        "someday;Nobody;;;;true;true\n"
+        f"{soon};Zero 7;;;;maybe;\n"
+    )
+    page = client.get("/concerts").text
+    upcoming, past = page.split("🕰️ Past")
+    assert upcoming.index("Paris") < upcoming.index("Buenos Aires")  # soonest first
+    assert "today" in upcoming and "in 3 days" in upcoming and "Madrid" not in upcoming
+    assert "Madrid" in past and "30 days ago" in past and "Roseland Tour" in upcoming
+    assert f'<a href="/artists/{web_sample.artist_id}">Portishead</a>' in upcoming
+    assert f'src="/api/artists/{web_sample.artist_id}/image?v=' in upcoming  # the band's image
+    assert '<td data-sort="Air">Air</td>' in upcoming  # not in the library
+    assert "3 concerts · going to 1" in upcoming
+    assert "line 5: &#39;someday&#39; is not a date" in page and "Nobody" not in page
+    assert "line 6: &#39;maybe&#39; is not true or false" in page
+    # Coming concerts are nothing, want to go or going; past ones nothing or went.
+    assert '<option value="going" selected>Going</option>' in upcoming
+    assert '<option value="want" selected>Want to go</option>' in upcoming  # Air
+    assert '<option value="" selected>–</option>' in upcoming  # Zero 7
+    assert '<option value="went" selected>Went</option>' in past and "Want to go" not in past
+
+    url, htmx = "/concerts/{}/status", {"HX-Request": "true"}
+    assert client.post(url.format(3), data={"status": "going"}).status_code == 403
+    air = {"date": str(today), "band": "Air"}
+    changed = client.post(url.format(3), data=air | {"status": "going"}, headers=htmx)
+    assert changed.status_code == 200 and "3 concerts · going to 2" in changed.text
+    assert f"{today};Air;;France;Paris;true;true\n" in concerts.read_text()
+    madrid = {"date": str(gone), "band": "Portishead"}
+    client.post(url.format(4), data=madrid | {"status": ""}, headers=htmx)
+    assert f"{gone};Portishead;;Spain;Madrid;false;false\n" in concerts.read_text()
+    refused = client.post(url.format(4), data=madrid | {"status": "going"}, headers=htmx)
+    assert refused.status_code == 422 and "not a status for a past concert" in refused.text
+    moved = client.post(url.format(2), data=air | {"status": ""}, headers=htmx)
+    assert moved.status_code == 422 and "changed since the page was loaded" in moved.text

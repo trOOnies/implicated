@@ -26,11 +26,14 @@ from fastapi.templating import Jinja2Templates
 from starlette.datastructures import FormData, ImmutableMultiDict
 
 from implicated.api import get_library
+from implicated.concerts import CONCERTS_FILE, read_concerts, set_status
 from implicated.library import Library, NotFound
 from implicated.models import (
     ALBUM_KINDS,
+    CONCERT_STATUSES,
     FORMATS,
     OWNERSHIP,
+    PAST_CONCERT_STATUSES,
     Album,
     AlbumIn,
     ArtistIn,
@@ -124,6 +127,8 @@ templates.env.globals.update(
     format_names=FORMATS,
     # The latest year a band can have formed in.
     this_year=lambda: date.today().year,
+    concert_statuses=CONCERT_STATUSES,
+    past_concert_statuses=PAST_CONCERT_STATUSES,
 )
 
 
@@ -1552,3 +1557,64 @@ def budget_action(request: Request, lib: Lib, budget_id: int, action: str):
     except ValueError as exc:
         return _budget(request, lib, status_code=422, budget_error=str(exc))
     return _budget(request, lib)
+
+
+# Concerts
+
+
+def days_until(day: date) -> str:
+    days = (day - date.today()).days
+    if days == 0:
+        return "today"
+    if days == 1:
+        return "tomorrow"
+    return f"in {days} days" if days > 0 else f"{-days} days ago"
+
+
+templates.env.filters.update(days_until=days_until)
+
+
+def _concerts_context(lib: Library, **extra) -> dict:
+    """The concerts in the info folder's ``concerts.csv``, read again every time."""
+    path = lib.info_dir / CONCERTS_FILE if lib.info_dir else None
+    concerts, warnings = [], []
+    if path:
+        try:
+            concerts, warnings = read_concerts(path)
+        except (OSError, UnicodeDecodeError) as exc:
+            warnings.append(f"Could not read {path}: {exc}")
+    today = date.today()
+    return {
+        "path": path,
+        "found_file": bool(path and path.is_file()),
+        "today": today,
+        "upcoming": [c for c in concerts if c.date >= today],
+        "past": [c for c in reversed(concerts) if c.date < today],
+        "artists": {a.artist.name.casefold(): a.artist for a in lib.list_artists()},
+        "warnings": warnings,
+        **extra,
+    }
+
+
+@router.get("/concerts")
+def concerts_page(request: Request, lib: Lib):
+    return render(request, "concerts.html", **_concerts_context(lib))
+
+
+@router.post("/concerts/{line}/status")
+async def set_concert_status(request: Request, lib: Lib, line: int):
+    """Mark a concert as nothing, want to go or going (went, once it is over) in the file."""
+    # Only the page's own pickers may write the file: other sites cannot send this header.
+    if "hx-request" not in request.headers:
+        raise HTTPException(403, "change concerts from the Concerts page")
+    if lib.info_dir is None:
+        raise HTTPException(404, "the library has no info folder")
+    form = await request.form()
+    try:
+        day = date.fromisoformat(_text(form, "date") or "")
+        status = _text(form, "status") or ""
+        set_status(lib.info_dir / CONCERTS_FILE, line, day, _text(form, "band") or "", status)
+    except (OSError, ValueError) as exc:
+        context = _concerts_context(lib, error=str(exc))
+        return render(request, "_concerts.html", status_code=422, **context)
+    return render(request, "_concerts.html", **_concerts_context(lib))

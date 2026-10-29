@@ -32,6 +32,7 @@ info/
   bands/<artist name>/covers/     # cover images, matched to albums by file name
   bands/<artist name>/songs/      # lyrics, one <song title>.txt per song (empty = missing)
   bands/<artist name>/tabs/       # optional guitar tabs, <song title>.gp5 (or .gp, .gpx, .gp4, .gp3)
+  concerts.csv                    # optional: concerts for the Concerts page (see below)
 ```
 
 Re-importing updates what changed and keeps your ratings, notes, favorites, CD and vinyl
@@ -67,6 +68,20 @@ into the cart to edit. Buying albums that other budgets also hold (on the same f
 whether to drop them from those budgets, deleting any budget that leaves empty. Prices show with
 a generic `$`, whatever currency the shops charge in. The API has it all under `/api/budget`.
 
+The **Concerts** page lists the concerts in `info/concerts.csv`, read again on every visit (no
+restart needed): upcoming ones first, soonest at the top, then past ones. The file is optional; its
+first line names the columns, separated by `;`:
+
+```
+date;band;tour;country;city;Want to go;Going
+2026-12-09;Sleeping With Sirens;Complete Collapse Tour;Argentina;Buenos Aires;true;true
+```
+
+The tour is optional. Bands in your library show their picture and link to their page. Each
+concert has a status: nothing, *Want to go* or *Going* while it is still to come, and nothing or
+*Went* once it is over (*Going* turns into *Went*). Changing it on the page writes the Want to go
+and Going columns of its row back to the file. Rows that cannot be read are listed on the page.
+
 Albums without a cover of their own are tagged *no cover* (the ♪ placeholder shows instead) or
 *shared cover* (the same image as another album, say a deluxe edition that matched the original's
 cover file), and the Albums page can show only those.
@@ -99,5 +114,6 @@ Besides what the import brings, the app keeps:
 - `src/implicated/models.py`: dataclass models (`Artist`, `Member`, `Album`, `Song`, `SongVideo`, `Play`, `Playlist`, and their `*In` inputs)
 - `src/implicated/library.py`: SQLite storage and stats
 - `src/implicated/importer.py`: YAML importer for artists, members, albums, songs, covers and lyrics
+- `src/implicated/concerts.py`: reads `concerts.csv` for the Concerts page
 - `src/implicated/api/`: JSON routes under `/api/...`, one router (and API page tag) per resource
 - `src/implicated/web/`: server-rendered pages (Jinja2 + vendored htmx, plain CSS, a little plain JS for sortable tables, no build step)

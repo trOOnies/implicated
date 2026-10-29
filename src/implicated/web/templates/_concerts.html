@@ -1,0 +1,73 @@
+{# The Concerts page body: the `upcoming` and `past` concerts of the file at `path`. Picking a
+   concert's status writes it to the file and reloads this. #}
+{% macro concert_table(concerts, upcoming) %}
+{% set statuses = concert_statuses if upcoming else past_concert_statuses %}
+<div class="table-scroll">
+<table class="concerts sortable">
+  <thead>
+    <tr><th>Date</th><th></th><th>Band</th><th>Tour</th><th>City</th><th>Country</th><th>Status</th></tr>
+  </thead>
+  <tbody>
+    {% for c in concerts %}
+    {% set artist = artists.get(c.band | lower) %}
+    {% set status = c.status(today) %}
+    <tr{% if status in ('going', 'went') %} class="going"{% endif %}>
+      <td data-sort="{{ c.date }}">{{ c.date }} <div class="small">{{ c.date | days_until }}</div></td>
+      <td class="cover-cell">
+        {% if artist and artist.image %}
+        <a href="/artists/{{ artist.id }}"><img class="cover thumb" src="/api/artists/{{ artist.id }}/image?v={{ artist.image }}" alt="{{ artist.name }}" loading="lazy"></a>
+        {% else %}
+        <span class="cover thumb none" aria-hidden="true">♪</span>
+        {% endif %}
+      </td>
+      <td data-sort="{{ c.band }}">{% if artist %}<a href="/artists/{{ artist.id }}">{{ c.band }}</a>{% else %}{{ c.band }}{% endif %}</td>
+      <td>{{ c.tour or '' }}</td>
+      <td>{{ c.city or '' }}</td>
+      <td>{{ c.country or '' }}</td>
+      <td data-sort="{{ status }}">
+        <form hx-post="/concerts/{{ c.line }}/status" hx-trigger="change" hx-target="#concerts" hx-swap="outerHTML">
+          <input type="hidden" name="date" value="{{ c.date }}">
+          <input type="hidden" name="band" value="{{ c.band }}">
+          <select name="status" aria-label="Status of {{ c.band }} on {{ c.date }}">
+            {% for value, label in statuses.items() %}
+            <option value="{{ value }}"{% if value == status %} selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endmacro %}
+<div id="concerts">
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  {% if warnings %}
+  <section class="card">
+    {% for w in warnings %}<p class="warning">⚠ {{ w }}</p>{% endfor %}
+  </section>
+  {% endif %}
+  <section class="card">
+    {% set going = upcoming | selectattr('going') | list %}
+    <div class="row">
+      <h2>🎟️ Upcoming</h2>
+      <span class="spacer"></span>
+      {% if upcoming %}<span class="small">{{ upcoming | length }} {{ 'concert' if upcoming | length == 1 else 'concerts' }} · going to {{ going | length }}</span>{% endif %}
+    </div>
+    {% if upcoming %}
+    {{ concert_table(upcoming, True) }}
+    {% elif not found_file %}
+    <p class="empty">No concerts yet. List them in {% if path %}<code>{{ path }}</code>{% else %}<code>concerts.csv</code> in the info folder{% endif %}, one per line, under the header <code>date;band;tour;country;city;Want to go;Going</code> (the tour is optional).</p>
+    {% else %}
+    <p class="empty">No upcoming concerts. Add them to <code>{{ path }}</code>.</p>
+    {% endif %}
+  </section>
+  {% if past %}
+  <section class="card">
+    <h2>🕰️ Past</h2>
+    {{ concert_table(past, False) }}
+  </section>
+  {% endif %}
+  <p class="small">Read from <code>{{ path or 'concerts.csv' }}</code> every time this page opens: edit the file and reload the page. Changing a status saves it there.</p>
+</div>
