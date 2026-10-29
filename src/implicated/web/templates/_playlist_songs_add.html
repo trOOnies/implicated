@@ -1,0 +1,39 @@
+{# A playlist's Add songs form: search songs (Enter searches), press + to list them, then add
+   them all at once with Add songs, or empty the list with Drop songs. The list lives in the
+   form itself. #}
+{% set refresh %}hx-get="/fragments/playlists/{{ playlist.id }}/add-songs" hx-target="#playlist-songs-add" hx-swap="outerHTML" hx-include="#playlist-pending, #playlist-song-search"{% endset %}
+<section id="playlist-songs-add" class="card">
+  <h2>Add songs</h2>
+  {% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
+  <form id="playlist-song-search" class="stack" hx-get="/fragments/playlists/{{ playlist.id }}/add-songs/results"
+        hx-target="#playlist-song-results" hx-include="#playlist-pending">
+    <label>Find songs <input type="search" name="q" value="{{ q }}" autocomplete="off"
+           placeholder="Title, artist or album, then Enter"></label>
+  </form>
+  <div id="playlist-song-results">{% include "_playlist_song_results.html" %}</div>
+  <form id="playlist-pending" class="stack" hx-post="/playlists/{{ playlist.id }}/songs"
+        hx-target="#playlist-songs-add" hx-swap="outerHTML">
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <h3 class="members-head">To add ({{ pending | length }})</h3>
+    {% if pending %}
+    <ol class="pending-songs">
+      {% for s in pending %}
+      <li>
+        <input type="hidden" name="song_id" value="{{ s.song.id }}">
+        <span>{{ s.song.title }} <span class="muted small">· {{ s.artist_name }}{% if s.album_title %} · {{ s.album_title }}{% endif %}</span></span>
+        <button type="button" class="link danger" {{ refresh }} hx-vals='{"drop": "{{ s.song.id }}"}'
+                title="Take it off the list" aria-label="Take {{ s.song.title }} off the list">✕</button>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="empty">Search for songs above and press + to list the ones to add.</p>
+    {% endif %}
+    <div class="row">
+      <button type="submit"{% if not pending %} disabled{% endif %}>Add songs</button>
+      <button type="button" class="secondary" hx-get="/fragments/playlists/{{ playlist.id }}/add-songs"
+              hx-target="#playlist-songs-add" hx-swap="outerHTML"{% if not pending %} disabled{% endif %}
+              title="Empty the list; the playlist stays as it is">Drop songs</button>
+    </div>
+  </form>
+</section>

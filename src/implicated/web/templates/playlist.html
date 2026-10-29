@@ -14,4 +14,5 @@
     {% include "_songs.html" %}
   </div>
 </section>
+{% with pending=[], q='', results=[] %}{% include "_playlist_songs_add.html" %}{% endwith %}
 {% endblock %}

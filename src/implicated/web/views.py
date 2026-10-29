@@ -23,7 +23,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
-from starlette.datastructures import FormData
+from starlette.datastructures import FormData, ImmutableMultiDict
 
 from implicated.api import get_library
 from implicated.library import Library, NotFound
@@ -1202,6 +1202,83 @@ def delete_playlist(lib: Lib, playlist_id: int):
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     return Response(headers={"HX-Redirect": "/playlists"})
+
+
+# How many songs a search in a playlist's Add songs form shows, and how many characters it needs.
+SONG_RESULTS = 15
+MIN_SEARCH = 3
+
+
+def _add_songs_context(lib: Library, playlist_id: int, params: ImmutableMultiDict, **extra) -> dict:
+    """A playlist's Add songs form: the songs listed to add (``song_id``, with ``add`` put on
+    the list and ``drop`` taken off it) and the songs matching the search ``q`` that are neither
+    on that list nor in the playlist yet (none when ``q`` has under ``MIN_SEARCH`` characters
+    besides spaces)."""
+    playlist = found(lib.get_playlist, playlist_id)
+    ids = []
+    for value in [*params.getlist("song_id"), params.get("add")]:
+        try:
+            ids.append(int(value))
+        except (TypeError, ValueError):
+            pass
+    drop = _id(params, "drop")
+    pending = []
+    for song_id in dict.fromkeys(ids):
+        if song_id != drop:
+            try:
+                pending.append(lib.get_song_summary(song_id))
+            except NotFound:
+                pass  # deleted since it was listed
+    q = _text(params, "q")
+    # Spaces do not count: "a b" is too short.
+    too_short = bool(q) and len("".join(q.split())) < MIN_SEARCH
+    results = []
+    if q and not too_short:
+        skip = {s.song.id for s in pending} | set(lib.playlist_song_ids(playlist_id))
+        results = [s for s in lib.list_songs(q=q) if s.song.id not in skip][:SONG_RESULTS]
+    return {
+        "playlist": playlist,
+        "pending": pending,
+        "q": q or "",
+        "too_short": too_short,
+        "min_search": MIN_SEARCH,
+        "results": results,
+        **extra,
+    }
+
+
+@router.get("/fragments/playlists/{playlist_id}/add-songs")
+def playlist_add_songs(request: Request, lib: Lib, playlist_id: int):
+    """The Add songs form after a song was put on its list or taken off, or the list dropped."""
+    context = _add_songs_context(lib, playlist_id, request.query_params)
+    return render(request, "_playlist_songs_add.html", **context)
+
+
+@router.get("/fragments/playlists/{playlist_id}/add-songs/results")
+def playlist_song_results(request: Request, lib: Lib, playlist_id: int):
+    context = _add_songs_context(lib, playlist_id, request.query_params)
+    return render(request, "_playlist_song_results.html", **context)
+
+
+@router.post("/playlists/{playlist_id}/songs")
+async def add_songs_to_playlist(request: Request, lib: Lib, playlist_id: int):
+    """Add the songs listed in the Add songs form, in order, and empty the list."""
+    form = await request.form()
+    context = _add_songs_context(lib, playlist_id, form)
+    if not context["pending"]:
+        context["error"] = "List some songs to add first."
+        return render(request, "_playlist_songs_add.html", status_code=422, **context)
+    pending = context["pending"]
+    added = lib.add_to_playlist(playlist_id, [s.song.id for s in pending])
+    message = f"Added {added} {'song' if added == 1 else 'songs'} to {context['playlist'].name}."
+    if added < len(pending):
+        message += f" {len(pending) - added} of them were already there."
+    return render(
+        request,
+        "_playlist_songs_add.html",
+        trigger=("playlists-changed", "library-changed"),
+        **_add_songs_context(lib, playlist_id, ImmutableMultiDict(), message=message),
+    )
 
 
 @router.post("/playlists/{playlist_id}/songs/{song_id}/remove")

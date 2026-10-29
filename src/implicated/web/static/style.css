@@ -320,3 +320,10 @@ details.budget > .row { margin-top: .5rem; }
 .prompt { margin-bottom: 1rem; border-color: var(--warn); }
 .prompt ul { margin: .5rem 0; padding-left: 1.25rem; }
 .help-logo { float: right; margin: 0 0 .5rem 1rem; }
+
+/* A playlist's Add songs form */
+.song-results, .pending-songs { margin: 0; padding-left: 1.4rem; display: flex; flex-direction: column; gap: .3rem; }
+.song-results { list-style: none; padding-left: 0; }
+.song-results li, .pending-songs li { display: flex; align-items: center; gap: .5rem; }
+.pending-songs li { display: list-item; }
+.pending-songs li button { margin-left: .4rem; }

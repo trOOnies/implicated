@@ -1,0 +1,20 @@
+{# The songs matching the Add songs search `q`, leaving out those listed or already in the
+   playlist; nothing for an empty search, and a hint for one too short to run. #}
+{% if too_short %}
+<p class="empty">Type at least {{ min_search }} characters to search.</p>
+{% elif q %}
+{% if results %}
+<ul class="song-results">
+  {% for s in results %}
+  <li>
+    <button type="button" class="link" hx-get="/fragments/playlists/{{ playlist.id }}/add-songs" hx-target="#playlist-songs-add"
+            hx-swap="outerHTML" hx-include="#playlist-pending, #playlist-song-search" hx-vals='{"add": "{{ s.song.id }}"}'
+            title="Put it on the list to add" aria-label="Put {{ s.song.title }} on the list to add">+</button>
+    <span>{{ s.song.title }} <span class="muted small">· {{ s.artist_name }}{% if s.album_title %} · {{ s.album_title }}{% endif %}</span></span>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="empty">No other songs match “{{ q }}”.</p>
+{% endif %}
+{% endif %}

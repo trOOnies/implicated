@@ -86,8 +86,9 @@ Besides what the import brings, the app keeps:
   `/shorts/`, `/live/`, `/v/`, also `m.` and `music.`), `youtu.be` and `youtube-nocookie.com`
   are accepted; anything else is refused, and only the id (and a `t=` start) is stored. Song
   pages embed them.
-- **Playlists** of songs, in your own order. Songs are added one by one from their page, or a
-  whole album at a time from the album page; a song is in a playlist at most once.
+- **Playlists** of songs, in your own order. Songs are added one by one from their page, several
+  at once with the Add songs form at the bottom of the playlist, or a whole album at a time from
+  the album page; a song is in a playlist at most once.
   **Favorites** and **Listen Later** are built-in playlists that cannot be renamed or deleted:
   they always hold the songs with that mark, and adding or removing songs sets or clears it.
 - **Listen later** marks on artists, albums and songs. A song's mark goes away when you log a play

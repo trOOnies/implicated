@@ -13,6 +13,7 @@ from implicated.models import (
     CartItemIn,
     Member,
     MemberIn,
+    PlaylistIn,
     SongIn,
 )
 from implicated.web import editor
@@ -1098,3 +1099,46 @@ def test_buy_asks_about_other_budgets(client: TestClient, client_lib: Library, w
     # With nothing in common, Buy goes straight through.
     client_lib.add_to_cart(CartItemIn(album_id, "vinyl", 30))
     assert "Bought Solo" in client.post("/budget/cart/buy", data={"name": "Solo"}).text
+
+
+def test_add_songs_to_a_playlist(client: TestClient, client_lib: Library, web_sample: Sample):
+    first, second = web_sample.song_ids
+    pid = client_lib.create_playlist(PlaylistIn("Night drive")).id
+    client_lib.add_to_playlist(pid, [second])
+    page = client.get(f"/playlists/{pid}").text
+    assert '<section id="playlist-songs-add"' in page and "To add (0)" in page
+    assert '<button type="submit" disabled>Add songs</button>' in page  # waits for a list
+
+    # Searching leaves out the songs already in the playlist.
+    url = f"/fragments/playlists/{pid}/add-songs"
+    assert 'id="playlist-song-search"' in page and 'hx-include="#playlist-pending"' in page
+    found = client.get(f"{url}/results", params={"q": "portishead"}).text
+    assert "Mysterons" in found and "Sour Times" not in found
+    assert "No other songs match" in client.get(f"{url}/results", params={"q": "zzz"}).text
+    for blank in ({}, {"q": "   "}):  # Enter on an empty search clears the hits
+        assert client.get(f"{url}/results", params=blank).text.strip() == ""
+    for short in ("so", " s o "):  # spaces do not count
+        hint = client.get(f"{url}/results", params={"q": short}).text
+        assert "Type at least 3 characters" in hint and "Mysterons" not in hint
+    assert "Mysterons" in client.get(f"{url}/results", params={"q": " mys "}).text
+
+    single = client_lib.create_song(SongIn(web_sample.artist_id, "Single"))
+    listed = client.get(url, params={"q": "portishead", "add": first}).text
+    assert f'name="song_id" value="{first}"' in listed and "To add (1)" in listed
+    assert 'value="portishead"' in listed  # the search stays
+    listed = client.get(url, params={"song_id": first, "add": single.id}).text
+    assert "To add (2)" in listed
+    assert listed.index(f'value="{first}"') < listed.index(f'value="{single.id}"')
+    dropped = client.get(url, params={"song_id": [first, single.id], "drop": first}).text
+    assert "To add (1)" in dropped and f'name="song_id" value="{first}"' not in dropped
+    assert "To add (0)" in client.get(url).text  # Drop songs empties the list
+
+    nothing = client.post(f"/playlists/{pid}/songs")
+    assert nothing.status_code == 422 and "List some songs to add first." in nothing.text
+    added = client.post(f"/playlists/{pid}/songs", data={"song_id": [single.id, first, second]})
+    assert "Added 2 songs to Night drive. 1 of them were already there." in added.text
+    assert "To add (0)" in added.text
+    assert added.headers["hx-trigger"] == "playlists-changed, library-changed"
+    assert client_lib.playlist_song_ids(pid) == [second, single.id, first]
+
+    assert client.get("/fragments/playlists/99/add-songs").status_code == 404
