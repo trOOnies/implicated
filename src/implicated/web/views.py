@@ -510,9 +510,12 @@ async def create_album(request: Request, lib: Lib):
 def _album_context(lib: Library, album_id: int) -> dict:
     album = found(lib.get_album, album_id)
     songs = lib.list_songs(album_id=album_id, order="track")
+    previous, following = lib.album_neighbors(album_id)
     return {
         "playlists": lib.list_playlists(),
         "album": album,
+        "previous": previous,
+        "following": following,
         "same_cover": lib.same_cover_albums(album_id),
         "artist": lib.get_artist(album.artist_id),
         "songs": songs,

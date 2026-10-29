@@ -1,0 +1,12 @@
+{# Previous and next `noun` ("song" or "album"), linked under `base`; greyed out at either end
+   of where they are (`within`, like "on the album"). #}
+<nav class="step-nav" aria-label="Previous and next {{ noun }}">
+  {% for neighbor, label, points in [(previous, 'Previous', '15 18 9 12 15 6'), (following, 'Next', '9 18 15 12 9 6')] %}
+  {% set icon %}<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="{{ points }}"/></svg>{% endset %}
+  {% if neighbor %}
+  <a href="{{ base }}/{{ neighbor.id }}" rel="{{ 'prev' if label == 'Previous' else 'next' }}" title="{{ label }}: {{ neighbor.title }}" aria-label="{{ label }} {{ noun }}: {{ neighbor.title }}">{{ icon }}</a>
+  {% else %}
+  <span class="disabled" title="{{ 'First' if label == 'Previous' else 'Last' }} {{ noun }} {{ within }}" aria-disabled="true" aria-label="No {{ label | lower }} {{ noun }}">{{ icon }}</span>
+  {% endif %}
+  {% endfor %}
+</nav>

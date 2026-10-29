@@ -801,7 +801,29 @@ def test_song_page_steps_through_the_album(
     assert f'<a href="/songs/{first}" rel="prev" title="Previous: Mysterons"' in info
     assert '<span class="disabled" title="Last song on the album"' in info
     single = client_lib.create_song(SongIn(web_sample.artist_id, "Single"))
-    assert "song-nav" not in client.get(f"/songs/{single.id}").text
+    assert "step-nav" not in client.get(f"/songs/{single.id}").text
+
+
+def test_album_page_steps_through_the_discography(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    artist_id, dummy = web_sample.artist_id, web_sample.album_id
+    third = client_lib.create_album(AlbumIn(artist_id, "Third", 2008))
+    undated = client_lib.create_album(AlbumIn(artist_id, "Demos"))
+    portishead = client_lib.create_album(AlbumIn(artist_id, "Portishead", 1997))
+    other = client_lib.create_artist(ArtistIn("Air"))
+    client_lib.create_album(AlbumIn(other.id, "Moon Safari", 1998))  # another artist's
+
+    page = client.get(f"/albums/{dummy}").text
+    assert '<span class="disabled" title="First album in the discography"' in page
+    assert f'<a href="/albums/{portishead.id}" rel="next" title="Next: Portishead"' in page
+    info = client.get(f"/fragments/albums/{portishead.id}/info").text  # kept when it reloads
+    assert f'<a href="/albums/{dummy}" rel="prev" title="Previous: Dummy"' in info
+    assert f'<a href="/albums/{third.id}" rel="next" title="Next: Third"' in info
+    last = client.get(f"/albums/{undated.id}").text  # albums without a year come last
+    assert f'<a href="/albums/{third.id}" rel="prev"' in last
+    assert '<span class="disabled" title="Last album in the discography"' in last
+    assert "Moon Safari" not in page + info + last
 
 
 def test_artist_filters(client: TestClient, client_lib: Library, web_sample: Sample):

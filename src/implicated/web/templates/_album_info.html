@@ -6,6 +6,7 @@
     {% with kind='album', record_id=album.id, favorite=album.favorite %}{% include "_fav.html" %}{% endwith %}
     {% with kind='album', record_id=album.id, later=album.listen_later %}{% include "_later.html" %}{% endwith %}
     <span class="spacer"></span>
+    {% with base="/albums", noun="album", within="in the discography" %}{% include "_step_nav.html" %}{% endwith %}
     <button type="button" class="secondary" hx-get="/fragments/albums/{{ album.id }}/edit"
             hx-target="#album-info" hx-swap="outerHTML">Edit</button>
     <button type="button" class="secondary" hx-post="/albums/{{ album.id }}/copy"

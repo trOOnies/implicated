@@ -10,7 +10,7 @@
     {% with kind='song', record_id=s.song.id, favorite=s.song.favorite %}{% include "_fav.html" %}{% endwith %}
     {% with kind='song', record_id=s.song.id, later=s.song.listen_later %}{% include "_later.html" %}{% endwith %}
     <span class="spacer"></span>
-    {% if album %}{% include "_song_nav.html" %}{% endif %}
+    {% if album %}{% with base="/songs", noun="song", within="on the album" %}{% include "_step_nav.html" %}{% endwith %}{% endif %}
     <button type="button" hx-post="/songs/{{ s.song.id }}/play" hx-vals='{"ctx": "page"}'
             hx-target="#song-info" hx-swap="outerHTML" title="Log a listen">▶ Played</button>
     <button type="button" class="secondary" hx-get="/fragments/songs/{{ s.song.id }}/details"

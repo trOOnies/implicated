@@ -659,6 +659,22 @@ class Library:
             )
         return out
 
+    def album_neighbors(self, album_id: int) -> tuple[Album | None, Album | None]:
+        """The artist's albums before and after this one, in the order ``list_albums`` gives
+        (by year, then title); ``None`` past either end of the discography."""
+        album = self.get_album(album_id)
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT * FROM albums WHERE artist_id = ?
+                    ORDER BY year IS NULL, year, title COLLATE NOCASE, id""",
+                (album.artist_id,),
+            ).fetchall()
+        i = [row["id"] for row in rows].index(album_id)
+        return (
+            _album(rows[i - 1]) if i > 0 else None,
+            _album(rows[i + 1]) if i + 1 < len(rows) else None,
+        )
+
     def same_cover_albums(self, album_id: int) -> list[Album]:
         """The other albums whose cover is the same image as this album's."""
         with self.connect() as conn:
