@@ -58,14 +58,14 @@ notation and tablature with [alphaTab](https://www.alphatab.net/) (bundled in
 `src/implicated/web/static/alphatab/`, MPL-2.0), can play it back, lets you pick the track when the
 file holds several, and has buttons to open the file in TuxGuitar and to reload it after saving.
 
-The **Budget** page is a cart of CDs and vinyls to buy: pick a format, then an album (the ones
-marked *Wanted* on it come first), and give its price, quantity and, optionally, a link to it in a
+The **Budget** page is a cart of CDs and vinyls to buy: pick a band, then one of its albums, then
+the format (each picker says which ones you marked *Wanted*), and give its price, quantity and, optionally, a link to it in a
 shop; the cart adds up the total. Albums you already own on that format can go in too, but each is
 flagged. *Make Budget* saves the cart under a name and empties it; *Buy* marks its albums owned on
 their formats and keeps it as a bought budget. Saved budgets can be bought, deleted, or loaded back
 into the cart to edit. Buying albums that other budgets also hold (on the same format) first asks
-whether to drop them from those budgets, deleting any budget that leaves empty. Prices have no currency; they are whatever the shops charge in. The API has
-it all under `/api/budget`.
+whether to drop them from those budgets, deleting any budget that leaves empty. Prices show with
+a generic `$`, whatever currency the shops charge in. The API has it all under `/api/budget`.
 
 Albums without a cover of their own are tagged *no cover* (the ♪ placeholder shows instead) or
 *shared cover* (the same image as another album, say a deluxe edition that matched the original's

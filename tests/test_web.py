@@ -16,7 +16,7 @@ from implicated.models import (
     SongIn,
 )
 from implicated.web import editor
-from implicated.web.views import duration, percent, stars, tenure, when
+from implicated.web.views import duration, money, percent, stars, tenure, when
 
 # Template helpers
 
@@ -33,6 +33,10 @@ def test_stars_and_when():
     assert stars(3) == "★★★☆☆"
     assert when(None) == "never"
     assert when("2024-05-01T13:45:10+00:00") == "2024-05-01 13:45"
+
+
+def test_money():
+    assert money(1299.5) == "$1,299.50" and money(0) == "$0.00"
 
 
 def test_percent():
@@ -947,15 +951,31 @@ def test_budget_page(client: TestClient, client_lib: Library, web_sample: Sample
     page = client.get("/budget").text
     assert 'href="/budget" aria-current="page">Budget</a>' in page
     assert "The cart is empty" in page and "No budgets yet" in page
-    assert "Pick a format first" in page  # the Album picker waits for the format
+    # A single band with a single album: both are picked already, the format is left to pick.
+    assert f'<option value="{web_sample.artist_id}" selected>Portishead · 1 wanted</option>' in page
+    assert f'<option value="{album_id}" selected>Dummy (1994) · wanted</option>' in page
+    assert "Pick a format…" in page and "CD · ⚠ owned" in page and "Vinyl · wanted" in page
 
-    albums = client.get("/fragments/budget/albums", params={"format": "cd"}).text
-    assert '<optgroup label="Already owned">' in albums and "Portishead – Dummy ⚠ owned" in albums
-    assert "Wanted" not in albums
-    assert "Pick a format first" in client.get("/fragments/budget/albums").text
+    air = client_lib.create_artist(ArtistIn("Air"))
+    for title, year in [("Talkie Walkie", 2004), ("Moon Safari", 1998)]:
+        client_lib.create_album(AlbumIn(air.id, title, year))
+    picker = client.get("/fragments/budget/picker").text
+    assert "Pick a band…" in picker and "Pick a band first" in picker
+    assert "Pick an album first" in picker
+    picker = client.get("/fragments/budget/picker", params={"artist_id": air.id}).text
+    assert picker.index("Moon Safari (1998)") < picker.index("Talkie Walkie (2004)")
+    assert "Dummy" not in picker and "Pick an album first" in picker
+    # An album of another band is not kept.
+    stale = {"artist_id": air.id, "album_id": album_id, "format": "cd"}
+    picker = client.get("/fragments/budget/picker", params=stale).text
+    assert "Pick an album…" in picker and " selected>" not in picker.split('name="album_id"')[1]
+    picked = {"artist_id": web_sample.artist_id, "album_id": album_id, "format": "vinyl"}
+    picker = client.get("/fragments/budget/picker", params=picked).text
+    assert '<option value="vinyl" selected>Vinyl · wanted</option>' in picker
 
     def add(**data):
-        return client.post("/budget/items", data={"format": "cd", "album_id": album_id} | data)
+        picks = {"artist_id": web_sample.artist_id, "format": "cd", "album_id": album_id}
+        return client.post("/budget/items", data=picks | data)
 
     for price, error in [("abc", "must be a number"), ("1.234", "can have at most two decimals")]:
         added = add(price=price)
@@ -967,12 +987,14 @@ def test_budget_page(client: TestClient, client_lib: Library, web_sample: Sample
     assert add(album_id="99", price="3").status_code == 404
 
     cart = add(price="12,5", quantity="2").text
-    assert 'option value="cd" selected' in cart  # the format stays picked
-    assert "Every album is already in the cart on CD" in cart
+    # The band stays picked, and Dummy is only left on vinyl.
+    assert f'<option value="{web_sample.artist_id}" selected>Portishead' in cart
+    assert '<option value="vinyl" selected>Vinyl · wanted</option>' in cart
     cart = add(format="vinyl", price="$1,029.99", link="shop.example/dummy").text
     assert "You already own this on CD." in cart and cart.count("You already own this") == 1
     assert "1 of these is already in your collection" in cart
-    assert "25.00" in cart and "1,029.99" in cart and "1,054.99" in cart  # subtotal and total
+    assert "$25.00" in cart and "$1,029.99" in cart and "$1,054.99" in cart  # subtotal, total
+    assert f'<option value="{air.id}" selected>Air</option>' in cart  # all that is left
     assert "Total · 3 items" in cart
     assert 'href="https://shop.example/dummy"' in cart
     assert "Make Budget" in cart and 'hx-post="/budget/cart/buy"' in cart

@@ -1,0 +1,42 @@
+{# The Band, Album and Format pickers of the Add to cart form, from `bands`, `albums` and
+   `formats` (only what is not in the cart yet) with the `picked` ones; changing the band or the
+   album reloads the pickers after it. #}
+{% set reload %}hx-get="/fragments/budget/picker" hx-trigger="change" hx-target="#cart-picker" hx-swap="outerHTML" hx-include="#cart-picker"{% endset %}
+<div id="cart-picker" class="cart-picker">
+  <label>Band
+    <select name="artist_id" required{% if not bands %} disabled{% endif %} {{ reload }}>
+      {% if not bands %}
+      <option value="">Every album is already in the cart</option>
+      {% else %}
+      <option value="">Pick a band…</option>
+      {% for b in bands %}
+      <option value="{{ b.id }}"{% if b.id == picked.artist_id %} selected{% endif %}>{{ b.name }}{% if b.wanted %} · {{ b.wanted | length }} wanted{% endif %}</option>
+      {% endfor %}
+      {% endif %}
+    </select>
+  </label>
+  <label>Album
+    <select name="album_id" required{% if not albums %} disabled{% endif %} {{ reload }}>
+      {% if not albums %}
+      <option value="">Pick a band first</option>
+      {% else %}
+      <option value="">Pick an album…</option>
+      {% for a in albums %}
+      <option value="{{ a.album.id }}"{% if a.album.id == picked.album_id %} selected{% endif %}>{{ a.album.title }}{% if a.album.year %} ({{ a.album.year }}){% endif %}{% if a.wanted %} · wanted{% endif %}</option>
+      {% endfor %}
+      {% endif %}
+    </select>
+  </label>
+  <label>Format
+    <select name="format" required{% if not formats %} disabled{% endif %}>
+      {% if not formats %}
+      <option value="">Pick an album first</option>
+      {% else %}
+      <option value="">Pick a format…</option>
+      {% for o in formats %}
+      <option value="{{ o.format }}"{% if o.format == picked.format %} selected{% endif %}>{{ format_names[o.format] }}{% if o.state == 'wanted' %} · wanted{% elif o.state == 'owned' %} · ⚠ owned{% endif %}</option>
+      {% endfor %}
+      {% endif %}
+    </select>
+  </label>
+</div>

@@ -38,7 +38,6 @@ from implicated.models import (
     BudgetIn,
     BudgetOverlap,
     CartItemIn,
-    CartOption,
     Member,
     PlaylistIn,
     Point,
@@ -106,8 +105,8 @@ def formats(album: Album) -> list[tuple[str, str]]:
 
 
 def money(amount: float) -> str:
-    """``1299.5`` -> ``1,299.50``; no currency, since prices are in whatever the shops use."""
-    return f"{amount:,.2f}"
+    """``1299.5`` -> ``$1,299.50``: the generic dollar sign, whatever the shops' currency."""
+    return f"${amount:,.2f}"
 
 
 templates.env.filters.update(
@@ -1225,9 +1224,6 @@ async def move_in_playlist(request: Request, lib: Lib, playlist_id: int, song_id
 
 # Budget
 
-# The groups of the Add to cart picker, in order: ownership state -> heading.
-CART_GROUPS = {"wanted": "Wanted", None: "Neither wanted nor owned", "owned": "Already owned"}
-
 
 def _price(form: FormData, key: str) -> float | None:
     """Accept ``12.99``, ``12,99``, ``$ 1,299.00``, ``1.299,00`` and the like: the last ``.`` or
@@ -1252,16 +1248,53 @@ def _quantity(form: FormData) -> int:
     return 1 if quantity is None else quantity
 
 
-def _cart_groups(lib: Library, fmt: str | None) -> list[tuple[str, list[CartOption]]]:
-    """What can go in the cart on ``fmt``, in ``CART_GROUPS`` (leaving out the empty ones);
-    nothing until a format is picked."""
-    if fmt not in FORMATS:
-        return []
-    options = lib.cart_options(fmt)
-    groups = [
-        (label, [o for o in options if o.state == state]) for state, label in CART_GROUPS.items()
-    ]
-    return [(label, opts) for label, opts in groups if opts]
+def _id(form: FormData | dict, key: str) -> int | None:
+    """An id picked in a form, or ``None`` when there is none (or it is not a number)."""
+    try:
+        return _int(form, key)
+    except ValueError:
+        return None
+
+
+def _album_order(album: Album) -> tuple:
+    return album.year is None, album.year or 0, album.title.casefold(), album.id
+
+
+def _cart_picker(lib: Library, form: FormData | dict) -> dict:
+    """The Band, Album and Format pickers of the Add to cart form. Each lists what fits the
+    picks before it (only albums and formats not in the cart yet) and keeps its own pick while
+    that still fits; a picker with a single choice picks it."""
+    options = lib.cart_options()
+    bands: dict[int, dict] = {}
+    for o in options:
+        band = bands.setdefault(
+            o.album.artist_id, {"id": o.album.artist_id, "name": o.artist_name, "wanted": set()}
+        )
+        if o.state == "wanted":
+            band["wanted"].add(o.album.id)
+    artist_id = _id(form, "artist_id")
+    if artist_id not in bands:
+        artist_id = next(iter(bands)) if len(bands) == 1 else None
+    albums: dict[int, dict] = {}
+    for o in options:
+        if o.album.artist_id == artist_id:
+            album = albums.setdefault(o.album.id, {"album": o.album, "wanted": False})
+            album["wanted"] |= o.state == "wanted"
+    album_id = _id(form, "album_id")
+    if album_id not in albums:
+        album_id = next(iter(albums)) if len(albums) == 1 else None
+    formats = [o for o in options if o.album.id == album_id]
+    formats.sort(key=lambda o: list(FORMATS).index(o.format))
+    fmt = form.get("format")
+    if fmt not in [o.format for o in formats]:
+        fmt = formats[0].format if len(formats) == 1 else None
+    return {
+        "bands": sorted(bands.values(), key=lambda b: b["name"].casefold()),
+        # ``cart_options`` puts the wanted ones first; here they go by year and title.
+        "albums": sorted(albums.values(), key=lambda a: _album_order(a["album"])),
+        "formats": formats,
+        "picked": {"artist_id": artist_id, "album_id": album_id, "format": fmt},
+    }
 
 
 def _budget(
@@ -1286,8 +1319,8 @@ def _budget_context(lib: Library, form: FormData | dict | None = None) -> dict:
     return {
         "cart": cart,
         "budgets": lib.list_budgets(),
-        "groups": _cart_groups(lib, form.get("format")),
         "form": form,
+        **_cart_picker(lib, form),
         # What Make Budget and Buy name the budget: the one being edited keeps its name.
         "budget_name": cart.editing.name if cart.editing else f"Budget {date.today()}",
     }
@@ -1303,24 +1336,22 @@ def budget_fragment(request: Request, lib: Lib):
     return _budget(request, lib)
 
 
-@router.get("/fragments/budget/albums")
-def cart_albums(request: Request, lib: Lib, format: str = ""):
-    """The Album picker of the Add form, for the format just picked."""
-    return render(
-        request, "_cart_albums.html", groups=_cart_groups(lib, format), form={"format": format}
-    )
+@router.get("/fragments/budget/picker")
+def cart_picker(request: Request, lib: Lib):
+    """The Band, Album and Format pickers of the Add form, after one of them changed."""
+    return render(request, "_cart_picker.html", **_cart_picker(lib, request.query_params))
 
 
 @router.post("/budget/items")
 async def add_to_cart(request: Request, lib: Lib):
     form = await request.form()
     try:
-        fmt = _text(form, "format")
-        if fmt not in FORMATS:
-            raise ValueError("Pick a format first.")
         album_id = _int(form, "album_id")
         if album_id is None:
             raise ValueError("Pick an album.")
+        fmt = _text(form, "format")
+        if fmt not in FORMATS:
+            raise ValueError("Pick a format.")
         price = _price(form, "price")
         if price is None:
             raise ValueError("price is required")
@@ -1328,8 +1359,8 @@ async def add_to_cart(request: Request, lib: Lib):
         found(lib.add_to_cart, data)
     except ValueError as exc:
         return _budget(request, lib, status_code=422, error=str(exc), form=form)
-    # Keep the format picked, to add more albums on it.
-    return _budget(request, lib, form={"format": fmt})
+    # Keep the band picked, to add more of its albums.
+    return _budget(request, lib, form={"artist_id": _text(form, "artist_id")})
 
 
 @router.get("/fragments/budget/items/{item_id}/edit")

@@ -1,7 +1,7 @@
 {# The Budget page body: the cart with its Add form, and the saved budgets. `editing` is the id of the cart item being edited; `budget_name` is what saving the cart names its budget. #}
 {% macro fields(v) %}
 <div class="row wrap">
-  <label>Price <input name="price" class="narrow" inputmode="decimal" required placeholder="24.99" value="{{ v.get('price') or '' }}"></label>
+  <label>Price ($) <input name="price" class="narrow" inputmode="decimal" required placeholder="24.99" value="{{ v.get('price') or '' }}"></label>
   <label>Quantity <input name="quantity" class="narrow" type="number" min="1" step="1" required value="{{ v.get('quantity') or 1 }}"></label>
 </div>
 <label>Link (optional) <input name="link" inputmode="url" placeholder="https://shop.example/album" value="{{ v.get('link') or '' }}"></label>
@@ -135,20 +135,11 @@
       <h2>Add to cart</h2>
       <form class="stack" hx-post="/budget/items" hx-target="#budget" hx-swap="outerHTML">
         {% if error %}<p class="error">{{ error }}</p>{% endif %}
-        <label>Format
-          <select name="format" required hx-get="/fragments/budget/albums" hx-trigger="change"
-                  hx-target="#cart-album" hx-swap="outerHTML">
-            <option value="">Pick a format…</option>
-            {% for fmt, name in format_names.items() %}
-            <option value="{{ fmt }}"{% if form.get('format') == fmt %} selected{% endif %}>{{ name }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        {% include "_cart_albums.html" %}
+        {% include "_cart_picker.html" %}
         {{ fields(form) }}
         <button type="submit">Add to cart</button>
       </form>
-      <p class="small">Albums marked <em>Wanted</em> on that format come first. Mark them from their pages.</p>
+      <p class="small">Pick the band, then one of its albums, then the format. Albums and formats you marked <em>Wanted</em> say so; mark them from the album pages.</p>
     </aside>
   </div>
   <section class="card budgets">
