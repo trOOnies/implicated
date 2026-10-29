@@ -82,6 +82,10 @@ concert has a status: nothing, *Want to go* or *Going* while it is still to come
 *Went* once it is over (*Going* turns into *Went*). Changing it on the page writes the Want to go
 and Going columns of its row back to the file. Rows that cannot be read are listed on the page.
 
+The door button at the top right stops the app: after you confirm, it closes the window (when the
+browser allows it; otherwise it says the app stopped) and shuts the `make serve` server down
+gracefully, reloader included. Everything is saved as you go, so nothing is lost.
+
 Albums without a cover of their own are tagged *no cover* (the ♪ placeholder shows instead) or
 *shared cover* (the same image as another album, say a deluxe edition that matched the original's
 cover file), and the Albums page can show only those.

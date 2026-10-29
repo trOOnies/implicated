@@ -1,0 +1,10 @@
+{# Replaces the page once the exit button stopped the server. Browsers only let a page close
+   windows it opened itself, so the message stays when the tab cannot be closed. #}
+<main class="goodbye">
+  <section class="card">
+    <h1>👋 See you soon</h1>
+    <p>Your library is saved and implicated has stopped. You can close this tab.</p>
+    <p class="small">Run <code>make serve</code> to start it again.</p>
+  </section>
+</main>
+<script>window.close();</script>

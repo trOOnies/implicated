@@ -1,3 +1,4 @@
+import os
 import runpy
 import sys
 
@@ -6,6 +7,7 @@ import pytest
 from implicated.library import Library
 from implicated.seed import seed
 from implicated.web import __main__ as web_main
+from implicated.web.shutdown import SERVER_PID
 
 
 def test_seed(lib: Library):
@@ -28,10 +30,22 @@ def test_serve_cli(monkeypatch: pytest.MonkeyPatch):
     calls = []
     monkeypatch.setattr(web_main.uvicorn, "run", lambda *args, **kwargs: calls.append(kwargs))
     monkeypatch.setattr(sys, "argv", ["implicated.web", "--port", "9000", "--reload"])
+    monkeypatch.setenv(SERVER_PID, "")  # undone after the test
     web_main.main()
     assert calls == [
         {"factory": True, "host": "127.0.0.1", "port": 9000, "reload": True},
     ]
+    assert os.environ[SERVER_PID] == str(os.getpid())  # what the exit button stops
+
+
+def test_serve_cli_exits_quietly_once_stopped(monkeypatch: pytest.MonkeyPatch):
+    def stopped(*args, **kwargs):
+        raise KeyboardInterrupt  # uvicorn raising the exit button's signal again
+
+    monkeypatch.setattr(web_main.uvicorn, "run", stopped)
+    monkeypatch.setattr(sys, "argv", ["implicated.web"])
+    monkeypatch.setenv(SERVER_PID, "")
+    web_main.main()
 
 
 def test_serve_cli_stops_on_missing_info(tmp_path, monkeypatch: pytest.MonkeyPatch):

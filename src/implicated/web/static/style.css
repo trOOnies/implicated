@@ -56,6 +56,26 @@ p { margin: .25rem 0; }
 .site-header nav { display: flex; gap: 1rem; }
 .site-header nav a { color: var(--muted); }
 .site-header nav a[aria-current] { color: var(--text); font-weight: 600; }
+/* Pinned to the top right corner whatever the width; plain, to stay out of the way */
+.site-header { position: relative; padding-right: 4rem; flex-wrap: wrap; row-gap: .5rem; }
+.site-header nav { flex-wrap: wrap; }
+.site-header .exit {
+  position: absolute;
+  top: .6rem;
+  right: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--muted);
+}
+.site-header .exit:hover, .site-header .exit:focus-visible { color: var(--text); border-color: var(--muted); }
+.goodbye { max-width: 32rem; margin: 4rem auto; text-align: center; }
 
 main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 2rem; }
 

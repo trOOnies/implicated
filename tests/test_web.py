@@ -1,3 +1,5 @@
+import os
+import signal
 from dataclasses import replace
 from datetime import date, timedelta
 
@@ -16,7 +18,7 @@ from implicated.models import (
     PlaylistIn,
     SongIn,
 )
-from implicated.web import editor
+from implicated.web import editor, shutdown
 from implicated.web.views import days_until, duration, money, percent, stars, tenure, when
 
 # Template helpers
@@ -1195,3 +1197,24 @@ def test_concerts_page(client: TestClient, client_lib: Library, web_sample: Samp
     assert refused.status_code == 422 and "not a status for a past concert" in refused.text
     moved = client.post(url.format(2), data=air | {"status": ""}, headers=htmx)
     assert moved.status_code == 422 and "changed since the page was loaded" in moved.text
+
+
+def test_exit_button_stops_the_server(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    stopped = []
+    monkeypatch.setattr(shutdown, "stop", lambda: stopped.append(True))
+    page = client.get("/").text
+    assert 'hx-post="/exit"' in page and 'hx-confirm="Save and exit?' in page
+    assert client.post("/exit").status_code == 403 and not stopped  # only from the page
+    bye = client.post("/exit", headers={"HX-Request": "true"})
+    assert "implicated has stopped" in bye.text and "window.close()" in bye.text
+    assert stopped == [True]  # after the answer was sent
+
+
+def test_shutdown_signals_the_server_process(monkeypatch: pytest.MonkeyPatch):
+    kills = []
+    monkeypatch.setattr(shutdown.os, "kill", lambda pid, sig: kills.append((pid, sig)))
+    monkeypatch.delenv(shutdown.SERVER_PID, raising=False)
+    shutdown.stop()
+    monkeypatch.setenv(shutdown.SERVER_PID, "4242")  # the reloader, with --reload
+    shutdown.stop()
+    assert kills == [(os.getpid(), signal.SIGINT), (4242, signal.SIGINT)]

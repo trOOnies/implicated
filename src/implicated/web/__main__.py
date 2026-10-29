@@ -8,6 +8,7 @@ import uvicorn
 
 from implicated.importer import MissingInfoError, ensure_info_dir
 from implicated.web import DEFAULT_INFO
+from implicated.web.shutdown import SERVER_PID
 
 
 def main() -> None:
@@ -22,13 +23,19 @@ def main() -> None:
         ensure_info_dir(os.environ.get("IMPLICATED_INFO", DEFAULT_INFO))
     except MissingInfoError as exc:
         sys.exit(f"error: {exc}")
-    uvicorn.run(
-        "implicated.web:create_app",
-        factory=True,
-        host=args.host,
-        port=args.port,
-        reload=args.reload,
-    )
+    # The exit button stops this process, which (with --reload) then stops the app's worker.
+    os.environ[SERVER_PID] = str(os.getpid())
+    try:
+        uvicorn.run(
+            "implicated.web:create_app",
+            factory=True,
+            host=args.host,
+            port=args.port,
+            reload=args.reload,
+        )
+    except KeyboardInterrupt:
+        # uvicorn raises the Ctrl+C (or exit button) signal again once it has shut down.
+        pass
 
 
 if __name__ == "__main__":

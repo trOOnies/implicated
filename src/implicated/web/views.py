@@ -23,6 +23,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
+from starlette.background import BackgroundTask
 from starlette.datastructures import FormData, ImmutableMultiDict
 
 from implicated.api import get_library
@@ -48,7 +49,7 @@ from implicated.models import (
     SongIn,
     SongVideoIn,
 )
-from implicated.web import editor
+from implicated.web import editor, shutdown
 
 router = APIRouter(default_response_class=HTMLResponse, include_in_schema=False)
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -277,6 +278,17 @@ def view_fragment(request: Request, lib: Lib):
 @router.get("/help")
 def help_page(request: Request):
     return render(request, "help.html")
+
+
+@router.post("/exit")
+def exit_app(request: Request):
+    """The header's exit button: say goodbye, close the window, then stop the server."""
+    # Only the page's own button may stop the server: other sites cannot send this header.
+    if "hx-request" not in request.headers:
+        raise HTTPException(403, "stop the server from the exit button")
+    response = render(request, "_goodbye.html")
+    response.background = BackgroundTask(shutdown.stop)  # once the page has its answer
+    return response
 
 
 # Artists

@@ -27,6 +27,11 @@
       <a href="/help" {% if active == 'help' %}aria-current="page"{% endif %}>Help</a>
       <a href="/docs">API</a>
     </nav>
+    <button type="button" class="exit" hx-post="/exit" hx-target="body" hx-swap="innerHTML"
+            hx-confirm="Save and exit? Everything you changed is already saved. This closes the window and stops the server."
+            title="Save and exit" aria-label="Save and exit">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M6 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17"/><path d="M6 3l7 2.5V21H6z"/><circle cx="11" cy="13" r=".6" fill="currentColor"/></svg>
+    </button>
   </header>
   <main>
     {% block content %}{% endblock %}
