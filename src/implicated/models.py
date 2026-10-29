@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
+from datetime import date
 from urllib.parse import parse_qs, unquote, urlsplit
 
 ALBUM_KINDS = ("album", "ep", "single", "live", "compilation")
@@ -353,6 +354,12 @@ def lyrics_file_name(title: str) -> str:
 def validate_rating(rating: int | None) -> None:
     if rating is not None and not 1 <= rating <= 5:
         raise ValueError("rating must be between 1 and 5")
+
+
+def validate_formed_year(year: int | None) -> None:
+    """A band cannot have formed after this year."""
+    if year is not None and year > date.today().year:
+        raise ValueError(f"formed year cannot be in the future (after {date.today().year})")
 
 
 def validate_kind(kind: str) -> None:

@@ -1,4 +1,5 @@
 from dataclasses import replace
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -507,3 +508,12 @@ def test_startup_logs_import_warnings(lib: Library, info: Path, caplog: pytest.L
     sync_info(lib, info)
     assert "created 2 artists" in caplog.text
     assert "unrelated.png" in caplog.text
+
+
+def test_future_creation_year_is_ignored(lib: Library, tmp_path: Path):
+    root = tmp_path / "future"
+    next_year = date.today().year + 1
+    write(root / "bands.yaml", f"bands:\n- name: Soon\n  creation_year: {next_year}\n")
+    report = import_dir(lib, root)
+    assert f"Soon: ignored creation_year {next_year}, it is in the future" in report.warnings
+    assert lib.find_artist("Soon").formed_year is None

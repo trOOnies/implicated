@@ -137,6 +137,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 2rem; }
 .rating .star:hover ~ .star::before { content: "☆"; }
 .rating .star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .rating.big .star { font-size: 1.45rem; }
+.field { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; color: var(--muted); }
 
 /* Tiles */
 .tiles { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 1rem; }

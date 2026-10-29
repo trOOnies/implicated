@@ -1,4 +1,5 @@
 from dataclasses import replace
+from datetime import date
 
 import pytest
 from conftest import Sample
@@ -133,6 +134,35 @@ def test_create_artist_form(client: TestClient, client_lib: Library):
     error = client.post("/artists", data={"name": "Air", "formed_year": "soon"})
     assert error.status_code == 422 and "formed year must be a number" in error.text
     assert client.post("/artists", data={"name": " "}).status_code == 422
+
+
+def test_add_artist_form_limits_the_year_and_takes_marks(client: TestClient, client_lib: Library):
+    this_year = date.today().year
+    form = client.get("/artists").text
+    assert f'name="formed_year" type="number" min="1800" max="{this_year}"' in form
+    assert 'name="listen_later"' in form
+    # The same stars as saved artists, filling a hidden field.
+    assert '<span class="rating" data-input' in form and form.count('class="star"') == 5
+    assert '/static/stars.js" defer' in form
+
+    future = client.post("/artists", data={"name": "Later", "formed_year": this_year + 1})
+    assert future.status_code == 422 and "formed year cannot be in the future" in future.text
+    assert client_lib.find_artist("Later") is None
+    assert '<input type="hidden" name="rating" value="">' in future.text
+
+    kept = client.post("/artists", data={"name": "Kept", "rating": "4", "formed_year": "soon"})
+    assert '<input type="hidden" name="rating" value="4">' in kept.text  # kept on error
+    assert kept.text.count('class="star on"') == 4
+    data = {"name": "Air", "formed_year": this_year, "listen_later": "on", "rating": "4"}
+    assert client.post("/artists", data=data).status_code == 200
+    air = client_lib.find_artist("Air")
+    assert (air.formed_year, air.listen_later, air.rating) == (this_year, True, 4)
+    unrated = client.post("/artists", data={"name": "Zero 7", "rating": ""})
+    assert unrated.status_code == 200 and client_lib.find_artist("Zero 7").rating is None
+    assert client.post("/artists", data={"name": "Bad", "rating": "6"}).status_code == 422
+    # Editing refuses a future year too.
+    edit = client.post(f"/artists/{air.id}", data={"name": "Air", "formed_year": this_year + 1})
+    assert edit.status_code == 422 and "in the future" in edit.text
 
 
 def test_update_and_delete_artist(client: TestClient, client_lib: Library, web_sample: Sample):

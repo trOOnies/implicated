@@ -74,6 +74,7 @@ from implicated.models import (
     Song,
     SongIn,
     lyrics_file_name,
+    validate_formed_year,
     validate_wiki,
 )
 
@@ -316,10 +317,16 @@ def _import_artist(lib: Library, data: dict, report: Report) -> int:
     except ValueError:
         report.warnings.append(f"{name}: ignored wiki {wiki!r}, it is not a Wikipedia article")
         wiki = None
+    formed_year = _year(data.get("creation_year"), name)
+    try:
+        validate_formed_year(formed_year)
+    except ValueError:
+        report.warnings.append(f"{name}: ignored creation_year {formed_year}, it is in the future")
+        formed_year = None
     artist_in = ArtistIn(
         name=name,
         country=_text(data.get("origin") or data.get("country")) or (existing and existing.country),
-        formed_year=_year(data.get("creation_year"), name) or (existing and existing.formed_year),
+        formed_year=formed_year or (existing and existing.formed_year),
         genres=_strings(data.get("genres")) or (existing.genres if existing else []),
         languages=_strings(data.get("languages")) or (existing.languages if existing else []),
         bio=data.get("description") or data.get("bio") or (existing and existing.bio),

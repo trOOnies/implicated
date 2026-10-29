@@ -119,7 +119,13 @@ templates.env.filters.update(
     formats=formats,
     money=money,
 )
-templates.env.globals.update(album_kinds=ALBUM_KINDS, ownership=OWNERSHIP, format_names=FORMATS)
+templates.env.globals.update(
+    album_kinds=ALBUM_KINDS,
+    ownership=OWNERSHIP,
+    format_names=FORMATS,
+    # The latest year a band can have formed in.
+    this_year=lambda: date.today().year,
+)
 
 
 def render(
@@ -194,6 +200,7 @@ def artist_from_form(form: FormData) -> ArtistIn:
         favorite="favorite" in form,
         notes=_text(form, "notes"),
         listen_later="listen_later" in form,
+        rating=_int(form, "rating"),
     )
 
 

@@ -1,0 +1,10 @@
+{# The same 1–5 stars as `_rating.html`, for a form: clicking one sets the hidden `rating`
+   field (see stars.js) and clicking the current rating takes it away. #}
+<span class="rating" data-input role="group" aria-label="Rating">
+  <input type="hidden" name="rating" value="{{ rating or '' }}">
+  {%- for n in range(1, 6) %}
+  <button type="button" class="star{% if rating and n <= rating %} on{% endif %}" data-value="{{ n }}"
+          aria-pressed="{{ 'true' if rating == n else 'false' }}"
+          aria-label="{{ n }} {{ 'star' if n == 1 else 'stars' }}" title="{{ n }} {{ 'star' if n == 1 else 'stars' }}"></button>
+  {%- endfor %}
+</span>

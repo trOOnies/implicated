@@ -48,6 +48,7 @@ from implicated.models import (
     SongVideoIn,
     lyrics_file_name,
     shop_link,
+    validate_formed_year,
     validate_kind,
     validate_ownership,
     validate_price,
@@ -539,6 +540,7 @@ class Library:
         wiki = data.wiki.strip() if data.wiki else None
         validate_wiki(wiki)
         validate_rating(data.rating)
+        validate_formed_year(data.formed_year)
         values = asdict(data)
         values["name"] = data.name.strip()
         values["wiki"] = wiki

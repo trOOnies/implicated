@@ -1,6 +1,13 @@
+from datetime import date
+
 import pytest
 
-from implicated.models import validate_ownership, validate_wiki, youtube_id
+from implicated.models import (
+    validate_formed_year,
+    validate_ownership,
+    validate_wiki,
+    youtube_id,
+)
 
 
 @pytest.mark.parametrize(
@@ -120,3 +127,10 @@ def test_validate_ownership():
         validate_ownership("cd", value)
     with pytest.raises(ValueError, match="vinyl must be one of wanted, owned"):
         validate_ownership("vinyl", "borrowed")
+
+
+def test_validate_formed_year():
+    for year in (None, 1960, date.today().year):
+        validate_formed_year(year)
+    with pytest.raises(ValueError, match="cannot be in the future"):
+        validate_formed_year(date.today().year + 1)
