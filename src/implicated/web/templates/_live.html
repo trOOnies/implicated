@@ -10,12 +10,12 @@
     {% with album={'id': s.song.album_id, 'cover': s.album_cover, 'title': s.album_title}, size='big' %}{% include "_cover.html" %}{% endwith %}
     <div>
       <div class="row">
-        <h2 class="live-song"><a href="/songs/{{ s.song.id }}">{{ s.song.title }}</a> <span class="muted">{{ seconds | duration }}</span></h2>
+        <h2 class="live-song"><a href="/songs/{{ s.song.id }}">{{ s.song.title }}</a></h2>
         {% with kind='song', record_id=s.song.id, favorite=s.song.favorite %}{% include "_fav.html" %}{% endwith %}
         {% with kind='song', record_id=s.song.id, later=s.song.listen_later %}{% include "_later.html" %}{% endwith %}
       </div>
       <p><a href="/artists/{{ s.song.artist_id }}">{{ s.artist_name }}</a></p>
-      <p class="small">Song {{ at }} of {{ songs | length }} · {{ s.play_count }} plays</p>
+      <p class="small">Song {{ at }} of {{ songs | length }} · {{ s.play_count }} plays · {% if s.song.album_id %}<a href="/albums/{{ s.song.album_id }}">{{ s.album_title }}</a>{% else %}single{% endif %}</p>
       <div class="live-controls">
         <button type="button" class="secondary" {{ step(at - 1) }} title="Previous song" aria-label="Previous song"{% if at == 1 %} disabled{% endif %}>
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
@@ -31,7 +31,7 @@
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
       </div>
-      {% if seconds %}<div class="live-progress" aria-hidden="true"><span style="animation-duration: {{ seconds }}s"></span></div>{% endif %}
+      {% if seconds %}<div class="live-time"><div class="live-progress" aria-hidden="true"><span style="animation-duration: {{ seconds }}s"></span></div> <span class="muted">{{ seconds | duration }}</span></div>{% endif %}
     </div>
   </section>
   <div class="layout">

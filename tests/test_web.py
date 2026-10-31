@@ -1306,7 +1306,9 @@ def test_live_play(client: TestClient, client_lib: Library, web_sample: Sample, 
     assert '<span aria-current="page">Live Play</span>' in page
     assert '<body class="live-page">' in page and "<body>" in client.get("/songs").text
     assert f"/api/albums/{album}/cover" in page
-    assert '<span class="muted">5:02</span>' in page and ">Portishead</a>" in page
+    assert '</div> <span class="muted">5:02</span></div>' in page  # beside the bar
+    assert ">Portishead</a>" in page
+    assert f'plays · <a href="/albums/{album}">Dummy</a></p>' in page
     assert f'hx-post="/favorite/song/{first}"' in page
     assert 'id="live-toggle" data-seconds="302" title="Pause"' in page  # keeps time with the song
     assert "/static/live.js?v=" in page

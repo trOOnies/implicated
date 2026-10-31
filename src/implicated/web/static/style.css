@@ -394,13 +394,13 @@ details.budget > .row { margin-top: .5rem; }
 /* Live Play */
 .live-song { font-size: 1.4rem; margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .live-song a { color: var(--text); }
-.live-song .muted { font-size: 1rem; font-weight: 400; }
 .live-controls { display: flex; gap: .5rem; margin-top: .75rem; }
 .live-controls button { display: inline-flex; padding: .4rem .6rem; }
 .live-controls .live-play, .paused .live-controls .live-pause { display: none; }
 .paused .live-controls .live-play { display: block; }
 .paused .live-progress span { animation-play-state: paused; }
-.live-progress { height: .3rem; max-width: 24rem; margin-top: .75rem; border-radius: 999px; background: var(--bg); overflow: hidden; }
+.live-time { display: flex; align-items: center; gap: .6rem; max-width: 28rem; margin-top: .75rem; }
+.live-progress { flex: 1; height: .3rem; border-radius: 999px; background: var(--bg); overflow: hidden; }
 .live-progress span { display: block; height: 100%; background: var(--accent); transform-origin: left; animation: live-progress linear forwards; }
 @keyframes live-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 /* What is playing stays put and only the boxes below it scroll, when the window has room for that */
