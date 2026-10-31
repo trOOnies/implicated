@@ -33,6 +33,7 @@ info/
   bands/<artist name>/songs/      # lyrics, one <song title>.txt per song (empty = missing)
   bands/<artist name>/tabs/       # optional guitar tabs, <song title>.gp5 (or .gp, .gpx, .gp4, .gp3)
   concerts.csv                    # optional: concerts for the Concerts page (see below)
+  tours.csv                       # optional: tours the Add concert form offers
 ```
 
 Re-importing updates what changed and keeps your ratings, notes, favorites, CD and vinyl
@@ -78,10 +79,12 @@ date;band;tour;country;city;Want to go;Going
 2026-12-09;Sleeping With Sirens;Complete Collapse Tour;Argentina;Buenos Aires;true;true
 ```
 
-The tour is optional. The *Add concert* form adds one concert to the file (creating it if missing),
-and *Add tour* adds one for each date of a tour, written one per line as
-`2026-12-09; Buenos Aires; Argentina` (the city and country are optional). A column they need that
-the file lacks, such as `tour`, is added after `band`. Bands in your library show their picture and link to their page. Each
+The tour may be left empty in the file, but the *Add concert* form asks for it, and adds one concert
+to the file (creating it if missing). A column it needs that the file lacks, such as `tour`, is added
+after `band`. *Add tour* takes a band and a tour's name and keeps them in `info/tours.csv` (columns
+`band;tour`), so Add concert suggests that band's tours, along with those its concerts already name.
+The copy button at the end of a row fills Add concert with that concert, to change what differs and
+add it as a new one. Bands in your library show their picture and link to their page. Each
 concert has a status: nothing, *Want to go* or *Going* while it is still to come, and nothing or
 *Went* once it is over (*Going* turns into *Went*). Changing it on the page writes the Want to go
 and Going columns of its row back to the file. Rows that cannot be read are listed on the page.

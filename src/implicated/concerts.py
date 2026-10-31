@@ -11,6 +11,12 @@ Dates are ``YYYY-MM-DD``; *Want to go* and *Going* are ``true`` or ``false`` (al
 ``1``/``0``, or empty for false), and *Going* on a past concert means you went. Column names
 ignore case, spaces and underscores; only ``date`` and ``band`` are required, and the tour is
 optional. Concerts added on the page go at the end of the file, which is created if missing.
+
+Tours have no dates of their own, so they are kept in ``tours.csv``, next to it, for the page to
+offer them when adding a concert::
+
+    band;tour
+    Sleeping With Sirens;Complete Collapse Tour
 """
 
 from __future__ import annotations
@@ -18,13 +24,13 @@ from __future__ import annotations
 import csv
 import io
 import os
-import re
 from datetime import date
 from pathlib import Path
 
 from implicated.models import CONCERT_STATUSES, PAST_CONCERT_STATUSES, Concert
 
 CONCERTS_FILE = "concerts.csv"
+TOURS_FILE = "tours.csv"
 COLUMNS = ("date", "band", "tour", "country", "city", "want_to_go", "going")
 HEADER = ("date", "band", "tour", "country", "city", "Want to go", "Going")
 TRUE = {"true", "yes", "y", "1", "x"}
@@ -153,35 +159,27 @@ def set_status(
     _write(path, lines)
 
 
-def parse_tour_dates(text: str) -> list[tuple[date, str | None, str | None]]:
-    """The dates of a tour, one per line: ``2026-12-09; Buenos Aires; Argentina``, with the city
-    and country optional (and ``,`` also separating them)."""
-    dates = []
-    for number, line in enumerate(text.splitlines(), start=1):
-        if not line.strip():
-            continue
-        cells = [cell.strip() for cell in re.split("[;,]", line, maxsplit=2)]
-        day, city, country = (*cells, "", "")[:3]
-        try:
-            dates.append((date.fromisoformat(day), city or None, country or None))
-        except ValueError:
-            raise ValueError(f"line {number}: {day!r} is not a date like 2026-12-09") from None
-    if not dates:
-        raise ValueError("list at least one date")
-    return dates
+def _for_adding(path: Path, header: tuple[str, ...]) -> tuple[list[str], str, str]:
+    """A file's lines, each ending its line and starting with ``header`` when the file is empty or
+    missing, then its delimiter and line ending, to add rows at the end."""
+    lines, delimiter = [], ";"
+    if path.is_file():
+        _text, lines, delimiter = _read(path)
+    if not lines:
+        lines = [_line(list(header), delimiter, "\n")]
+    ending = lines[0][len(lines[0].rstrip("\r\n")) :] or "\n"
+    return (
+        [line if line.endswith(("\n", "\r")) else line + ending for line in lines],
+        delimiter,
+        ending,
+    )
 
 
 def add_concerts(path: str | Path, concerts: list[Concert]) -> None:
     """Add the concerts at the end of the file, without any status, creating it when missing.
     The columns they need and the file lacks are added after the band."""
     path = Path(path)
-    lines, delimiter = [], ";"
-    if path.is_file():
-        _text, lines, delimiter = _read(path)
-    if not lines:
-        lines = [_line(list(HEADER), delimiter, "\n")]
-    ending = lines[0][len(lines[0].rstrip("\r\n")) :] or "\n"
-    lines = [line if line.endswith(("\n", "\r")) else line + ending for line in lines]
+    lines, delimiter, ending = _for_adding(path, HEADER)
     header = [_column(name) for name in _cells(lines[0], delimiter)]
     if "date" not in header or "band" not in header:
         raise ValueError(f"{path.name} needs a date and a band column")
@@ -202,6 +200,25 @@ def add_concerts(path: str | Path, concerts: list[Concert]) -> None:
         # Lines are read one by one, so a line break in a value would split the row.
         cells = [" ".join((values.get(name) or "").split()) for name in header]
         lines.append(_line(cells, delimiter, ending))
+    _write(path, lines)
+
+
+def read_tours(path: str | Path) -> list[tuple[str, str]]:
+    """The (band, tour) pairs in the file; nothing when there is no such file."""
+    path = Path(path)
+    if not path.is_file():
+        return []
+    _text, lines, delimiter = _read(path)
+    rows = [[cell.strip() for cell in _cells(line, delimiter)] for line in lines[1:]]
+    return [(row[0], row[1]) for row in rows if len(row) > 1 and row[0] and row[1]]
+
+
+def save_tour(path: str | Path, band: str, tour: str) -> None:
+    """Add the tour at the end of the file, creating it when missing."""
+    path = Path(path)
+    lines, delimiter, ending = _for_adding(path, ("band", "tour"))
+    # Lines are read one by one, so a line break in a value would split the row.
+    lines.append(_line([" ".join(band.split()), " ".join(tour.split())], delimiter, ending))
     _write(path, lines)
 
 

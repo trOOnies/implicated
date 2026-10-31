@@ -1,0 +1,16 @@
+{# The Add concert form, filled in with `concert_form`; `copied` when that is a concert being copied. #}
+<section id="add-concert" class="card">
+  <h2>Add concert</h2>
+  {% if copied %}<p class="notice" role="status">Copied. Change what you need, then press Add concert.</p>{% endif %}
+  <form class="stack" hx-post="/concerts" hx-target="#concerts" hx-swap="outerHTML">
+    {% if concert_error %}<p class="error">{{ concert_error }}</p>{% endif %}
+    <label>Band <input name="band" list="bands" required value="{{ concert_form.get('band', '') }}"
+                       hx-get="/fragments/concerts/tours" hx-trigger="change" hx-target="#concert-tours" hx-swap="outerHTML"></label>
+    <label>Tour <input name="tour" list="concert-tours" required value="{{ concert_form.get('tour', '') }}"></label>
+    {% include "_tour_options.html" %}
+    <label>Date <input name="date" type="date" required value="{{ concert_form.get('date', '') }}"{% if copied %} autofocus{% endif %}></label>
+    <label>Country <input name="country" value="{{ concert_form.get('country', '') }}"></label>
+    <label>City <input name="city" value="{{ concert_form.get('city', '') }}"></label>
+    <button type="submit">Add concert</button>
+  </form>
+</section>

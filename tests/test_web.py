@@ -1369,19 +1369,31 @@ def test_budget_shipping(client: TestClient, client_lib: Library, web_sample: Sa
 
 def test_add_concert_and_tour(client: TestClient, client_lib: Library, web_sample: Sample):
     concerts = client_lib.info_dir / "concerts.csv"
+    tours = client_lib.info_dir / "tours.csv"
     headers = {"HX-Request": "true"}
     assert client.post("/concerts", data={}).status_code == 403
+    assert client.post("/concerts/tours", data={}).status_code == 403
     page = client.get("/concerts").text
     assert "<h2>Add concert</h2>" in page and "<h2>Add tour</h2>" in page
     assert '<option value="Portishead">' in page
+    form = page.split('id="add-concert"')[1].split("</section>")[0]
+    names = ['name="band"', 'name="tour"', 'name="date"', 'name="country"', 'name="city"']
+    assert sorted(names, key=form.index) == names
+    assert 'name="dates"' not in page and "(optional)" not in form
 
     day = date.today() + timedelta(days=5)
-    data = {"date": str(day), "band": "Portishead", "city": "Paris", "country": "France"}
+    data = {
+        "date": str(day),
+        "band": "Portishead",
+        "tour": "Roseland",
+        "city": "Paris",
+        "country": "France",
+    }
     page = client.post("/concerts", data=data, headers=headers).text
     assert f"Added Portishead on {day}." in page and "Paris" in page
     assert concerts.read_text().splitlines() == [
         "date;band;tour;country;city;Want to go;Going",
-        f"{day};Portishead;;France;Paris;false;false",
+        f"{day};Portishead;Roseland;France;Paris;false;false",
     ]
 
     bad = client.post("/concerts", data={**data, "date": "soon"}, headers=headers)
@@ -1389,18 +1401,57 @@ def test_add_concert_and_tour(client: TestClient, client_lib: Library, web_sampl
     assert 'value="Portishead"' in bad.text  # the form keeps what was typed
     bad = client.post("/concerts", data={**data, "band": " "}, headers=headers)
     assert bad.status_code == 422 and "band is required" in bad.text
+    bad = client.post("/concerts", data={**data, "tour": " "}, headers=headers)
+    assert bad.status_code == 422 and "tour is required" in bad.text
 
-    tour = {"band": "Air", "tour": "Moon", "dates": f"{day}; Lyon; France\n\n{day}, Rome"}
+    tour = {"band": "Air", "tour": "Moon"}
     page = client.post("/concerts/tours", data=tour, headers=headers).text
-    assert "Added Moon with 2 dates." in page and "Lyon" in page and "Rome" in page
-    bad = client.post("/concerts/tours", data={**tour, "dates": "tomorrow"}, headers=headers)
-    assert bad.status_code == 422 and "is not a date like" in bad.text
-    assert ">tomorrow</textarea>" in bad.text
-    assert (
-        "tour is required"
-        in client.post("/concerts/tours", data={**tour, "tour": ""}, headers=headers).text
+    assert "Added Moon for Air." in page
+    assert tours.read_text().splitlines() == ["band;tour", "Air;Moon"]
+    assert len(concerts.read_text().splitlines()) == 2  # no concert until it has a date
+    form = page.split('id="add-concert"')[1].split("</section>")[0]
+    assert 'value="Air"' in form and 'value="Moon"' in form  # ready for its first date
+
+    bad = client.post("/concerts/tours", data={**tour, "tour": "MOON"}, headers=headers)
+    assert bad.status_code == 422 and "Air already has MOON" in bad.text
+    bad = client.post("/concerts/tours", data={**tour, "tour": " "}, headers=headers)
+    assert bad.status_code == 422 and "tour is required" in bad.text
+    bad = client.post(
+        "/concerts/tours", data={"band": "portishead", "tour": "roseland"}, headers=headers
     )
-    assert len(concerts.read_text().splitlines()) == 4
+    assert bad.status_code == 422  # concerts name tours too
+    assert len(tours.read_text().splitlines()) == 2
+
+
+def test_add_concert_offers_the_bands_tours(client: TestClient, client_lib: Library):
+    (client_lib.info_dir / "tours.csv").write_text(
+        "band;tour\nAir;Moon\nAir;Talkie\nBlur;Parklife\n"
+    )
+    (client_lib.info_dir / "concerts.csv").write_text(
+        "date;band;tour\n2026-12-09;Air;Virgin Suicides\n2026-12-10;air;moon\n"
+    )
+    offered = client.get("/fragments/concerts/tours", params={"band": " AIR "}).text
+    assert offered.count("<option") == 3 and 'id="concert-tours"' in offered
+    assert offered.index("Talkie") < offered.index("Virgin Suicides")
+    assert "Parklife" not in offered
+    assert "<option" not in client.get("/fragments/concerts/tours", params={"band": "Nobody"}).text
+
+
+def test_copying_a_concert_fills_add_concert(client: TestClient, client_lib: Library):
+    (client_lib.info_dir / "concerts.csv").write_text(
+        "date;band;tour;country;city;Want to go;Going\n"
+        f'{date.today() + timedelta(days=5)};A & B;It\'s "Live";France;Paris;true;true\n'
+        f"{date.today() - timedelta(days=5)};Air;;;;false;false\n"
+    )
+    page = client.get("/concerts").text
+    assert page.count('title="Copy to Add concert"') == 2  # past concerts too
+    url = re.search(r'hx-get="(/fragments/concerts/form\?[^"]*)"', page)[1]
+    form = client.get(url.replace("&amp;", "&")).text
+    assert 'id="add-concert"' in form and "Copied." in form and "autofocus" in form
+    for value in ("A &amp; B", "It&#39;s &#34;Live&#34;", "France", "Paris"):
+        assert f'value="{value}"' in form
+    assert f'value="{date.today() + timedelta(days=5)}"' in form
+    assert 'name="status"' not in form
 
 
 def test_albums_tab_has_the_favorite_button(

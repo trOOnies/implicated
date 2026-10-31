@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from implicated.concerts import add_concerts, parse_tour_dates, read_concerts, set_status
+from implicated.concerts import add_concerts, read_concerts, read_tours, save_tour, set_status
 from implicated.models import Concert
 
 TODAY = date(2026, 10, 28)
@@ -117,14 +117,15 @@ def test_add_concerts_without_the_tour_column_in_use(tmp_path: Path):
         add_concerts(path, [Concert(date(2026, 12, 9), "Air")])
 
 
-def test_parse_tour_dates():
-    text = "2026-12-09; Buenos Aires; Argentina\n\n2026-12-11, Lima\n2026-12-13"
-    assert parse_tour_dates(text) == [
-        (date(2026, 12, 9), "Buenos Aires", "Argentina"),
-        (date(2026, 12, 11), "Lima", None),
-        (date(2026, 12, 13), None, None),
-    ]
-    with pytest.raises(ValueError, match="line 2: 'soon' is not a date"):
-        parse_tour_dates("2026-12-09\nsoon; Lima")
-    with pytest.raises(ValueError, match="at least one date"):
-        parse_tour_dates(" \n")
+def test_tours_file(tmp_path: Path):
+    path = tmp_path / "tours.csv"
+    assert read_tours(path) == []
+    save_tour(path, "Air", "Moon; Safari")
+    save_tour(path, "Air", "Talkie\nWalkie")
+    assert path.read_text() == 'band;tour\nAir;"Moon; Safari"\nAir;Talkie Walkie\n'
+    assert read_tours(path) == [("Air", "Moon; Safari"), ("Air", "Talkie Walkie")]
+
+    path.write_bytes(b"band;tour\r\nAir;Moon\r\n;Nobody\r\n\r\nNone")
+    assert read_tours(path) == [("Air", "Moon")]
+    save_tour(path, "Blur", "Parklife")
+    assert path.read_bytes().endswith(b"None\r\nBlur;Parklife\r\n")

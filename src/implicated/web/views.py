@@ -32,9 +32,11 @@ from starlette.datastructures import FormData, ImmutableMultiDict
 from implicated.api import get_library
 from implicated.concerts import (
     CONCERTS_FILE,
+    TOURS_FILE,
     add_concerts,
-    parse_tour_dates,
     read_concerts,
+    read_tours,
+    save_tour,
     set_status,
 )
 from implicated.library import Library, NotFound
@@ -1735,15 +1737,27 @@ def days_until(day: date) -> str:
 templates.env.filters.update(days_until=days_until)
 
 
+def _tours(pairs: list[tuple[str, str]], band: str | None) -> list[str]:
+    """The tours of the band among (band, tour) ``pairs``."""
+    band = " ".join((band or "").split()).casefold()
+    tours = {tour.casefold(): tour for name, tour in pairs if name.casefold() == band}
+    return sorted(tours.values(), key=str.casefold)
+
+
 def _concerts_context(lib: Library, **extra) -> dict:
     """The concerts in the info folder's ``concerts.csv``, read again every time."""
     path = lib.info_dir / CONCERTS_FILE if lib.info_dir else None
-    concerts, warnings = [], []
+    concerts, warnings, added_tours = [], [], []
     if path:
         try:
             concerts, warnings = read_concerts(path)
         except (OSError, UnicodeDecodeError) as exc:
             warnings.append(f"Could not read {path}: {exc}")
+        try:
+            added_tours = read_tours(path.with_name(TOURS_FILE))
+        except (OSError, UnicodeDecodeError) as exc:
+            warnings.append(f"Could not read {path.with_name(TOURS_FILE)}: {exc}")
+    named_tours = [(c.band, c.tour) for c in concerts if c.tour]
     today = date.today()
     return {
         "path": path,
@@ -1753,6 +1767,7 @@ def _concerts_context(lib: Library, **extra) -> dict:
         "past": [c for c in reversed(concerts) if c.date < today],
         "artists": {a.artist.name.casefold(): a.artist for a in lib.list_artists()},
         "warnings": warnings,
+        "tours": _tours(added_tours + named_tours, extra.get("concert_form", {}).get("band")),
         "concert_form": {},
         "tour_form": {},
         **extra,
@@ -1780,6 +1795,13 @@ def _band(form: FormData) -> str:
     return band
 
 
+def _tour(form: FormData) -> str:
+    tour = _text(form, "tour")
+    if tour is None:
+        raise ValueError("tour is required")
+    return tour
+
+
 @router.post("/concerts")
 async def add_concert(request: Request, lib: Lib):
     path = _concerts_file(request, lib)
@@ -1790,9 +1812,7 @@ async def add_concert(request: Request, lib: Lib):
         except ValueError:
             raise ValueError("date must look like 2026-12-09") from None
         band = _band(form)
-        concert = Concert(
-            day, band, _text(form, "country"), _text(form, "city"), tour=_text(form, "tour")
-        )
+        concert = Concert(day, band, _text(form, "country"), _text(form, "city"), tour=_tour(form))
         add_concerts(path, [concert])
     except (OSError, ValueError) as exc:
         context = _concerts_context(lib, concert_error=str(exc), concert_form=form)
@@ -1803,25 +1823,36 @@ async def add_concert(request: Request, lib: Lib):
 
 @router.post("/concerts/tours")
 async def add_tour(request: Request, lib: Lib):
-    """Add a concert for each date of a tour."""
-    path = _concerts_file(request, lib)
+    """Keep a tour, for Add concert to offer it. It starts filled in there, for its first date."""
+    path = _concerts_file(request, lib).with_name(TOURS_FILE)
     form = await request.form()
     try:
         band = _band(form)
-        tour = _text(form, "tour")
-        if tour is None:
-            raise ValueError("tour is required")
-        dates = parse_tour_dates(_text(form, "dates") or "")
-        add_concerts(
-            path,
-            [Concert(day, band, country, city, tour=tour) for day, city, country in dates],
-        )
+        tour = _tour(form)
+        known = _concerts_context(lib, concert_form={"band": band})["tours"]
+        if tour.casefold() in map(str.casefold, known):
+            raise ValueError(f"{band} already has {tour}")
+        save_tour(path, band, tour)
     except (OSError, ValueError) as exc:
         context = _concerts_context(lib, tour_error=str(exc), tour_form=form)
         return render(request, "_concerts.html", status_code=422, **context)
-    noun = "date" if len(dates) == 1 else "dates"
-    context = _concerts_context(lib, message=f"Added {tour} with {len(dates)} {noun}.")
+    filled = {"band": band, "tour": tour}
+    context = _concerts_context(lib, message=f"Added {tour} for {band}.", concert_form=filled)
     return render(request, "_concerts.html", **context)
+
+
+@router.get("/fragments/concerts/form")
+def copy_concert(request: Request, lib: Lib):
+    """Add concert, filled in with what is in the query: the concert being copied."""
+    context = _concerts_context(lib, concert_form=request.query_params, copied=True)
+    return render(request, "_concert_form.html", **context)
+
+
+@router.get("/fragments/concerts/tours")
+def tour_options(request: Request, lib: Lib):
+    """The tours Add concert offers for the band in the query."""
+    context = _concerts_context(lib, concert_form=request.query_params)
+    return render(request, "_tour_options.html", **context)
 
 
 @router.post("/concerts/{line}/status")
