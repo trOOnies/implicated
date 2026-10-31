@@ -345,3 +345,14 @@ def test_budget_overlaps(client: TestClient, web_sample: Sample):
     assert bought.status_code == 201
     assert client.get(f"/api/budget/budgets/{saved['id']}").status_code == 404
     assert client.get("/api/budget/budgets/99/overlaps").status_code == 404
+
+
+def test_album_plays_and_cart_shipping(client: TestClient, web_sample: Sample):
+    plays = client.post(f"/api/albums/{web_sample.album_id}/plays")
+    assert plays.status_code == 201
+    assert [p["song_id"] for p in plays.json()] == web_sample.song_ids
+    assert client.post("/api/albums/99/plays").status_code == 404
+
+    cart = client.put("/api/budget/cart/shipping", json={"shipping": 4.5})
+    assert cart.status_code == 200 and cart.json()["total"] == 4.5
+    assert client.put("/api/budget/cart/shipping", json={"shipping": -1}).status_code == 422

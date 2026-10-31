@@ -2,6 +2,7 @@
 <ul class="album-grid">
   {% for a in albums %}
   <li>
+    {% with kind='album', record_id=a.album.id, favorite=a.album.favorite %}{% include "_fav.html" %}{% endwith %}
     <a href="/albums/{{ a.album.id }}">
       {% with album=a.album, size='tile' %}{% include "_cover.html" %}{% endwith %}
       <strong>{{ a.album.title }}</strong>

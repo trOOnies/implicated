@@ -19,15 +19,15 @@
       <dd>Totals, latest releases and charts of your library. Play history and favorites show
       up here once you have some.</dd>
       <dt>🎤 <a href="/artists">Artists</a></dt>
-      <dd>Every artist with their genres; filter them by name, <strong>origin</strong>,
+      <dd>Every artist with their genres, a page at a time; filter them by name, <strong>origin</strong>,
       <strong>genre</strong> or <strong>language</strong>. The <em>Add artist</em> form can mark a
       new artist as a favorite or to listen later and rate it right away; the year it formed
-      cannot be in the future. Open one to see its line-up,
-      discography and songs, edit it (also to write your own notes, which imports leave alone),
-      or add albums and songs.</dd>
+      cannot be in the future. Open one to see its line-up and
+      discography, edit it (also to write your own notes, which imports leave alone), or add
+      albums.</dd>
       <dt>💿 <a href="/albums">Albums</a></dt>
-      <dd>All albums with their covers and how many of their songs have lyrics. Open one for its
-      tracklist, rating and notes; songs without lyrics are marked
+      <dd>All albums with their covers and how many of their songs have lyrics, your favorites
+      first; the ♡ on a cover marks one. Open one for its tracklist, rating and notes; songs without lyrics are marked
       <span class="tag missing">missing lyrics</span>, and songs with no words to have (tick
       <em>No lyrics</em> when adding or editing them) <span class="tag none">no lyrics</span>.
       Those do not count against the album's lyrics percentage. The <strong>CD</strong> and
@@ -43,9 +43,9 @@
       opens right away. The ‹ and › arrows step through the artist's albums, from the oldest
       to the newest, like the ones on a song page step through its album.</dd>
       <dt>🎵 <a href="/songs">Songs</a></dt>
-      <dd>Search every song by title, artist or album, sort them, or show only favorites, listen
-      later or the ones <em>missing lyrics</em>. The Missing lyrics column marks the songs that
-      still need theirs. Open a song to read its lyrics, or press <em>Open lyrics file</em> to
+      <dd>Every song, a page at a time, your favorites first (in the A–Z order). Search them by title, artist or album, sort them, or show
+      only favorites, listen later or the ones <em>missing lyrics</em>. The Missing lyrics column marks the songs that
+      still need theirs. Songs are edited on their album's page, not here. Open a song to read its lyrics, or press <em>Open lyrics file</em> to
       write them in your text editor; save the file and press <em>Reload lyrics</em>.
       <em>Edit notes &amp; MV</em> on a song's page takes your notes and the song's music video.
       The <strong>Videos</strong> card below holds as many other videos as you like (lessons,
@@ -68,7 +68,8 @@
       <strong>band</strong>, then the <strong>album</strong>, then the <strong>format</strong>
       (each says which ones you marked <em>Wanted</em>), and type its price (<code>24.99</code> or
       <code>24,99</code>), how many copies, and if you like a link to it on a shop's website; the
-      cart adds up the total. Albums you already own on that format can go in too, but each one
+      cart adds up the total, plus the <strong>Shipping</strong> you type under the albums
+      (<code>0.00</code> until you do), which is saved with the budget. Albums you already own on that format can go in too, but each one
       is flagged <span class="warning">⚠ You already own this</span>. <strong>−</strong> and
       <strong>+</strong> change how many copies; − on the last copy asks before taking it out. Under the cart,
       <em>Make Budget</em> saves it under the name you give and empties it, <em>Buy</em> marks
@@ -85,7 +86,14 @@
       <code>date;band;tour;country;city;Want to go;Going</code>; the tour is optional),
       upcoming ones first, with the band's picture. Set each one to <em>Want to go</em> or
       <em>Going</em>, and once it is over to <em>Went</em> (or –); that is saved in the file.
-      The file is read every time the page opens, so edit it and reload.</dd>
+      <em>Add concert</em> adds one to the file, and <em>Add tour</em> one for each date of a
+      tour. The file is read every time the page opens, so you can also edit it and reload.</dd>
+      <dt>🔴 Live Play</dt>
+      <dd>Press <em>Live Play</em> on an album or playlist to follow it as you listen: the cover,
+      the song and its length, the artist, a ♡ and a ⧖ for the song, and its lyrics. ‹ and › go to the
+      previous and next song and ↺ plays this one again. Every song that comes on logs a listen,
+      and when its length has gone by the next one comes on by itself. Reloading the page or the
+      lyrics logs nothing.</dd>
       <dt>🚪 Exit</dt>
       <dd>The door at the top right closes implicated: confirm, and the window closes (if the
       browser lets it) and the server stops. Everything is saved as you go.</dd>
@@ -106,10 +114,12 @@
       it.</dd>
       <dt><span class="symbol">▶</span> Log a listen</dt>
       <dd>Records that you played a song right now; it feeds the play charts and history. Song
-      pages have a <em>▶ Played</em> button too.</dd>
+      pages have a <em>▶ Played</em> button too, and on an album page it logs a listen of every
+      song on the album.</dd>
       <dt>↕️ Sorting</dt>
       <dd>Click a column header of a table to sort by it; click it again to reverse the
-      order.</dd>
+      order. On the paged Songs list this sorts the page in view; the order selector above it
+      sorts all of them.</dd>
       <dt>✏️ Edit and delete</dt>
       <dd>Buttons on each artist, album and song. Deleting an artist <strong>also deletes their
       albums, songs and plays</strong>.</dd>

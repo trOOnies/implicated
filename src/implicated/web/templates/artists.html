@@ -19,7 +19,7 @@
 </div>
 <div class="layout">
   <section id="artists" hx-get="/fragments/artists" hx-trigger="artists-changed from:body"
-           hx-include="#artist-filters" hx-swap="innerHTML">
+           hx-include="#artist-filters, #artists-page" hx-disinherit="hx-include" hx-swap="innerHTML">
     {% include "_artists.html" %}
   </section>
   <aside class="card">

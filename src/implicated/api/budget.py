@@ -12,6 +12,7 @@ from implicated.models import (
     CartItem,
     CartItemIn,
     CartOption,
+    ShippingIn,
 )
 
 router = APIRouter(prefix="/budget", tags=["Budget"])
@@ -32,6 +33,12 @@ def clear_cart(lib: Lib) -> Response:
     """Empty the cart; a budget it was editing stays as it was saved."""
     lib.clear_cart()
     return Response(status_code=204)
+
+
+@router.put("/cart/shipping")
+def set_shipping(lib: Lib, data: ShippingIn) -> Cart:
+    """Say what shipping the cart costs in all; it adds up to the total."""
+    return call(lib.set_shipping, data.shipping)
 
 
 @router.post("/cart/save", status_code=201)

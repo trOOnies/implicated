@@ -42,12 +42,15 @@
 </div>
 {% endmacro %}
 <div id="concerts">
+  {% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
   {% if warnings %}
   <section class="card">
     {% for w in warnings %}<p class="warning">⚠ {{ w }}</p>{% endfor %}
   </section>
   {% endif %}
+  <div class="layout">
+  <div>
   <section class="card">
     {% set going = upcoming | selectattr('going') | list %}
     <div class="row">
@@ -58,9 +61,9 @@
     {% if upcoming %}
     {{ concert_table(upcoming, True) }}
     {% elif not found_file %}
-    <p class="empty">No concerts yet. List them in {% if path %}<code>{{ path }}</code>{% else %}<code>concerts.csv</code> in the info folder{% endif %}, one per line, under the header <code>date;band;tour;country;city;Want to go;Going</code> (the tour is optional).</p>
+    <p class="empty">No concerts yet. Add them here, or list them in {% if path %}<code>{{ path }}</code>{% else %}<code>concerts.csv</code> in the info folder{% endif %}, one per line, under the header <code>date;band;tour;country;city;Want to go;Going</code> (the tour is optional).</p>
     {% else %}
-    <p class="empty">No upcoming concerts. Add them to <code>{{ path }}</code>.</p>
+    <p class="empty">No upcoming concerts. Add them here, or to <code>{{ path }}</code>.</p>
     {% endif %}
   </section>
   {% if past %}
@@ -69,5 +72,35 @@
     {{ concert_table(past, False) }}
   </section>
   {% endif %}
-  <p class="small">Read from <code>{{ path or 'concerts.csv' }}</code> every time this page opens: edit the file and reload the page. Changing a status saves it there.</p>
+  </div>
+  <aside>
+    <datalist id="bands">{% for artist in artists.values() %}<option value="{{ artist.name }}"></option>{% endfor %}</datalist>
+    <section class="card">
+      <h2>Add concert</h2>
+      <form class="stack" hx-post="/concerts" hx-target="#concerts" hx-swap="outerHTML">
+        {% if concert_error %}<p class="error">{{ concert_error }}</p>{% endif %}
+        <label>Date <input name="date" type="date" required value="{{ concert_form.get('date', '') }}"></label>
+        <label>Band <input name="band" list="bands" required value="{{ concert_form.get('band', '') }}"></label>
+        <label>Tour (optional) <input name="tour" value="{{ concert_form.get('tour', '') }}"></label>
+        <label>City <input name="city" value="{{ concert_form.get('city', '') }}"></label>
+        <label>Country <input name="country" value="{{ concert_form.get('country', '') }}"></label>
+        <button type="submit">Add concert</button>
+      </form>
+    </section>
+    <section class="card">
+      <h2>Add tour</h2>
+      <form class="stack" hx-post="/concerts/tours" hx-target="#concerts" hx-swap="outerHTML">
+        {% if tour_error %}<p class="error">{{ tour_error }}</p>{% endif %}
+        <label>Band <input name="band" list="bands" required value="{{ tour_form.get('band', '') }}"></label>
+        <label>Tour <input name="tour" required value="{{ tour_form.get('tour', '') }}"></label>
+        <label>Dates, one per line
+          <textarea name="dates" rows="4" required placeholder="2026-12-09; Buenos Aires; Argentina">{{ tour_form.get('dates', '') }}</textarea>
+        </label>
+        <button type="submit">Add tour</button>
+      </form>
+      <p class="small">Adds a concert for each date; the city and country are optional.</p>
+    </section>
+  </aside>
+  </div>
+  <p class="small">Read from <code>{{ path or 'concerts.csv' }}</code> every time this page opens: edit the file and reload the page. Changing a status or adding concerts saves it there.</p>
 </div>

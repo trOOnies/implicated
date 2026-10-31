@@ -4,8 +4,8 @@
 {% block content %}
 <div class="page-head">
   <h1>Songs</h1>
-  <form class="filters" hx-get="/fragments/songs" hx-target="#songs" hx-swap="innerHTML"
-        hx-trigger="input changed delay:300ms, change, songs-changed from:body">
+  <form id="song-filters" class="filters" hx-get="/fragments/songs" hx-target="#songs" hx-swap="innerHTML"
+        hx-trigger="input changed delay:300ms, change">
     <input type="search" name="q" value="{{ q }}" placeholder="Search title, artist, album…">
     <select name="order" data-sort-reset="songs">
       <option value="title" {% if order == 'title' %}selected{% endif %}>A–Z</option>
@@ -17,7 +17,8 @@
     <label class="check"><input type="checkbox" name="missing" value="1" {% if missing %}checked{% endif %}> Missing lyrics</label>
   </form>
 </div>
-<section id="songs" class="card">
+<section id="songs" class="card" hx-get="/fragments/songs" hx-trigger="songs-changed from:body"
+         hx-include="#song-filters, #songs-page" hx-disinherit="hx-include" hx-swap="innerHTML">
   {% include "_songs.html" %}
 </section>
 {% endblock %}

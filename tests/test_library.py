@@ -1166,3 +1166,68 @@ def test_buying_drops_albums_from_other_budgets(lib: Library, sample: Sample):
     lib.buy_cart(BudgetIn("Keep"))
     assert [line.album.title for line in lib.get_budget_detail(both.id).lines] == ["Portishead"]
     assert lib.budget_overlaps(both.id) == []  # the others holding it were bought
+
+
+def test_record_album_play(lib: Library, sample: Sample):
+    song_id = sample.song_ids[0]
+    lib.toggle("song", song_id, "listen_later")
+    plays = lib.record_album_play(sample.album_id)
+    assert [p.song_id for p in plays] == sample.song_ids
+    assert [s.play_count for s in lib.list_songs(album_id=sample.album_id)] == [1, 1]
+    assert not lib.get_song(song_id).listen_later
+    with pytest.raises(NotFound):
+        lib.record_album_play(99)
+
+
+def test_lists_page_by_page(lib: Library, sample: Sample):
+    lib.create_artist(ArtistIn("Air", country="France", genres=["Electronic"]))
+    assert [a.artist.name for a in lib.list_artists(limit=1)] == ["Air"]
+    assert [a.artist.name for a in lib.list_artists(limit=1, offset=1)] == ["Portishead"]
+    assert lib.count_artists() == 2 and lib.count_artists(country="france") == 1
+    assert lib.artist_options() == {
+        "countries": ["France", "United Kingdom"],
+        "genres": ["Electronic", "Trip hop"],
+        "languages": [],
+    }
+
+    assert [s.song.title for s in lib.list_songs(limit=1, offset=1)] == ["Sour Times"]
+    assert lib.count_songs() == 2 and lib.count_songs(q="sour") == 1
+    only = lib.list_songs(song_ids=[sample.song_ids[1]])
+    assert [s.song.id for s in only] == [sample.song_ids[1]]
+
+
+def test_shipping_follows_the_cart_into_budgets(lib: Library, sample: Sample):
+    lib.add_to_cart(CartItemIn(sample.album_id, "cd", 10.1))
+    cart = lib.set_shipping(0.2)
+    assert (cart.shipping, cart.total) == (0.2, 10.3)
+    with pytest.raises(ValueError, match="shipping must be a number"):
+        lib.set_shipping(-1)
+
+    budget = lib.make_budget(BudgetIn("Trip"))
+    assert budget.shipping == 0.2 and lib.get_budget_detail(budget.id).total == 10.3
+    assert lib.get_cart().shipping == 0
+
+    assert lib.edit_budget(budget.id).shipping == 0.2
+    lib.set_shipping(1)
+    budget = lib.make_budget(BudgetIn("Trip"))
+    assert budget.shipping == 1 and lib.get_budget_detail(budget.id).total == 11.1
+
+    lib.edit_budget(budget.id)
+    lib.clear_cart()  # discards the changes; the budget stays as it was saved
+    assert lib.get_cart().shipping == 0 and lib.get_budget(budget.id).shipping == 1
+
+
+def test_old_databases_get_shipping(tmp_path):
+    path = tmp_path / "old.db"
+    Library(path)
+    with sqlite3.connect(path) as conn:
+        conn.execute("ALTER TABLE budgets DROP COLUMN shipping_cents")
+        conn.execute("DROP TABLE cart")
+    assert Library(path).get_cart().shipping == 0
+
+
+def test_favorite_songs_first(lib: Library, sample: Sample):
+    lib.toggle_favorite("song", sample.song_ids[1])
+    assert [s.song.title for s in lib.list_songs()] == ["Mysterons", "Sour Times"]
+    ordered = lib.list_songs(favorites_first=True)
+    assert [s.song.title for s in ordered] == ["Sour Times", "Mysterons"]

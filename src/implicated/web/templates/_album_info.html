@@ -7,6 +7,10 @@
     {% with kind='album', record_id=album.id, later=album.listen_later %}{% include "_later.html" %}{% endwith %}
     <span class="spacer"></span>
     {% with base="/albums", noun="album", within="in the discography" %}{% include "_step_nav.html" %}{% endwith %}
+    <button type="button" hx-post="/albums/{{ album.id }}/play" hx-swap="none"{% if not songs %} disabled{% endif %}
+            title="Log a listen of every song on the album">▶ Played</button>
+    <button type="button" hx-post="/live/album/{{ album.id }}" hx-swap="none"{% if not songs %} disabled{% endif %}
+            title="Follow the album song by song">Live Play</button>
     <button type="button" class="secondary" hx-get="/fragments/albums/{{ album.id }}/edit"
             hx-target="#album-info" hx-swap="outerHTML">Edit</button>
     <button type="button" class="secondary" hx-post="/albums/{{ album.id }}/copy"

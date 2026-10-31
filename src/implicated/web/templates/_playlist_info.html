@@ -3,6 +3,8 @@
     <h1>{{ playlist.name }}</h1>
     {% if playlist.kind %}<span class="tag">built in</span>{% endif %}
     <span class="spacer"></span>
+    <button type="button" hx-post="/live/playlist/{{ playlist.id }}" hx-swap="none"{% if not songs %} disabled{% endif %}
+            title="Follow the playlist song by song">Live Play</button>
     {% if not playlist.kind %}
     <button type="button" class="secondary" hx-get="/fragments/playlists/{{ playlist.id }}/edit"
             hx-target="#playlist-info" hx-swap="outerHTML">Rename</button>

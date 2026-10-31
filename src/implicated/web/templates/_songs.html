@@ -1,5 +1,6 @@
-{# ctx is "all", "artist", "album" or "playlist" (with `playlist_id`); it decides which columns
-   and buttons rows show. #}
+{# ctx is "all" (with a `pager`), "album" or "playlist" (with `playlist_id`); it decides which
+   columns and buttons rows show. #}
+{% if pager %}{% with noun='songs', target='songs', place='top' %}{% include "_pager.html" %}{% endwith %}{% endif %}
 {% if songs %}
 <div class="table-scroll">
 <table class="songs sortable">
@@ -22,3 +23,4 @@
 {% else %}
 <p class="empty">No songs here yet.</p>
 {% endif %}
+{% if pager %}{% with noun='songs', target='songs', place='bottom' %}{% include "_pager.html" %}{% endwith %}{% endif %}

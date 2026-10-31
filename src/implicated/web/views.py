@@ -17,8 +17,10 @@ from __future__ import annotations
 from dataclasses import fields, replace
 from datetime import date, datetime
 from html import escape
+from math import ceil
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
@@ -27,7 +29,13 @@ from starlette.background import BackgroundTask
 from starlette.datastructures import FormData, ImmutableMultiDict
 
 from implicated.api import get_library
-from implicated.concerts import CONCERTS_FILE, read_concerts, set_status
+from implicated.concerts import (
+    CONCERTS_FILE,
+    add_concerts,
+    parse_tour_dates,
+    read_concerts,
+    set_status,
+)
 from implicated.library import Library, NotFound
 from implicated.models import (
     ALBUM_KINDS,
@@ -37,11 +45,13 @@ from implicated.models import (
     PAST_CONCERT_STATUSES,
     Album,
     AlbumIn,
+    AlbumSummary,
     ArtistIn,
     Budget,
     BudgetIn,
     BudgetOverlap,
     CartItemIn,
+    Concert,
     Member,
     PlaylistIn,
     Point,
@@ -133,6 +143,10 @@ templates.env.globals.update(
 )
 
 
+# What a logged listen changes; it also takes the song out of Listen Later.
+PLAY_TRIGGER = ("plays-changed", "playlists-changed", "library-changed")
+
+
 def render(
     request: Request,
     name: str,
@@ -155,6 +169,23 @@ def found(fn, *args, **kwargs):
         return fn(*args, **kwargs)
     except NotFound as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+def _pager(request: Request, base: str, total: int, page: int, per_page: int) -> dict:
+    """Which of the pages of ``total`` records to show (the last one when ``page`` is past the
+    end), for ``_pager.html``. ``base`` is the page's path, ``query`` the filters to keep."""
+    pages = max(ceil(total / per_page), 1)
+    page = min(max(page, 1), pages)
+    params = request.query_params.multi_items()
+    return {
+        "base": base,
+        "page": page,
+        "pages": pages,
+        "total": total,
+        "offset": (page - 1) * per_page,
+        "numbers": sorted({1, pages} | set(range(max(page - 2, 1), min(page + 2, pages) + 1))),
+        "query": urlencode([(key, value) for key, value in params if value and key != "page"]),
+    }
 
 
 # Form parsing
@@ -294,25 +325,24 @@ def exit_app(request: Request):
 # Artists
 
 
-def _artist_options(lib: Library) -> dict[str, list[str]]:
-    """The origins, genres and languages of every artist, for the Artists page filters."""
-    artists = [a.artist for a in lib.list_artists()]
-
-    def sorted_set(values) -> list[str]:
-        unique = {v.casefold(): v for v in values if v}
-        return sorted(unique.values(), key=str.casefold)
-
-    return {
-        "countries": sorted_set(a.country for a in artists),
-        "genres": sorted_set(g for a in artists for g in a.genres),
-        "languages": sorted_set(lang for a in artists for lang in a.languages),
-    }
+# How many artists and songs their pages show at a time.
+ARTISTS_PER_PAGE = 24
+SONGS_PER_PAGE = 50
 
 
-def _artists_query(
-    q: str | None, country: str | None, genre: str | None, language: str | None
+def _artists_context(
+    request: Request,
+    lib: Library,
+    q: str | None,
+    country: str | None,
+    genre: str | None,
+    language: str | None,
+    page: int,
 ) -> dict:
-    return {"q": q or None, "country": country, "genre": genre, "language": language}
+    query = {"q": q or None, "country": country, "genre": genre, "language": language}
+    pager = _pager(request, "/artists", lib.count_artists(**query), page, ARTISTS_PER_PAGE)
+    artists = lib.list_artists(**query, limit=ARTISTS_PER_PAGE, offset=pager["offset"])
+    return {"artists": artists, "pager": pager}
 
 
 @router.get("/artists")
@@ -323,16 +353,17 @@ def artists_page(
     country: str | None = None,
     genre: str | None = None,
     language: str | None = None,
+    page: int = 1,
 ):
     return render(
         request,
         "artists.html",
-        artists=lib.list_artists(**_artists_query(q, country, genre, language)),
+        **_artists_context(request, lib, q, country, genre, language, page),
         q=q or "",
         country=country or "",
         genre=genre or "",
         language=language or "",
-        **_artist_options(lib),
+        **lib.artist_options(),
     )
 
 
@@ -344,9 +375,10 @@ def artists_fragment(
     country: str | None = None,
     genre: str | None = None,
     language: str | None = None,
+    page: int = 1,
 ):
-    artists = lib.list_artists(**_artists_query(q, country, genre, language))
-    return render(request, "_artists.html", artists=artists)
+    context = _artists_context(request, lib, q, country, genre, language, page)
+    return render(request, "_artists.html", **context)
 
 
 @router.post("/artists")
@@ -373,11 +405,7 @@ def _artist_context(lib: Library, artist_id: int) -> dict:
     return {
         **_artist_info_context(lib, artist_id),
         "albums": albums,
-        "songs": lib.list_songs(artist_id=artist_id, order="plays"),
         "album_plays": [Point(a.album.title, a.play_count) for a in albums if a.play_count],
-        "album_minutes": [
-            Point(a.album.title, round(a.total_seconds / 60)) for a in albums if a.total_seconds
-        ],
     }
 
 
@@ -399,16 +427,6 @@ def artist_edit(request: Request, lib: Lib, artist_id: int):
 @router.get("/fragments/artists/{artist_id}/albums")
 def artist_albums(request: Request, lib: Lib, artist_id: int):
     return render(request, "_albums.html", albums=lib.list_albums(artist_id), show_artist=False)
-
-
-@router.get("/fragments/artists/{artist_id}/songs")
-def artist_songs(request: Request, lib: Lib, artist_id: int):
-    return render(
-        request,
-        "_songs.html",
-        songs=lib.list_songs(artist_id=artist_id, order="plays"),
-        ctx="artist",
-    )
 
 
 @router.post("/artists/{artist_id}")
@@ -459,6 +477,10 @@ def _albums_query(
     return query
 
 
+def _favorites_first(albums: list[AlbumSummary]) -> list[AlbumSummary]:
+    return sorted(albums, key=lambda a: not a.album.favorite)  # stable: keeps the order
+
+
 @router.get("/albums")
 def albums_page(
     request: Request,
@@ -473,7 +495,9 @@ def albums_page(
     return render(
         request,
         "albums.html",
-        albums=lib.list_albums(**_albums_query(q, own, favorites, later, missing, nocover)),
+        albums=_favorites_first(
+            lib.list_albums(**_albums_query(q, own, favorites, later, missing, nocover))
+        ),
         q=q or "",
         own=own if own in FORMAT_FILTERS else "",
         favorites=bool(favorites),
@@ -496,7 +520,7 @@ def albums_fragment(
     nocover: str | None = None,
 ):
     albums = lib.list_albums(**_albums_query(q, own, favorites, later, missing, nocover))
-    return render(request, "_album_grid.html", albums=albums)
+    return render(request, "_album_grid.html", albums=_favorites_first(albums))
 
 
 @router.post("/albums")
@@ -606,6 +630,13 @@ async def set_album_format(request: Request, lib: Lib, album_id: int, fmt: str):
     )
 
 
+@router.post("/albums/{album_id}/play")
+def play_album(lib: Lib, album_id: int):
+    """Log a listen of every song on the album."""
+    found(lib.record_album_play, album_id)
+    return Response(headers={"HX-Trigger": ", ".join(("songs-changed", *PLAY_TRIGGER))})
+
+
 @router.post("/albums/{album_id}/playlists")
 async def add_album_to_playlist(request: Request, lib: Lib, album_id: int):
     form = await request.form()
@@ -657,15 +688,32 @@ def delete_album(lib: Lib, album_id: int):
 # Songs
 
 
-def _songs_query(
-    q: str | None, favorites: str | None, later: str | None, missing: str | None
+def _songs_context(
+    request: Request,
+    lib: Library,
+    q: str | None,
+    favorites: str | None,
+    later: str | None,
+    missing: str | None,
+    order: str,
+    page: int,
 ) -> dict:
-    return {
+    query = {
         "q": q or None,
         "favorites": bool(favorites),
         "listen_later": bool(later),
         "missing_lyrics": bool(missing),
     }
+    order = order if order in ("title", "plays", "recent") else "title"
+    pager = _pager(request, "/songs", lib.count_songs(**query), page, SONGS_PER_PAGE)
+    songs = lib.list_songs(
+        order=order,
+        favorites_first=order == "title",  # picking another order asks for that one
+        limit=SONGS_PER_PAGE,
+        offset=pager["offset"],
+        **query,
+    )
+    return {"songs": songs, "order": order, "pager": pager, "ctx": "all"}
 
 
 @router.get("/songs")
@@ -677,19 +725,16 @@ def songs_page(
     later: str | None = None,
     missing: str | None = None,
     order: str = "title",
+    page: int = 1,
 ):
-    order = order if order in ("title", "plays", "recent") else "title"
-    songs = lib.list_songs(order=order, **_songs_query(q, favorites, later, missing))
     return render(
         request,
         "songs.html",
-        songs=songs,
+        **_songs_context(request, lib, q, favorites, later, missing, order, page),
         q=q or "",
         favorites=bool(favorites),
         later=bool(later),
         missing=bool(missing),
-        order=order,
-        ctx="all",
     )
 
 
@@ -702,10 +747,10 @@ def songs_fragment(
     later: str | None = None,
     missing: str | None = None,
     order: str = "title",
+    page: int = 1,
 ):
-    order = order if order in ("title", "plays", "recent") else "title"
-    songs = lib.list_songs(order=order, **_songs_query(q, favorites, later, missing))
-    return render(request, "_songs.html", songs=songs, ctx="all")
+    context = _songs_context(request, lib, q, favorites, later, missing, order, page)
+    return render(request, "_songs.html", **context)
 
 
 @router.post("/songs")
@@ -737,7 +782,7 @@ async def create_song(request: Request, lib: Lib):
 def _ctx(form_or_query) -> str:
     """Where a song row is shown; "page" is the song's own page, "playlist" a playlist's."""
     ctx = form_or_query.get("ctx") or "all"
-    return ctx if ctx in ("all", "artist", "album", "playlist", "page") else "all"
+    return ctx if ctx in ("all", "album", "playlist", "page") else "all"
 
 
 def _lyrics_context(lib: Library, song_id: int, **extra) -> dict:
@@ -1052,16 +1097,15 @@ async def play_song(request: Request, lib: Lib, song_id: int):
     """Log a listen; this also clears the song's listen later mark."""
     form = await request.form()
     found(lib.record_play, song_id)
-    trigger = ("plays-changed", "playlists-changed", "library-changed")
     ctx = _ctx(form)
     if ctx == "page":
         return render(
-            request, "_song_info.html", trigger=trigger, **_song_info_context(lib, song_id)
+            request, "_song_info.html", trigger=PLAY_TRIGGER, **_song_info_context(lib, song_id)
         )
     return render(
         request,
         "_song_row.html",
-        trigger=trigger,
+        trigger=PLAY_TRIGGER,
         s=lib.get_song_summary(song_id),
         ctx=ctx,
         playlist_id=_int(form, "playlist_id"),
@@ -1316,6 +1360,91 @@ async def move_in_playlist(request: Request, lib: Lib, playlist_id: int, song_id
     return Response(headers={"HX-Trigger": "playlists-changed"})
 
 
+# Live Play
+
+
+def _live_songs(lib: Library, kind: str, record_id: int) -> tuple[str, str, list[int]]:
+    """The title, link and song ids of what is played live: an album or a playlist."""
+    if kind == "album":
+        album = found(lib.get_album, record_id)
+        songs = lib.list_songs(album_id=record_id, order="track")
+        return album.title, f"/albums/{record_id}", [s.song.id for s in songs]
+    if kind == "playlist":
+        playlist = found(lib.get_playlist, record_id)
+        return playlist.name, f"/playlists/{record_id}", lib.playlist_song_ids(record_id)
+    raise HTTPException(404)
+
+
+def _queue(value: str | None) -> list[int]:
+    """The song ids in a ``queue`` value; anything else in it is left out."""
+    return [int(part) for part in (value or "").split(",") if part.isdecimal()]
+
+
+def _live_url(kind: str, record_id: int, queue: list[int], at: int) -> str:
+    return f"/live/{kind}/{record_id}?{urlencode({'queue': _queue_text(queue), 'at': at})}"
+
+
+def _queue_text(queue: list[int]) -> str:
+    return ",".join(str(song_id) for song_id in queue)
+
+
+def _live_context(lib: Library, kind: str, record_id: int, queue: list[int], at: int) -> dict:
+    """Song number ``at`` (from 1, kept within the list) of the ``queue``.
+
+    The queue is fixed when Live Play starts and travels with the page: playing a song takes it
+    out of Listen Later, and a playlist that shrinks under it would skip songs."""
+    title, link, current = _live_songs(lib, kind, record_id)
+    queue = queue or current
+    summaries = {s.song.id: s for s in lib.list_songs(song_ids=queue)}
+    songs = [summaries[song_id] for song_id in queue if song_id in summaries]  # some may be gone
+    at = min(max(at, 1), max(len(songs), 1))
+    context = {"s": None, "lyrics_path": None}
+    if songs:
+        context = _lyrics_context(lib, songs[at - 1].song.id)
+    return {
+        **context,
+        "kind": kind,
+        "record_id": record_id,
+        "title": title,
+        "link": link,
+        "songs": songs,
+        "at": at,
+        "queue": _queue_text([s.song.id for s in songs]),
+    }
+
+
+@router.get("/live/{kind}/{record_id}")
+def live_page(request: Request, lib: Lib, kind: str, record_id: int, queue: str = "", at: int = 1):
+    """Shows where Live Play is; reloading this page logs nothing."""
+    return render(request, "live.html", **_live_context(lib, kind, record_id, _queue(queue), at))
+
+
+@router.post("/live/{kind}/{record_id}")
+async def live_play(request: Request, lib: Lib, kind: str, record_id: int):
+    """Put a song in Live Play and log a listen of it. Without a ``queue`` this starts Live Play
+    from the album or playlist's page, opening it on its first song; with one it steps to song
+    number ``at``."""
+    form = await request.form()
+    queue = _queue(_text(form, "queue"))
+    start = not queue
+    if start:
+        queue = _live_songs(lib, kind, record_id)[2]
+    if not queue:
+        raise HTTPException(422, "there are no songs to play")
+    at = min(max(_id(form, "at") or 1, 1), len(queue))
+    url = _live_url(kind, record_id, queue, at)
+    found(lib.record_play, queue[at - 1])
+    if start:
+        return Response(headers={"HX-Redirect": url})
+    return render(
+        request,
+        "_live.html",
+        trigger=PLAY_TRIGGER,
+        headers={"HX-Push-Url": url},
+        **_live_context(lib, kind, record_id, queue, at),
+    )
+
+
 # Budget
 
 
@@ -1331,9 +1460,9 @@ def _price(form: FormData, key: str) -> float | None:
         whole, decimals = decimals, ""
     whole = whole.replace(".", "")
     if not (whole or decimals).isdigit() or not (decimals == "" or decimals.isdigit()):
-        raise ValueError("price must be a number, like 12.99")
+        raise ValueError(f"{key} must be a number, like 12.99")
     if len(decimals) > 2:
-        raise ValueError("price can have at most two decimals, like 12.99")
+        raise ValueError(f"{key} can have at most two decimals, like 12.99")
     return float(f"{whole or 0}.{decimals or 0}")
 
 
@@ -1493,6 +1622,16 @@ async def change_cart_quantity(request: Request, lib: Lib, item_id: int):
     return _budget(request, lib)
 
 
+@router.post("/budget/cart/shipping")
+async def set_shipping(request: Request, lib: Lib):
+    form = await request.form()
+    try:
+        lib.set_shipping(_price(form, "shipping") or 0.0)
+    except ValueError as exc:
+        return _budget(request, lib, status_code=422, cart_error=str(exc))
+    return _budget(request, lib)
+
+
 @router.post("/budget/cart/save")
 async def save_cart(request: Request, lib: Lib):
     form = await request.form()
@@ -1604,6 +1743,8 @@ def _concerts_context(lib: Library, **extra) -> dict:
         "past": [c for c in reversed(concerts) if c.date < today],
         "artists": {a.artist.name.casefold(): a.artist for a in lib.list_artists()},
         "warnings": warnings,
+        "concert_form": {},
+        "tour_form": {},
         **extra,
     }
 
@@ -1613,19 +1754,75 @@ def concerts_page(request: Request, lib: Lib):
     return render(request, "concerts.html", **_concerts_context(lib))
 
 
-@router.post("/concerts/{line}/status")
-async def set_concert_status(request: Request, lib: Lib, line: int):
-    """Mark a concert as nothing, want to go or going (went, once it is over) in the file."""
-    # Only the page's own pickers may write the file: other sites cannot send this header.
+def _concerts_file(request: Request, lib: Library) -> Path:
+    # Only the page's own forms may write the file: other sites cannot send this header.
     if "hx-request" not in request.headers:
         raise HTTPException(403, "change concerts from the Concerts page")
     if lib.info_dir is None:
         raise HTTPException(404, "the library has no info folder")
+    return lib.info_dir / CONCERTS_FILE
+
+
+def _band(form: FormData) -> str:
+    band = _text(form, "band")
+    if band is None:
+        raise ValueError("band is required")
+    return band
+
+
+@router.post("/concerts")
+async def add_concert(request: Request, lib: Lib):
+    path = _concerts_file(request, lib)
+    form = await request.form()
+    try:
+        try:
+            day = date.fromisoformat(_text(form, "date") or "")
+        except ValueError:
+            raise ValueError("date must look like 2026-12-09") from None
+        band = _band(form)
+        concert = Concert(
+            day, band, _text(form, "country"), _text(form, "city"), tour=_text(form, "tour")
+        )
+        add_concerts(path, [concert])
+    except (OSError, ValueError) as exc:
+        context = _concerts_context(lib, concert_error=str(exc), concert_form=form)
+        return render(request, "_concerts.html", status_code=422, **context)
+    context = _concerts_context(lib, message=f"Added {band} on {day}.")
+    return render(request, "_concerts.html", **context)
+
+
+@router.post("/concerts/tours")
+async def add_tour(request: Request, lib: Lib):
+    """Add a concert for each date of a tour."""
+    path = _concerts_file(request, lib)
+    form = await request.form()
+    try:
+        band = _band(form)
+        tour = _text(form, "tour")
+        if tour is None:
+            raise ValueError("tour is required")
+        dates = parse_tour_dates(_text(form, "dates") or "")
+        add_concerts(
+            path,
+            [Concert(day, band, country, city, tour=tour) for day, city, country in dates],
+        )
+    except (OSError, ValueError) as exc:
+        context = _concerts_context(lib, tour_error=str(exc), tour_form=form)
+        return render(request, "_concerts.html", status_code=422, **context)
+    noun = "date" if len(dates) == 1 else "dates"
+    context = _concerts_context(lib, message=f"Added {tour} with {len(dates)} {noun}.")
+    return render(request, "_concerts.html", **context)
+
+
+@router.post("/concerts/{line}/status")
+async def set_concert_status(request: Request, lib: Lib, line: int):
+    """Mark a concert as nothing, want to go or going (went, once it is over) in the file."""
+    path = _concerts_file(request, lib)
     form = await request.form()
     try:
         day = date.fromisoformat(_text(form, "date") or "")
         status = _text(form, "status") or ""
-        set_status(lib.info_dir / CONCERTS_FILE, line, day, _text(form, "band") or "", status)
+        set_status(path, line, day, _text(form, "band") or "", status)
     except (OSError, ValueError) as exc:
         context = _concerts_context(lib, error=str(exc))
         return render(request, "_concerts.html", status_code=422, **context)

@@ -202,6 +202,11 @@ class CartItem(CartItemIn):
 
 
 @dataclass
+class ShippingIn:
+    shipping: float
+
+
+@dataclass
 class BudgetIn:
     name: str
 
@@ -215,6 +220,8 @@ class Budget(BudgetIn):
     created_at: str = ""
     bought_at: str | None = None
     in_cart: bool = False
+    # What shipping cost in all, on top of its albums.
+    shipping: float = 0.0
 
 
 @dataclass
@@ -320,6 +327,8 @@ class Cart:
     total: float = 0.0
     # The budget the cart was loaded from to be edited; saving the cart saves it back there.
     editing: Budget | None = None
+    # What shipping costs in all; part of ``total``.
+    shipping: float = 0.0
 
 
 @dataclass
@@ -399,9 +408,9 @@ def validate_ownership(name: str, value: str | None) -> None:
         raise ValueError(f"{name} must be one of {', '.join(OWNERSHIP)}, or empty")
 
 
-def validate_price(price: float) -> None:
+def validate_price(price: float, name: str = "price") -> None:
     if not isinstance(price, (int, float)) or not math.isfinite(price) or price < 0:
-        raise ValueError("price must be a number, 0 or more")
+        raise ValueError(f"{name} must be a number, 0 or more")
 
 
 def validate_quantity(quantity: int) -> None:

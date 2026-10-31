@@ -1,0 +1,20 @@
+{# Buttons to the pages of `pager` (see `_pager` in views.py), swapped into `#{{ target }}`; `noun`
+   counts it. It goes above the list (`place` "top") and below it ("bottom"). The hidden input, in
+   the top one, lets that section reload the page it is on when its list changes. #}
+{% if place == 'top' %}<input type="hidden" id="{{ target }}-page" name="page" value="{{ pager.page }}">{% endif %}
+{% if pager.pages > 1 %}
+{% macro page_button(number, label, disabled=False, name=None) %}
+{% set url = pager.base ~ '?' ~ (pager.query ~ '&' if pager.query else '') ~ 'page=' ~ number %}
+<button type="button"{% if number != pager.page %} class="secondary"{% endif %} hx-get="/fragments{{ url }}" hx-target="#{{ target }}"
+        hx-swap="innerHTML show:window:top" hx-push-url="{{ url }}"{% if name %} aria-label="{{ name }}"{% elif number == pager.page %} aria-current="page"{% endif %}{% if disabled %} disabled{% endif %}>{{ label }}</button>
+{% endmacro %}
+<nav class="pager {{ place }}" aria-label="Pages of {{ noun }}, {{ place }}">
+  {{ page_button(pager.page - 1, '‹ Previous', pager.page == 1, 'Previous page') }}
+  {% for number in pager.numbers %}
+  {% if not loop.first and number > loop.previtem + 1 %}<span class="gap" aria-hidden="true">…</span>{% endif %}
+  {{ page_button(number, number) }}
+  {% endfor %}
+  {{ page_button(pager.page + 1, 'Next ›', pager.page == pager.pages, 'Next page') }}
+  <span class="small">Page {{ pager.page }} of {{ pager.pages }} · {{ pager.total }} {{ noun }}</span>
+</nav>
+{% endif %}

@@ -24,6 +24,8 @@
       <a href="/playlists" {% if active == 'playlists' %}aria-current="page"{% endif %}>Playlists</a>
       <a href="/budget" {% if active == 'budget' %}aria-current="page"{% endif %}>Budget</a>
       <a href="/concerts" {% if active == 'concerts' %}aria-current="page"{% endif %}>Concerts</a>
+      {# Only reached with the Live Play buttons of albums and playlists. #}
+      {% if active == 'live' %}<span aria-current="page">Live Play</span>{% endif %}
       <a href="/help" {% if active == 'help' %}aria-current="page"{% endif %}>Help</a>
       <a href="/docs">API</a>
     </nav>

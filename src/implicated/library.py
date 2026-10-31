@@ -153,12 +153,17 @@ CREATE TABLE IF NOT EXISTS cart_items (
     created_at  TEXT NOT NULL,
     UNIQUE (album_id, format)
 );
+CREATE TABLE IF NOT EXISTS cart (
+    id             INTEGER PRIMARY KEY CHECK (id = 1),
+    shipping_cents INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS budgets (
     id         INTEGER PRIMARY KEY,
     name       TEXT NOT NULL,
     created_at TEXT NOT NULL,
     bought_at  TEXT,
-    in_cart    INTEGER NOT NULL DEFAULT 0
+    in_cart    INTEGER NOT NULL DEFAULT 0,
+    shipping_cents INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS budget_items (
     id          INTEGER PRIMARY KEY,
@@ -199,9 +204,38 @@ MIGRATIONS = [
     ("artists", "rating", "INTEGER"),
     ("albums", "unreleased", "INTEGER NOT NULL DEFAULT 0"),
     ("cart_items", "quantity", "INTEGER NOT NULL DEFAULT 1"),
+    ("budgets", "shipping_cents", "INTEGER NOT NULL DEFAULT 0"),
 ]
 # Columns that changed names: (table, old name, new name), renamed before ``MIGRATIONS`` run.
 RENAMES = [("songs", "youtube", "mv")]
+
+# Who ``list_artists`` and ``count_artists`` look at, and which songs ``list_songs`` and
+# ``count_songs`` do. The filters are ``None`` (or 0) when not in use.
+ARTISTS_WHERE = """
+    FROM artists a
+   WHERE (:q IS NULL OR a.name LIKE '%' || :q || '%')
+     AND (:country IS NULL OR a.country = :country COLLATE NOCASE)
+     AND (:genre IS NULL OR EXISTS (SELECT 1 FROM json_each(a.genres)
+                                     WHERE value = :genre COLLATE NOCASE))
+     AND (:language IS NULL OR EXISTS (SELECT 1 FROM json_each(a.languages)
+                                        WHERE value = :language COLLATE NOCASE))
+"""
+SONGS_WHERE = """
+    FROM songs s
+    JOIN artists ar ON ar.id = s.artist_id
+    LEFT JOIN albums al ON al.id = s.album_id
+    LEFT JOIN playlist_songs ps ON ps.song_id = s.id AND ps.playlist_id = :playlist_id
+   WHERE (:artist_id IS NULL OR s.artist_id = :artist_id)
+     AND (:album_id IS NULL OR s.album_id = :album_id)
+     AND (:playlist_id IS NULL OR ps.playlist_id IS NOT NULL)
+     AND (:song_ids IS NULL OR s.id IN (SELECT value FROM json_each(:song_ids)))
+     AND (:favorites = 0 OR s.favorite = 1)
+     AND (:listen_later = 0 OR s.listen_later = 1)
+     AND (:missing_lyrics = 0 OR (s.lyrics IS NULL AND s.no_lyrics = 0))
+     AND (:q IS NULL OR s.title LIKE '%' || :q || '%'
+          OR ar.name LIKE '%' || :q || '%'
+          OR al.title LIKE '%' || :q || '%')
+"""
 
 # Cover file names are ``<album id>-<content hash><suffix>`` (see ``_store_image``), so two albums
 # share a cover when their names agree after the first dash. Compares ``al`` with ``o``.
@@ -304,6 +338,7 @@ def _budget_item(row: sqlite3.Row) -> BudgetItem:
 def _budget(row: sqlite3.Row) -> Budget:
     data = dict(row)
     data["in_cart"] = bool(data["in_cart"])
+    data["shipping"] = data.pop("shipping_cents") / 100
     return Budget(**data)
 
 
@@ -316,9 +351,9 @@ def _budget_name(data: BudgetIn) -> str:
     return name
 
 
-def _total(lines: list[CartLine]) -> float:
+def _total(lines: list[CartLine], shipping: float) -> float:
     # Added up in cents, so 0.1 + 0.2 makes 0.3.
-    return sum(round(line.subtotal * 100) for line in lines) / 100
+    return (sum(round(line.subtotal * 100) for line in lines) + _cents(shipping)) / 100
 
 
 def _song(row: sqlite3.Row) -> Song:
@@ -390,6 +425,7 @@ class Library:
                         WHERE NOT EXISTS (SELECT 1 FROM playlists WHERE kind = ?)""",
                     (name, _now(), kind, kind),
                 )
+            conn.execute("INSERT OR IGNORE INTO cart (id) VALUES (1)")
         self._sync_marks()
 
     @contextmanager
@@ -434,29 +470,25 @@ class Library:
         country: str | None = None,
         genre: str | None = None,
         language: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[ArtistSummary]:
         """Artists, optionally only those from ``country`` or with ``genre`` or ``language``
-        among theirs (all ignoring case)."""
-        sql = """
+        among theirs (all ignoring case), and only ``limit`` of them after the first ``offset``."""
+        sql = f"""
             SELECT a.*,
                    (SELECT COUNT(*) FROM albums WHERE artist_id = a.id) AS x_albums,
                    (SELECT COUNT(*) FROM songs WHERE artist_id = a.id) AS x_songs,
                    (SELECT COUNT(*) FROM plays p JOIN songs s ON s.id = p.song_id
                      WHERE s.artist_id = a.id) AS x_plays
-              FROM artists a
-             WHERE (:q IS NULL OR a.name LIKE '%' || :q || '%')
-               AND (:country IS NULL OR a.country = :country COLLATE NOCASE)
-               AND (:genre IS NULL OR EXISTS (SELECT 1 FROM json_each(a.genres)
-                                               WHERE value = :genre COLLATE NOCASE))
-               AND (:language IS NULL OR EXISTS (SELECT 1 FROM json_each(a.languages)
-                                                  WHERE value = :language COLLATE NOCASE))
-             ORDER BY a.favorite DESC, a.name COLLATE NOCASE
+              {ARTISTS_WHERE}
+             ORDER BY a.favorite DESC, a.name COLLATE NOCASE, a.id
+             LIMIT :limit OFFSET :offset
         """
         params = {
-            "q": q or None,
-            "country": country or None,
-            "genre": genre or None,
-            "language": language or None,
+            **self._artist_filters(q, country, genre, language),
+            "limit": -1 if limit is None else limit,
+            "offset": offset,
         }
         with self.connect() as conn:
             rows = conn.execute(sql, params).fetchall()
@@ -465,6 +497,45 @@ class Library:
             own, extra = _split(row, "x_")
             out.append(ArtistSummary(_artist(own), extra["albums"], extra["songs"], extra["plays"]))
         return out
+
+    def count_artists(
+        self,
+        q: str | None = None,
+        *,
+        country: str | None = None,
+        genre: str | None = None,
+        language: str | None = None,
+    ) -> int:
+        """How many artists ``list_artists`` finds without a ``limit``."""
+        params = self._artist_filters(q, country, genre, language)
+        with self.connect() as conn:
+            return conn.execute(f"SELECT COUNT(*) {ARTISTS_WHERE}", params).fetchone()[0]
+
+    @staticmethod
+    def _artist_filters(
+        q: str | None, country: str | None, genre: str | None, language: str | None
+    ) -> dict:
+        return {
+            "q": q or None,
+            "country": country or None,
+            "genre": genre or None,
+            "language": language or None,
+        }
+
+    def artist_options(self) -> dict[str, list[str]]:
+        """The origins, genres and languages of every artist, for the Artists page filters."""
+        with self.connect() as conn:
+            rows = conn.execute("SELECT country, genres, languages FROM artists").fetchall()
+
+        def sorted_set(values) -> list[str]:
+            unique = {v.casefold(): v for v in values if v}
+            return sorted(unique.values(), key=str.casefold)
+
+        return {
+            "countries": sorted_set(row["country"] for row in rows),
+            "genres": sorted_set(g for row in rows for g in json.loads(row["genres"])),
+            "languages": sorted_set(lang for row in rows for lang in json.loads(row["languages"])),
+        }
 
     def get_artist(self, artist_id: int) -> Artist:
         with self.connect() as conn:
@@ -840,10 +911,15 @@ class Library:
         listen_later: bool = False,
         missing_lyrics: bool = False,
         playlist_id: int | None = None,
+        song_ids: list[int] | None = None,
         order: str = "title",
+        favorites_first: bool = False,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[SongSummary]:
         """Songs matching every filter given (``missing_lyrics``: songs with words but no lyrics
-        yet); ``order="playlist"`` keeps the order of the songs in ``playlist_id``."""
+        yet), and only ``limit`` of them after the first ``offset``; ``order="playlist"`` keeps
+        the order of the songs in ``playlist_id``, and ``favorites_first`` goes before it."""
         order_by = {
             "title": "s.title COLLATE NOCASE",
             "track": "s.track_number IS NULL, s.track_number, s.title COLLATE NOCASE",
@@ -856,29 +932,23 @@ class Library:
                    (SELECT COUNT(*) FROM plays WHERE song_id = s.id) AS x_plays,
                    (SELECT MAX(played_at) FROM plays WHERE song_id = s.id) AS x_last_played,
                    (SELECT COUNT(*) FROM song_videos WHERE song_id = s.id) AS x_videos
-              FROM songs s
-              JOIN artists ar ON ar.id = s.artist_id
-              LEFT JOIN albums al ON al.id = s.album_id
-              LEFT JOIN playlist_songs ps ON ps.song_id = s.id AND ps.playlist_id = :playlist_id
-             WHERE (:artist_id IS NULL OR s.artist_id = :artist_id)
-               AND (:album_id IS NULL OR s.album_id = :album_id)
-               AND (:playlist_id IS NULL OR ps.playlist_id IS NOT NULL)
-               AND (:favorites = 0 OR s.favorite = 1)
-               AND (:listen_later = 0 OR s.listen_later = 1)
-               AND (:missing_lyrics = 0 OR (s.lyrics IS NULL AND s.no_lyrics = 0))
-               AND (:q IS NULL OR s.title LIKE '%' || :q || '%'
-                    OR ar.name LIKE '%' || :q || '%'
-                    OR al.title LIKE '%' || :q || '%')
-             ORDER BY {order_by}
+              {SONGS_WHERE}
+             ORDER BY {"s.favorite DESC," if favorites_first else ""} {order_by}, s.id
+             LIMIT :limit OFFSET :offset
         """
         params = {
-            "artist_id": artist_id,
-            "album_id": album_id,
-            "playlist_id": playlist_id,
-            "favorites": int(favorites),
-            "listen_later": int(listen_later),
-            "missing_lyrics": int(missing_lyrics),
-            "q": q or None,
+            **self._song_filters(
+                artist_id,
+                album_id,
+                q,
+                favorites,
+                listen_later,
+                missing_lyrics,
+                playlist_id,
+                song_ids,
+            ),
+            "limit": -1 if limit is None else limit,
+            "offset": offset,
         }
         with self.connect() as conn:
             rows = conn.execute(sql, params).fetchall()
@@ -897,6 +967,41 @@ class Library:
                 )
             )
         return out
+
+    def count_songs(
+        self,
+        *,
+        q: str | None = None,
+        favorites: bool = False,
+        listen_later: bool = False,
+        missing_lyrics: bool = False,
+    ) -> int:
+        """How many songs ``list_songs`` finds without a ``limit``."""
+        params = self._song_filters(None, None, q, favorites, listen_later, missing_lyrics)
+        with self.connect() as conn:
+            return conn.execute(f"SELECT COUNT(*) {SONGS_WHERE}", params).fetchone()[0]
+
+    @staticmethod
+    def _song_filters(
+        artist_id: int | None,
+        album_id: int | None,
+        q: str | None,
+        favorites: bool,
+        listen_later: bool,
+        missing_lyrics: bool,
+        playlist_id: int | None = None,
+        song_ids: list[int] | None = None,
+    ) -> dict:
+        return {
+            "artist_id": artist_id,
+            "album_id": album_id,
+            "playlist_id": playlist_id,
+            "song_ids": None if song_ids is None else json.dumps(song_ids),
+            "favorites": int(favorites),
+            "listen_later": int(listen_later),
+            "missing_lyrics": int(missing_lyrics),
+            "q": q or None,
+        }
 
     def get_song(self, song_id: int) -> Song:
         with self.connect() as conn:
@@ -1175,6 +1280,14 @@ class Library:
         self._sync_marks(song_id)
         return Play(cur.lastrowid, song_id, played_at)
 
+    def record_album_play(self, album_id: int) -> list[Play]:
+        """Log a listen of every song on the album, in track order."""
+        self.get_album(album_id)
+        played_at = _now()
+        songs = self.list_songs(album_id=album_id, order="track")
+        with self.transaction():
+            return [self.record_play(s.song.id, played_at) for s in songs]
+
     def recent_plays(self, limit: int = 10) -> list[tuple[Play, SongSummary]]:
         with self.connect() as conn:
             rows = conn.execute(
@@ -1185,13 +1298,22 @@ class Library:
     # Budget
 
     def get_cart(self) -> Cart:
-        """The albums in the Budget cart, in the order they were added, with their total and
-        the budget it is editing, if any."""
+        """The albums in the Budget cart, in the order they were added, with the shipping, the
+        total and the budget it is editing, if any."""
         with self.connect() as conn:
             rows = conn.execute("SELECT * FROM cart_items ORDER BY id").fetchall()
             editing = conn.execute("SELECT * FROM budgets WHERE in_cart = 1").fetchone()
+            shipping = conn.execute("SELECT shipping_cents FROM cart").fetchone()[0] / 100
         lines = [self._cart_line(_cart_item(row)) for row in rows]
-        return Cart(lines, _total(lines), _budget(editing) if editing else None)
+        total = _total(lines, shipping)
+        return Cart(lines, total, _budget(editing) if editing else None, shipping)
+
+    def set_shipping(self, shipping: float) -> Cart:
+        """Say what shipping the cart costs in all; it adds up to the total."""
+        validate_price(shipping, "shipping")
+        with self.connect() as conn:
+            conn.execute("UPDATE cart SET shipping_cents = ?", (_cents(shipping),))
+        return self.get_cart()
 
     def cart_options(self, fmt: str | None = None) -> list[CartOption]:
         """Every album on every format (or only on ``fmt``) that is not in the cart yet: the
@@ -1273,6 +1395,7 @@ class Library:
         """Empty the cart. A budget it was editing stays as it was saved."""
         with self.connect() as conn:
             conn.execute("DELETE FROM cart_items")
+            conn.execute("UPDATE cart SET shipping_cents = 0")
             conn.execute("UPDATE budgets SET in_cart = 0")
 
     def make_budget(self, data: BudgetIn) -> Budget:
@@ -1291,6 +1414,10 @@ class Library:
                     "INSERT INTO budgets (name, created_at) VALUES (?, ?)", (name, _now())
                 )
                 budget_id = cur.lastrowid
+            conn.execute(
+                "UPDATE budgets SET shipping_cents = ? WHERE id = ?",
+                (_cents(cart.shipping), budget_id),
+            )
             conn.execute(
                 """INSERT INTO budget_items (budget_id, album_id, format, price_cents, quantity,
                                              link)
@@ -1329,7 +1456,7 @@ class Library:
                 "SELECT * FROM budget_items WHERE budget_id = ? ORDER BY id", (budget_id,)
             ).fetchall()
         lines = [self._cart_line(_budget_item(row), bought=bool(budget.bought_at)) for row in rows]
-        return BudgetDetail(budget, lines, _total(lines))
+        return BudgetDetail(budget, lines, _total(lines, budget.shipping))
 
     def edit_budget(self, budget_id: int) -> Cart:
         """Load the budget into the cart, replacing what the cart held, to change it there."""
@@ -1342,6 +1469,11 @@ class Library:
                    SELECT album_id, format, price_cents, quantity, link, ? FROM budget_items
                     WHERE budget_id = ? ORDER BY id""",
                 (_now(), budget_id),
+            )
+            conn.execute(
+                """UPDATE cart SET shipping_cents = (SELECT shipping_cents FROM budgets
+                                                       WHERE id = ?)""",
+                (budget_id,),
             )
             conn.execute("UPDATE budgets SET in_cart = 1 WHERE id = ?", (budget_id,))
         return self.get_cart()

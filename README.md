@@ -62,7 +62,8 @@ file holds several, and has buttons to open the file in TuxGuitar and to reload 
 The **Budget** page is a cart of CDs and vinyls to buy: pick a band, then one of its albums, then
 the format (each picker says which ones you marked *Wanted*), and give its price, quantity and, optionally, a link to it in a
 shop; the cart adds up the total. Albums you already own on that format can go in too, but each is
-flagged. *Make Budget* saves the cart under a name and empties it; *Buy* marks its albums owned on
+flagged. The cart's *Shipping* field (0.00 until you change it, and there even while the cart is
+empty) goes on top of the total and is saved with the budget. *Make Budget* saves the cart under a name and empties it; *Buy* marks its albums owned on
 their formats and keeps it as a bought budget. Saved budgets can be bought, deleted, or loaded back
 into the cart to edit. Buying albums that other budgets also hold (on the same format) first asks
 whether to drop them from those budgets, deleting any budget that leaves empty. Prices show with
@@ -77,7 +78,10 @@ date;band;tour;country;city;Want to go;Going
 2026-12-09;Sleeping With Sirens;Complete Collapse Tour;Argentina;Buenos Aires;true;true
 ```
 
-The tour is optional. Bands in your library show their picture and link to their page. Each
+The tour is optional. The *Add concert* form adds one concert to the file (creating it if missing),
+and *Add tour* adds one for each date of a tour, written one per line as
+`2026-12-09; Buenos Aires; Argentina` (the city and country are optional). A column they need that
+the file lacks, such as `tour`, is added after `band`. Bands in your library show their picture and link to their page. Each
 concert has a status: nothing, *Want to go* or *Going* while it is still to come, and nothing or
 *Went* once it is over (*Going* turns into *Went*). Changing it on the page writes the Want to go
 and Going columns of its row back to the file. Rows that cannot be read are listed on the page.
@@ -85,6 +89,19 @@ and Going columns of its row back to the file. Rows that cannot be read are list
 The door button at the top right stops the app: after you confirm, it closes the window (when the
 browser allows it; otherwise it says the app stopped) and shuts the `make serve` server down
 gracefully, reloader included. Everything is saved as you go, so nothing is lost.
+
+The Artists and Songs pages show 24 artists and 50 songs at a time, with buttons to the other pages
+above and below the list; filters and sort orders apply to the whole list, while clicking a column
+header sorts the page in view. Favorite albums come first on the Albums page and favorite songs on the
+Songs page's A–Z order, and album tiles have a ♡ to mark them. Songs are edited from album pages, not from the Songs page.
+
+An album page's *▶ Played* button logs a listen of each of its songs. **Live Play**, started with
+the button on an album or playlist page (nothing else leads to it), follows the list as you listen
+along: it shows the cover, song, length, artist and lyrics, with buttons to go to the previous
+song, play this one again or go to the next, and a ♡ and a ⧖ for the song. Every song that comes on logs a
+listen, and when its length has gone by the next one comes on by itself (songs without a length
+wait for the button). Reloading the page logs nothing, and the songs stay the same for the whole
+Live Play, even if the playlist changes meanwhile.
 
 Albums without a cover of their own are tagged *no cover* (the ♪ placeholder shows instead) or
 *shared cover* (the same image as another album, say a deluxe edition that matched the original's

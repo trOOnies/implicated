@@ -55,7 +55,7 @@ p { margin: .25rem 0; }
 .brand { font-weight: 700; font-size: 1.15rem; color: var(--text); letter-spacing: .02em; }
 .site-header nav { display: flex; gap: 1rem; }
 .site-header nav a { color: var(--muted); }
-.site-header nav a[aria-current] { color: var(--text); font-weight: 600; }
+.site-header nav [aria-current] { color: var(--text); font-weight: 600; }
 /* Pinned to the top right corner whatever the width; plain, to stay out of the way */
 .site-header { position: relative; padding-right: 4rem; flex-wrap: wrap; row-gap: .5rem; }
 .site-header nav { flex-wrap: wrap; }
@@ -195,7 +195,20 @@ a.tile:hover { text-decoration: none; border-color: var(--accent); }
 .album-link { display: inline-flex; align-items: center; gap: .5rem; }
 .cover.tile.none { font-size: 2.5rem; }
 .album-grid { list-style: none; padding: 0; margin: 0; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-.album-grid li { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
+.album-grid li { position: relative; display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
+/* The heart sits on the cover, and has to show on any image */
+.album-grid button.fav {
+  position: absolute;
+  top: .3rem;
+  right: .3rem;
+  z-index: 1;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--border);
+}
 .album-grid a { display: flex; flex-direction: column; gap: .35rem; color: var(--text); }
 .album-grid a:hover strong { text-decoration: underline; }
 .album-grid strong { line-height: 1.25; }
@@ -285,6 +298,21 @@ button.later.on, button.later:hover { color: var(--accent); }
 .step-nav a:hover { background: var(--accent); color: var(--surface); text-decoration: none; }
 .step-nav .disabled { border-color: var(--border); color: var(--muted); opacity: .45; cursor: not-allowed; }
 
+button.secondary:disabled, .live-controls button:disabled {
+  background: var(--border);
+  border-color: var(--border);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* Pages of a long list */
+.pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .4rem; }
+.pager.top { margin-bottom: 1rem; }
+.pager.bottom { margin-top: 1rem; }
+.pager button { min-width: 2.5rem; padding: .35rem .7rem; }
+.pager .gap { color: var(--muted); }
+.pager .small { width: 100%; text-align: center; }
+
 /* Tables */
 .table-scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
@@ -299,6 +327,7 @@ th button.sort::after { content: " ↕"; opacity: .35; }
 th[aria-sort="ascending"] button.sort::after { content: " ▲"; opacity: 1; }
 th[aria-sort="descending"] button.sort::after { content: " ▼"; opacity: 1; }
 tr.editing td { background: var(--accent-soft); }
+td.song-title > a { font-weight: 700; }
 
 /* Charts */
 .chart { margin: 0; }
@@ -324,6 +353,8 @@ th.num, td.num { text-align: right; white-space: nowrap; font-variant-numeric: t
 .cart tfoot th { font-size: .95rem; color: var(--text); text-transform: none; letter-spacing: 0; border-bottom: none; }
 .cart tr.owned-line td { background: color-mix(in srgb, var(--warn) 8%, transparent); }
 .cart td form label { display: block; }
+.cart tfoot input, .cart-shipping input { text-align: right; font-weight: 400; }
+.cart-shipping { margin-top: .75rem; }
 .notice { background: var(--accent-soft); border-radius: var(--radius); padding: .5rem .75rem; margin: 0 0 1rem; }
 .cart-actions { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--border); }
 .cart-actions .row { align-items: flex-end; }
@@ -347,6 +378,21 @@ details.budget > .row { margin-top: .5rem; }
 .song-results li, .pending-songs li { display: flex; align-items: center; gap: .5rem; }
 .pending-songs li { display: list-item; }
 .pending-songs li button { margin-left: .4rem; }
+
+/* Live Play */
+.live-song { font-size: 1.4rem; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.live-song a { color: var(--text); }
+.live-song .muted { font-size: 1rem; font-weight: 400; }
+.live-controls { display: flex; gap: .5rem; margin-top: .75rem; }
+.live-controls button { display: inline-flex; padding: .4rem .6rem; }
+.live-progress { height: .3rem; max-width: 24rem; margin-top: .75rem; border-radius: 999px; background: var(--bg); overflow: hidden; }
+.live-progress span { display: block; height: 100%; background: var(--accent); transform-origin: left; animation: live-progress linear forwards; }
+@keyframes live-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.live-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .45rem; }
+.live-list li { display: grid; grid-template-columns: 1.5rem minmax(0, 1fr) auto; gap: .4rem; align-items: baseline; }
+.live-list button { display: block; padding: 0; text-align: left; overflow-wrap: anywhere; }
+.live-list small { display: block; }
+.live-list [aria-current] button { color: var(--text); font-weight: 600; }
 
 /* Concerts you are going to stand out */
 .concerts tr.going td { background: var(--accent-soft); }

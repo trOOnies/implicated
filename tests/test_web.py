@@ -109,7 +109,10 @@ def test_artist_pages(client: TestClient, client_lib: Library, web_sample: Sampl
 
     page = client.get(f"/artists/{web_sample.artist_id}").text
     assert "Beth Gibbons" in page and "1991–" in page
-    assert "Album length (minutes)" in page and "Plays per album" not in page
+    assert "Plays per album" not in page
+    for removed in ("Album length (minutes)", "<h2>Songs</h2>", "<h2>Add song</h2>", "Sour Times"):
+        assert removed not in page
+    assert "<h2>Add album</h2>" in page
 
     client_lib.record_play(web_sample.song_ids[0])
     assert "Plays per album" in client.get(f"/artists/{web_sample.artist_id}").text
@@ -119,7 +122,7 @@ def test_artist_pages(client: TestClient, client_lib: Library, web_sample: Sampl
     assert "Beth Gibbons" in client.get(f"{base}/info").text
     assert 'name="languages"' in client.get(f"{base}/edit").text
     assert "Dummy" in client.get(f"{base}/albums").text
-    assert "Sour Times" in client.get(f"{base}/songs").text
+    assert client.get(f"{base}/songs").status_code == 404
 
 
 def test_create_artist_form(client: TestClient, client_lib: Library):
@@ -280,7 +283,7 @@ def test_songs_with_no_lyrics(client: TestClient, client_lib: Library, web_sampl
 def test_tables_are_sortable(client: TestClient, web_sample: Sample):
     page = client.get(f"/artists/{web_sample.artist_id}").text
     assert page.count('<table class="sortable">') == 1  # discography
-    assert page.count('<table class="songs sortable">') == 1
+    assert client.get("/songs").text.count('<table class="songs sortable">') == 1
     assert "/static/sort.js" in page
     assert '<th data-type="number">Plays</th>' in page
     assert client.get("/static/sort.js").status_code == 200
@@ -306,10 +309,10 @@ def test_song_page(client: TestClient, client_lib: Library, web_sample: Sample):
 
 
 def test_songs_page(client: TestClient, client_lib: Library, web_sample: Sample):
-    client_lib.toggle_favorite("song", web_sample.song_ids[1])
     page = client.get("/songs", params={"order": "bogus"}).text
     assert page.index("Mysterons") < page.index("Sour Times")
 
+    client_lib.toggle_favorite("song", web_sample.song_ids[1])
     favorites = client.get("/fragments/songs", params={"favorites": "1", "order": "plays"}).text
     assert "Sour Times" in favorites and "Mysterons" not in favorites
     assert "No songs here yet" in client.get("/fragments/songs", params={"q": "zzz"}).text
@@ -922,7 +925,7 @@ def test_help_mentions_the_license_and_repo(client: TestClient):
 def test_discography_is_full_width(client: TestClient, web_sample: Sample):
     page = client.get(f"/artists/{web_sample.artist_id}").text
     discography = page.index("<h2>Discography</h2>")
-    assert discography < page.index('<div class="layout">')
+    assert discography < page.index('<div class="grid">')
     assert '<div class="table-scroll">' in page[discography:]
 
 
@@ -1218,3 +1221,236 @@ def test_shutdown_signals_the_server_process(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv(shutdown.SERVER_PID, "4242")  # the reloader, with --reload
     shutdown.stop()
     assert kills == [(os.getpid(), signal.SIGINT), (4242, signal.SIGINT)]
+
+
+def test_favorite_albums_come_first(client: TestClient, client_lib: Library, web_sample: Sample):
+    older = client_lib.create_album(AlbumIn(web_sample.artist_id, "Older", 1980))
+    assert client.get("/albums").text.index("Older") < client.get("/albums").text.index("Dummy")
+    client_lib.toggle_favorite("album", web_sample.album_id)
+    for page in (client.get("/albums").text, client.get("/fragments/albums").text):
+        assert page.index("Dummy") < page.index("Older")
+    assert client_lib.list_albums()[0].album.id == older.id  # only the Albums page changes
+
+
+def test_artists_and_songs_are_paginated(client: TestClient, client_lib: Library):
+    artists = [client_lib.create_artist(ArtistIn(f"Band {n:03}")) for n in range(25)]
+    for n in range(51):
+        client_lib.create_song(SongIn(artists[0].id, f"Song {n:03}"))
+
+    first = client.get("/artists").text
+    assert "Band 023" in first and "Band 024" not in first
+    assert 'id="artists-page" name="page" value="1"' in first
+    assert 'hx-push-url="/artists?page=2"' in first and "25 artists" in first
+    assert 'class="pager top"' in first and 'class="pager bottom"' in first
+    assert first.count('id="artists-page"') == 1
+    assert first.count('aria-label="Previous page" disabled') == 2  # the first page
+    last = client.get("/fragments/artists", params={"page": 2}).text
+    assert "Band 024" in last and "Band 023" not in last
+    assert last.count('aria-label="Next page" disabled') == 2  # the last page
+    assert "Band 024" in client.get("/artists", params={"page": 99}).text  # past the end
+    assert "Band 000" in client.get("/artists", params={"page": -1}).text
+
+    filtered = client.get("/fragments/artists", params={"q": "Band 01", "page": 1}).text
+    assert "Pages of artists" not in filtered  # ten fit on one page
+
+    first = client.get("/songs", params={"order": "title", "q": "Song"}).text
+    assert "Song 049" in first and "Song 050" not in first
+    assert 'hx-push-url="/songs?order=title&amp;q=Song&amp;page=2"' in first
+    assert 'class="pager top"' in first and 'class="pager bottom"' in first
+    last = client.get("/fragments/songs", params={"order": "title", "page": 2}).text
+    assert "Song 050" in last and "Song 049" not in last
+    assert last.count('aria-current="page">2</button>') == 2
+
+
+def test_album_played_button(client: TestClient, client_lib: Library, web_sample: Sample):
+    page = client.get(f"/albums/{web_sample.album_id}").text
+    assert f'hx-post="/albums/{web_sample.album_id}/play"' in page
+    response = client.post(f"/albums/{web_sample.album_id}/play")
+    assert response.status_code == 200
+    assert "songs-changed" in response.headers["HX-Trigger"]
+    assert [s.play_count for s in client_lib.list_songs(album_id=web_sample.album_id)] == [1, 1]
+    assert client.post("/albums/99/play").status_code == 404
+
+
+def test_live_play_is_only_reached_from_albums_and_playlists(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    assert "/live/" not in client.get("/").text and "Live Play" not in client.get("/").text
+    album_page = client.get(f"/albums/{web_sample.album_id}").text
+    assert f'hx-post="/live/album/{web_sample.album_id}"' in album_page
+    playlist = client_lib.create_playlist(PlaylistIn("Mix"))
+    assert "Live Play" in client.get(f"/playlists/{playlist.id}").text  # disabled while empty
+    assert "disabled" in client.get(f"/playlists/{playlist.id}").text
+    assert client.post(f"/live/playlist/{playlist.id}").status_code == 422
+    assert client.post("/live/album/99").status_code == 404
+    assert client.get("/live/artist/1").status_code == 404
+
+
+def test_live_play(client: TestClient, client_lib: Library, web_sample: Sample, image):
+    first, second = web_sample.song_ids
+    album = web_sample.album_id
+    client_lib.set_cover(album, image())
+    client_lib.lyrics_path(second).write_text("Sour lyrics")
+
+    def plays() -> list[int]:
+        return [s.play_count for s in client_lib.list_songs(album_id=album, order="track")]
+
+    started = client.post(f"/live/album/{album}")
+    url = started.headers["HX-Redirect"]
+    assert url == f"/live/album/{album}?queue={first}%2C{second}&at=1"
+    assert plays() == [1, 0]
+
+    page = client.get(url).text
+    assert "Live Play: <a" in page and ">Dummy</a>" in page
+    assert '<span aria-current="page">Live Play</span>' in page
+    assert f"/api/albums/{album}/cover" in page
+    assert '<span class="muted">5:02</span>' in page and ">Portishead</a>" in page
+    assert f'hx-post="/favorite/song/{first}"' in page
+    assert 'hx-trigger="click, load delay:302s"' in page  # the next song comes on by itself
+    assert plays() == [1, 0]  # looking at the page logs nothing
+
+    queue = f"{first},{second}"
+    step = client.post(f"/live/album/{album}", data={"queue": queue, "at": "2"})
+    assert 'id="lyrics"' in step.text and "Sour lyrics" in step.text
+    assert step.headers["HX-Push-Url"] == f"/live/album/{album}?queue={first}%2C{second}&at=2"
+    assert "load delay" not in step.text  # the last song
+    assert plays() == [1, 1]
+
+    client.post(f"/live/album/{album}", data={"queue": queue, "at": "2"})  # replay
+    client.post(f"/live/album/{album}", data={"queue": queue, "at": "1"})  # previous
+    assert plays() == [2, 2]
+
+    client_lib.delete_song(first)
+    assert "Sour Times" in client.get(url).text
+    client_lib.delete_song(second)
+    assert "The songs of this list are gone" in client.get(url).text
+
+
+def test_live_play_keeps_its_songs_while_the_playlist_changes(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    first, second = web_sample.song_ids
+    for song_id in (first, second):
+        client_lib.toggle("song", song_id, "listen_later")
+    later = client_lib.special_playlist("listen_later").id
+
+    url = client.post(f"/live/playlist/{later}").headers["HX-Redirect"]
+    assert client_lib.playlist_song_ids(later) == [second]  # the play took it off the list
+    page = client.get(url).text
+    assert "Mysterons" in page and "Sour Times" in page
+    step = client.post(
+        f"/live/playlist/{later}", data={"queue": f"{first},{second}", "at": "2"}
+    ).text
+    assert "Sour Times" in step and 'aria-label="Next song" disabled' in step
+
+
+def test_budget_shipping(client: TestClient, client_lib: Library, web_sample: Sample):
+    item = {"album_id": web_sample.album_id, "format": "cd", "price": "10.00", "quantity": "2"}
+    assert client.post("/budget/items", data=item).status_code == 200
+    page = client.get("/budget").text
+    assert 'name="shipping"' in page and 'value="0.00"' in page and "$20.00" in page
+
+    page = client.post("/budget/cart/shipping", data={"shipping": "4,50"}).text
+    assert 'value="4.50"' in page and "$24.50" in page
+    bad = client.post("/budget/cart/shipping", data={"shipping": "soon"})
+    assert bad.status_code == 422 and "shipping must be a number" in bad.text
+    assert client.post("/budget/cart/shipping", data={"shipping": ""}).status_code == 200
+    assert client_lib.get_cart().shipping == 0
+    client.post("/budget/cart/shipping", data={"shipping": "4.50"})
+
+    page = client.post("/budget/cart/save", data={"name": "Trip"}).text
+    assert "$4.50" in page and "$24.50" in page and client_lib.get_cart().shipping == 0
+
+
+def test_add_concert_and_tour(client: TestClient, client_lib: Library, web_sample: Sample):
+    concerts = client_lib.info_dir / "concerts.csv"
+    headers = {"HX-Request": "true"}
+    assert client.post("/concerts", data={}).status_code == 403
+    page = client.get("/concerts").text
+    assert "<h2>Add concert</h2>" in page and "<h2>Add tour</h2>" in page
+    assert '<option value="Portishead">' in page
+
+    day = date.today() + timedelta(days=5)
+    data = {"date": str(day), "band": "Portishead", "city": "Paris", "country": "France"}
+    page = client.post("/concerts", data=data, headers=headers).text
+    assert f"Added Portishead on {day}." in page and "Paris" in page
+    assert concerts.read_text().splitlines() == [
+        "date;band;tour;country;city;Want to go;Going",
+        f"{day};Portishead;;France;Paris;false;false",
+    ]
+
+    bad = client.post("/concerts", data={**data, "date": "soon"}, headers=headers)
+    assert bad.status_code == 422 and "date must look like" in bad.text
+    assert 'value="Portishead"' in bad.text  # the form keeps what was typed
+    bad = client.post("/concerts", data={**data, "band": " "}, headers=headers)
+    assert bad.status_code == 422 and "band is required" in bad.text
+
+    tour = {"band": "Air", "tour": "Moon", "dates": f"{day}; Lyon; France\n\n{day}, Rome"}
+    page = client.post("/concerts/tours", data=tour, headers=headers).text
+    assert "Added Moon with 2 dates." in page and "Lyon" in page and "Rome" in page
+    bad = client.post("/concerts/tours", data={**tour, "dates": "tomorrow"}, headers=headers)
+    assert bad.status_code == 422 and "is not a date like" in bad.text
+    assert ">tomorrow</textarea>" in bad.text
+    assert "tour is required" in client.post(
+        "/concerts/tours", data={**tour, "tour": ""}, headers=headers
+    ).text
+    assert len(concerts.read_text().splitlines()) == 4
+
+
+def test_albums_tab_has_the_favorite_button(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    page = client.get("/albums").text
+    assert f'hx-post="/favorite/album/{web_sample.album_id}"' in page and "♡" in page
+    client_lib.toggle_favorite("album", web_sample.album_id)
+    assert 'title="Remove from favorites"' in client.get("/fragments/albums").text
+
+
+def test_songs_tab(client: TestClient, client_lib: Library, web_sample: Sample):
+    first, second = web_sample.song_ids
+    client_lib.toggle_favorite("song", second)
+    page = client.get("/fragments/songs").text
+    assert page.index("Sour Times") < page.index("Mysterons")
+    client_lib.record_play(first)
+    page = client.get("/fragments/songs", params={"order": "plays"}).text
+    assert page.index("Mysterons") < page.index("Sour Times")  # the order picked wins
+    page = client.get("/songs").text
+    assert page.count('class="song-title"') == 2
+    assert f"/fragments/songs/{first}/edit" not in page
+    assert f'hx-post="/songs/{first}/delete"' in page
+
+    album = client.get(f"/albums/{web_sample.album_id}").text
+    assert f"/fragments/songs/{first}/edit" in album and 'class="song-title"' not in album
+
+
+def test_live_play_listen_later_and_lyrics(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    first, second = web_sample.song_ids
+    url = client.post(f"/live/album/{web_sample.album_id}").headers["HX-Redirect"]
+    page = client.get(url).text
+    assert f'hx-post="/later/song/{first}"' in page
+    assert 'aria-label="Previous song" disabled' in page
+    assert 'aria-label="Next song" disabled' not in page
+
+    client_lib.lyrics_path(first).write_text("New words")
+    assert "New words" in client.get(f"/fragments/songs/{first}/lyrics").text  # Reload lyrics
+    assert client_lib.get_song_summary(first).play_count == 1
+
+    last = client.post(url.split("?")[0], data={"queue": f"{first},{second}", "at": "2"}).text
+    assert 'aria-label="Previous song" disabled' not in last
+    assert 'aria-label="Next song" disabled' in last
+
+
+def test_shipping_shows_with_an_empty_cart_and_on_budgets(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    page = client.get("/budget").text
+    assert 'name="shipping"' in page and 'value="0.00"' in page
+    assert 'value="3.00"' in client.post("/budget/cart/shipping", data={"shipping": "3"}).text
+    client.post("/budget/cart/shipping", data={"shipping": "0"})
+
+    item = {"album_id": web_sample.album_id, "format": "cd", "price": "10", "quantity": "1"}
+    client.post("/budget/items", data=item)
+    page = client.post("/budget/cart/save", data={"name": "Trip"}).text
+    assert "<th colspan=\"5\">Shipping</th>" in page and "$0.00" in page

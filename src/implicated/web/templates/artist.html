@@ -16,34 +16,13 @@
   </div>
 </section>
 
-<div class="layout">
-  <div>
-
-    <section class="card">
-      <h2>Songs</h2>
-      <div id="songs" hx-get="/fragments/artists/{{ artist.id }}/songs"
-           hx-trigger="songs-changed from:body, albums-changed from:body" hx-swap="innerHTML">
-        {% set ctx = 'artist' %}
-        {% include "_songs.html" %}
-      </div>
-    </section>
+<div class="grid">
+  {% if album_plays %}
+  <div class="card">{{ bar_chart(album_plays, "Plays per album") }}</div>
+  {% endif %}
+  <div class="card">
+    <h2>Add album</h2>
+    {% with form={}, artist_id=artist.id %}{% include "_album_form.html" %}{% endwith %}
   </div>
-
-  <aside>
-    {% if album_plays %}
-    <div class="card">{{ bar_chart(album_plays, "Plays per album") }}</div>
-    {% endif %}
-    {% if album_minutes %}
-    <div class="card">{{ bar_chart(album_minutes, "Album length (minutes)") }}</div>
-    {% endif %}
-    <div class="card">
-      <h2>Add album</h2>
-      {% with form={}, artist_id=artist.id %}{% include "_album_form.html" %}{% endwith %}
-    </div>
-    <div class="card">
-      <h2>Add song</h2>
-      {% with form={}, artist_id=artist.id, albums=albums, fixed_album=False %}{% include "_song_form.html" %}{% endwith %}
-    </div>
-  </aside>
 </div>
 {% endblock %}
