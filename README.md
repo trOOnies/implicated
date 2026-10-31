@@ -98,10 +98,12 @@ Songs page's A–Z order, and album tiles have a ♡ to mark them. Songs are edi
 An album page's *▶ Played* button logs a listen of each of its songs. **Live Play**, started with
 the button on an album or playlist page (nothing else leads to it), follows the list as you listen
 along: it shows the cover, song, length, artist and lyrics, with buttons to go to the previous
-song, play this one again or go to the next, and a ♡ and a ⧖ for the song. Every song that comes on logs a
+song, pause it, play this one again or go to the next, and a ♡ and a ⧖ for the song. Every song that comes on logs a
 listen, and when its length has gone by the next one comes on by itself (songs without a length
-wait for the button). Reloading the page logs nothing, and the songs stay the same for the whole
-Live Play, even if the playlist changes meanwhile.
+wait for the button). Every song that comes on starts playing, and Play/Pause stops and resumes its
+bar and the wait for the next song. Reloading the page logs nothing, and the songs stay the same for the whole
+Live Play, even if the playlist changes meanwhile. The top of the page stays in place while the lyrics
+and the song list scroll on their own, except on narrow or very short windows, where the page scrolls.
 
 Albums without a cover of their own are tagged *no cover* (the ♪ placeholder shows instead) or
 *shared cover* (the same image as another album, say a deluxe edition that matched the original's

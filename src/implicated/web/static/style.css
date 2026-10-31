@@ -397,9 +397,21 @@ details.budget > .row { margin-top: .5rem; }
 .live-song .muted { font-size: 1rem; font-weight: 400; }
 .live-controls { display: flex; gap: .5rem; margin-top: .75rem; }
 .live-controls button { display: inline-flex; padding: .4rem .6rem; }
+.live-controls .live-play, .paused .live-controls .live-pause { display: none; }
+.paused .live-controls .live-play { display: block; }
+.paused .live-progress span { animation-play-state: paused; }
 .live-progress { height: .3rem; max-width: 24rem; margin-top: .75rem; border-radius: 999px; background: var(--bg); overflow: hidden; }
 .live-progress span { display: block; height: 100%; background: var(--accent); transform-origin: left; animation: live-progress linear forwards; }
 @keyframes live-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+/* What is playing stays put and only the boxes below it scroll, when the window has room for that */
+.live-tracks { position: relative; }
+@media (min-width: 861px) and (min-height: 640px) {
+  body.live-page { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+  .live-page main { flex: 1; min-height: 0; width: 100%; padding-bottom: 1rem; }
+  .live-page #live { height: 100%; display: flex; flex-direction: column; }
+  .live-page #live > .layout { flex: 1; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+  .live-page #live > .layout > .card { max-height: 100%; margin-bottom: 0; overflow-y: auto; }
+}
 .live-list { margin: 0; padding-left: 2rem; display: grid; gap: .35rem; overflow-wrap: anywhere; }
 .live-list [aria-current] a { color: var(--text); font-weight: 600; }
 

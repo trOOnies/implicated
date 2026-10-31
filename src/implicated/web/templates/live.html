@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% set active = 'live' %}
 {% block title %}Live Play: {{ title }}{% endblock %}
+{% block scripts %}<script src="{{ asset('live.js') }}" defer></script>{% endblock %}
 {% block content %}
 {% include "_live.html" %}
 {% endblock %}

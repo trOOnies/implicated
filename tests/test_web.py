@@ -1304,17 +1304,19 @@ def test_live_play(client: TestClient, client_lib: Library, web_sample: Sample, 
     page = client.get(url).text
     assert "Live Play: <a" in page and ">Dummy</a>" in page
     assert '<span aria-current="page">Live Play</span>' in page
+    assert '<body class="live-page">' in page and "<body>" in client.get("/songs").text
     assert f"/api/albums/{album}/cover" in page
     assert '<span class="muted">5:02</span>' in page and ">Portishead</a>" in page
     assert f'hx-post="/favorite/song/{first}"' in page
-    assert 'hx-trigger="click, load delay:302s"' in page  # the next song comes on by itself
+    assert 'id="live-toggle" data-seconds="302" title="Pause"' in page  # keeps time with the song
+    assert "/static/live.js?v=" in page
     assert plays() == [1, 0]  # looking at the page logs nothing
 
     queue = f"{first},{second}"
     step = client.post(f"/live/album/{album}", data={"queue": queue, "at": "2"})
     assert 'id="lyrics"' in step.text and "Sour lyrics" in step.text
     assert step.headers["HX-Push-Url"] == f"/live/album/{album}?queue={first}%2C{second}&at=2"
-    assert "load delay" not in step.text  # the last song
+    assert 'aria-label="Next song" disabled' in step.text  # the last song
     assert plays() == [1, 1]
 
     client.post(f"/live/album/{album}", data={"queue": queue, "at": "2"})  # replay

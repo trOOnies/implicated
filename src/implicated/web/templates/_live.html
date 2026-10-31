@@ -1,8 +1,8 @@
 {# Live Play: song number `at` of the `songs` of an album or playlist (`kind`, `record_id`), with
    `s` that song. Every button posts the `queue` and the number of the song to go to, which logs a
-   listen. Once the song's length has gone by, the next one comes on by itself, as if pressed. #}
+   listen. live.js keeps time: it runs the bar and presses the next button when the song is over. #}
 {% macro step(number) %}hx-post="/live/{{ kind }}/{{ record_id }}" hx-vals='{"queue": "{{ queue }}", "at": {{ number }}}' hx-target="#live" hx-swap="outerHTML" hx-sync="#live:drop"{% endmacro %}
-<div id="live">
+<div id="live"{% if s and not s.song.duration_seconds %} class="paused"{% endif %}>
   <div class="page-head"><h1>Live Play: <a href="{{ link }}">{{ title }}</a></h1></div>
   {% if s %}
   {% set seconds = s.song.duration_seconds %}
@@ -20,10 +20,14 @@
         <button type="button" class="secondary" {{ step(at - 1) }} title="Previous song" aria-label="Previous song"{% if at == 1 %} disabled{% endif %}>
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
+        <button type="button" class="secondary" id="live-toggle"{% if seconds %} data-seconds="{{ seconds }}" title="Pause" aria-label="Pause"{% else %} title="This song has no length to keep time with" aria-label="Play" disabled{% endif %}>
+          <svg class="live-pause" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="5" x2="8" y2="19"/><line x1="16" y1="5" x2="16" y2="19"/></svg>
+          <svg class="live-play" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="7 4 19 12 7 20"/></svg>
+        </button>
         <button type="button" class="secondary" {{ step(at) }} title="Play this song again" aria-label="Play this song again">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 3 3 9 9 9"/></svg>
         </button>
-        <button type="button" class="secondary" {{ step(at + 1) }} title="Next song" aria-label="Next song"{% if at == songs | length %} disabled{% elif seconds %} hx-trigger="click, load delay:{{ seconds }}s"{% endif %}>
+        <button type="button" class="secondary" id="live-next" {{ step(at + 1) }} title="Next song" aria-label="Next song"{% if at == songs | length %} disabled{% endif %}>
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
       </div>
@@ -32,7 +36,7 @@
   </section>
   <div class="layout">
     {% include "_lyrics.html" %}
-    <aside class="card">
+    <aside class="card live-tracks">
       <h2>{{ 'Tracklist' if kind == 'album' else 'Songs' }}</h2>
       <ol class="live-list">
         {% for song in songs %}
