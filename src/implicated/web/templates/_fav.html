@@ -1,4 +1,4 @@
 <button class="fav{% if favorite %} on{% endif %}" type="button"
         hx-post="/favorite/{{ kind }}/{{ record_id }}" hx-swap="outerHTML"
         title="{{ 'Remove from' if favorite else 'Add to' }} favorites"
-        aria-pressed="{{ 'true' if favorite else 'false' }}">{{ '♥' if favorite else '♡' }}</button>
+        aria-label="Favorite" aria-pressed="{{ 'true' if favorite else 'false' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5C7 16.6 3 13.2 3 8.9 3 6 5.2 3.8 7.9 3.8c1.7 0 3.2.8 4.1 2.2.9-1.4 2.4-2.2 4.1-2.2C18.8 3.8 21 6 21 8.9c0 4.3-4 7.7-9 11.6z"/></svg></button>

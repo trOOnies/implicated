@@ -25,6 +25,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
+from jinja2 import pass_context
 from starlette.background import BackgroundTask
 from starlette.datastructures import FormData, ImmutableMultiDict
 
@@ -123,6 +124,14 @@ def money(amount: float) -> str:
     return f"${amount:,.2f}"
 
 
+@pass_context
+def asset(context: dict, path: str) -> str:
+    """A file of ours in ``static``, its URL changing with the file. Browsers keep these without
+    asking whether they changed, so a page could otherwise show with an old stylesheet."""
+    version = (Path(__file__).parent / "static" / path).stat().st_mtime_ns
+    return f"{context['request'].url_for('static', path=path)}?v={version}"
+
+
 templates.env.filters.update(
     duration=duration,
     stars=stars,
@@ -133,6 +142,7 @@ templates.env.filters.update(
     money=money,
 )
 templates.env.globals.update(
+    asset=asset,
     album_kinds=ALBUM_KINDS,
     ownership=OWNERSHIP,
     format_names=FORMATS,

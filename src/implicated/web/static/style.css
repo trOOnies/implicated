@@ -275,6 +275,18 @@ button.play, button.fav, button.later {
   line-height: 1;
   color: var(--muted);
 }
+/* Drawn, not typed: as characters they come from different fonts and sit at different heights */
+button.fav, button.later { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; }
+button.fav svg, button.later svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+button.fav.on svg, button.later.on svg { fill: currentColor; }
 button.play:hover { color: var(--accent); }
 button.fav.on, button.fav:hover { color: var(--fav); }
 button.later.on, button.later:hover { color: var(--accent); }
@@ -388,11 +400,8 @@ details.budget > .row { margin-top: .5rem; }
 .live-progress { height: .3rem; max-width: 24rem; margin-top: .75rem; border-radius: 999px; background: var(--bg); overflow: hidden; }
 .live-progress span { display: block; height: 100%; background: var(--accent); transform-origin: left; animation: live-progress linear forwards; }
 @keyframes live-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-.live-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .45rem; }
-.live-list li { display: grid; grid-template-columns: 1.5rem minmax(0, 1fr) auto; gap: .4rem; align-items: baseline; }
-.live-list button { display: block; padding: 0; text-align: left; overflow-wrap: anywhere; }
-.live-list small { display: block; }
-.live-list [aria-current] button { color: var(--text); font-weight: 600; }
+.live-list { margin: 0; padding-left: 2rem; display: grid; gap: .35rem; overflow-wrap: anywhere; }
+.live-list [aria-current] a { color: var(--text); font-weight: 600; }
 
 /* Concerts you are going to stand out */
 .concerts tr.going td { background: var(--accent-soft); }

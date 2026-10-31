@@ -36,14 +36,7 @@
       <h2>{{ 'Tracklist' if kind == 'album' else 'Songs' }}</h2>
       <ol class="live-list">
         {% for song in songs %}
-        <li{% if loop.index == at %} aria-current="true"{% endif %}>
-          <span class="muted">{{ loop.index }}</span>
-          <div>
-            <button type="button" class="link" {{ step(loop.index) }}>{{ song.song.title }}</button>
-            {% if kind == 'playlist' %}<small>{{ song.artist_name }}</small>{% endif %}
-          </div>
-          <small>{{ song.song.duration_seconds | duration }}</small>
-        </li>
+        <li{% if loop.index == at %} aria-current="true"{% endif %}><a href="/songs/{{ song.song.id }}">{{ song.song.title }}</a> <span class="muted">{{ song.song.duration_seconds | duration }}</span></li>
         {% endfor %}
       </ol>
     </aside>

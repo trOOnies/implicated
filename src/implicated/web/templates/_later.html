@@ -1,4 +1,4 @@
 <button class="later{% if later %} on{% endif %}" type="button"
         hx-post="/later/{{ kind }}/{{ record_id }}" hx-swap="outerHTML"
         title="{{ 'Remove from' if later else 'Add to' }} Listen later"
-        aria-pressed="{{ 'true' if later else 'false' }}">{{ '⧗' if later else '⧖' }}</button>
+        aria-label="Listen later" aria-pressed="{{ 'true' if later else 'false' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3.5h14M5 20.5h14M7 3.5v3.2c0 2.6 5 3.5 5 5.3s-5 2.7-5 5.3v3.2h10v-3.2c0-2.6-5-3.5-5-5.3s5-2.7 5-5.3V3.5z"/></svg></button>

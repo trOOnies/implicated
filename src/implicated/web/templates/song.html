@@ -4,7 +4,7 @@
 {% block scripts %}
 {# Loaded even without a tab, so one saved later shows after Reload tab. #}
 <script src="{{ url_for('static', path='alphatab/alphaTab.min.js') }}" defer></script>
-<script src="{{ url_for('static', path='tab.js') }}" defer></script>
+<script src="{{ asset('tab.js') }}" defer></script>
 {% endblock %}
 {% block content %}
 <p class="crumbs"><a href="/artists">Artists</a> / <a href="/artists/{{ artist.id }}">{{ artist.name }}</a> /{% if s.song.album_id %} <a href="/albums/{{ s.song.album_id }}">{{ s.album_title }}</a> /{% endif %}</p>
