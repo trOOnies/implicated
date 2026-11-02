@@ -319,7 +319,7 @@ button.later.on, button.later:hover { color: var(--accent); }
 .step-nav a:hover { background: var(--accent); color: var(--surface); text-decoration: none; }
 .step-nav .disabled { border-color: var(--border); color: var(--muted); opacity: .45; cursor: not-allowed; }
 
-button.secondary:disabled, .live-controls button:disabled {
+button:disabled {
   background: var(--border);
   border-color: var(--border);
   color: var(--muted);
