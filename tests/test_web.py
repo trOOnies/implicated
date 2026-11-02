@@ -964,7 +964,8 @@ def test_budget_page(client: TestClient, client_lib: Library, web_sample: Sample
     assert "The cart is empty" in page and "No budgets yet" in page
     # A single band with a single album: both are picked already, the format is left to pick.
     assert f'<option value="{web_sample.artist_id}" selected>Portishead · 1 wanted</option>' in page
-    assert f'<option value="{album_id}" selected>Dummy (1994) · wanted</option>' in page
+    assert '<optgroup label="Wanted">' in page
+    assert f'<option value="{album_id}" selected>Dummy (1994)</option>' in page
     assert "Pick a format…" in page and "CD · ⚠ owned" in page and "Vinyl · wanted" in page
 
     air = client_lib.create_artist(ArtistIn("Air"))
@@ -1186,7 +1187,9 @@ def test_concerts_page(client: TestClient, client_lib: Library, web_sample: Samp
     assert '<option value="going" selected>Going</option>' in upcoming
     assert '<option value="want" selected>Want to go</option>' in upcoming  # Air
     assert '<option value="" selected>–</option>' in upcoming  # Zero 7
-    assert '<option value="went" selected>Went</option>' in past and "Want to go" not in past
+    assert "<th>Went</th>" in past and "<th>Status</th>" not in past
+    assert 'name="status" value="went" aria-label="Went to Portishead' in past
+    assert " checked>" in past and "Want to go" not in past and "<select" not in past
 
     url, htmx = "/concerts/{}/status", {"HX-Request": "true"}
     assert client.post(url.format(3), data={"status": "going"}).status_code == 403
@@ -1525,3 +1528,170 @@ def test_shipping_shows_with_an_empty_cart_and_on_budgets(
     client.post("/budget/items", data=item)
     page = client.post("/budget/cart/save", data={"name": "Trip"}).text
     assert '<th colspan="5">Shipping</th>' in page and "$0.00" in page
+
+
+def test_the_logo_replaces_the_overview_tab(client: TestClient):
+    page = client.get("/").text
+    assert '<a class="brand" href="/" title="Overview" aria-current="page">' in page
+    assert 'favicon.svg" width="26"' in page and ">Overview</a>" not in page
+
+
+def test_overview_lists_stop_at_ten(client: TestClient, client_lib: Library):
+    artist = client_lib.create_artist(ArtistIn("Air"))
+    albums = [client_lib.create_album(AlbumIn(artist.id, f"A{n}", 1990 + n)) for n in range(11)]
+    songs = [client_lib.create_song(SongIn(artist.id, title=f"S{n}")) for n in range(11)]
+    for album in albums:
+        client_lib.toggle_favorite("album", album.id)
+        client_lib.toggle("album", album.id, "listen_later")
+    for song in songs:
+        client_lib.toggle_favorite("song", song.id)
+        client_lib.toggle("song", song.id, "listen_later")
+
+    page = client.get("/fragments/view").text
+    latest = page.split("Latest releases")[1].split('<div class="grid">')[0]
+    assert latest.count('<a href="/albums/') == 10 and ">A10<" in latest and ">A0<" not in latest
+    assert f'<a href="/songs/{songs[0].id}">S0</a>' in page.split("Favorite songs")[1]
+    for href in (
+        "/albums?order=latest",
+        "/albums?later=1",
+        "/songs?later=1",
+        "/albums?favorites=1",
+        "/songs?favorites=1&amp;order=plays",
+    ):
+        assert f'<a href="{href}">See more...</a>' in page
+    assert page.split("Favorite songs")[1].count('<a href="/songs/') == 10
+    assert "/artists?favorites=1" not in page  # no favorite artists, and so no more of them
+
+    client_lib.delete_album(albums[0].id)
+    page = client.get("/fragments/view").text
+    assert "/albums?favorites=1" not in page and "/albums?order=latest" not in page  # ten fit
+
+
+def test_see_more_of_artists_opens_them_filtered(client: TestClient, client_lib: Library):
+    artists = [client_lib.create_artist(ArtistIn(f"Band {n:02}")) for n in range(11)]
+    other = client_lib.create_artist(ArtistIn("Other"))
+    for artist in artists:
+        client_lib.toggle_favorite("artist", artist.id)
+        client_lib.toggle("artist", artist.id, "listen_later")
+    page = client.get("/fragments/view").text
+    assert '<a href="/artists?favorites=1">See more...</a>' in page
+    assert '<a href="/artists?later=1">See more...</a>' in page
+
+    for params in ({"favorites": "1"}, {"later": "1"}):
+        full = client.get("/artists", params=params).text
+        assert "Band 10" in full and f"/artists/{other.id}" not in full
+        assert 'value="1" checked' in full
+        assert "Band 10" in client.get("/fragments/artists", params=params).text
+    assert other.id in {a.artist.id for a in client_lib.list_artists()}
+    assert client_lib.count_artists(favorites=True) == client_lib.count_artists(listen_later=True)
+    assert client.get("/api/artists", params={"favorites": True}).json()[0]["artist"]["favorite"]
+
+
+def test_artist_cards_have_their_picture_behind(
+    client: TestClient, client_lib: Library, web_sample: Sample, image
+):
+    other = client_lib.create_artist(ArtistIn("Air"))
+    client_lib.set_image(web_sample.artist_id, image())
+    page = client.get("/artists").text
+    assert page.count('class="artist-bg"') == 1
+    assert f'class="artist-bg" src="/api/artists/{web_sample.artist_id}/image?v=' in page
+    assert f'src="/api/artists/{other.id}/image' not in page
+
+
+def test_albums_are_paginated(client: TestClient, client_lib: Library, web_sample: Sample):
+    artist = web_sample.artist_id
+    for n in range(48):
+        client_lib.create_album(AlbumIn(artist, f"Album {n:03}", 2000))
+    favorite = client_lib.find_album(artist, "Album 040")
+    client_lib.toggle_favorite("album", favorite.id)
+
+    first = client.get("/albums").text
+    assert "Page 1 of 2 · 49 albums" in first and 'class="pager top"' in first
+    assert 'class="pager bottom"' in first and 'id="albums-page"' in first
+    assert first.index("Album 040") < first.index("Dummy")  # favorites go first over all pages
+    assert "Album 047" not in first  # the one left for page 2
+    last = client.get("/fragments/albums", params={"page": 2}).text
+    assert "Album 047" in last and "Dummy" not in last and "Page 2 of 2" in last
+    assert "Album 047" in client.get("/albums", params={"page": 99}).text  # past the end
+
+    filtered = client.get("/fragments/albums", params={"q": "Album 04"}).text
+    assert "Album 047" in filtered and "Pages of albums" not in filtered  # ten fit on one page
+    paged = client.get("/fragments/albums", params={"order": "latest"}).text
+    assert 'hx-push-url="/albums?order=latest&amp;page=2"' in paged
+    assert client_lib.count_albums(q="Album") == 48
+    assert client_lib.count_albums(favorites=True) == 1 and client_lib.count_albums(cd="owned") == 0
+    assert client_lib.count_albums(no_own_cover=True) == 49  # none has a cover
+
+
+def test_albums_can_go_newest_first(client: TestClient, client_lib: Library, web_sample: Sample):
+    client_lib.create_album(AlbumIn(web_sample.artist_id, "Third", 2008))
+    undated = client_lib.create_album(AlbumIn(web_sample.artist_id, "Undated"))
+    client_lib.toggle_favorite("album", web_sample.album_id)
+    page = client.get("/albums", params={"order": "latest"}).text
+    assert page.index("Third") < page.index("Dummy") < page.index("Undated")
+    assert '<option value="latest" selected>' in page
+    assert client_lib.list_albums(order="latest")[-1].album.id == undated.id
+    page = client.get("/albums").text  # the favorite goes first again
+    assert page.index("Dummy") < page.index("Third")
+
+
+def test_cart_picker_puts_favorites_and_wanted_albums_first(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    artist = web_sample.artist_id
+    zed = client_lib.create_artist(ArtistIn("Zed"))
+    client_lib.create_album(AlbumIn(zed.id, "Zed Album", 2000))
+    aba = client_lib.create_artist(ArtistIn("Aba"))
+    client_lib.create_album(AlbumIn(aba.id, "Aba Album", 2000))
+
+    page = client.get("/budget").text
+    assert "<optgroup" not in page.split('name="album_id"')[0]  # no favorites: a plain list
+    client_lib.toggle_favorite("artist", zed.id)
+    picker = client.get("/fragments/budget/picker", params={"artist_id": artist}).text
+    bands = picker.split('name="album_id"')[0]
+    assert '<optgroup label="Favorites">' in bands and '<optgroup label="Other bands">' in bands
+    assert bands.index("Zed") < bands.index("Aba") < bands.index("Portishead")
+
+    owned = client_lib.create_album(AlbumIn(artist, "Mine", 1990))
+    client_lib.set_format(owned.id, "cd", "owned")
+    wanted = client_lib.create_album(AlbumIn(artist, "Wish", 2005))
+    client_lib.set_format(wanted.id, "cd", "owned")
+    client_lib.set_format(wanted.id, "vinyl", "wanted")  # wanted beats owned
+    picker = client.get("/fragments/budget/picker", params={"artist_id": artist}).text
+    albums = picker.split('name="album_id"')[1].split('name="format"')[0]
+    assert albums.index('label="Wanted"') < albums.index("Wish") < albums.index('label="Neither"')
+    assert albums.index('label="Neither"') < albums.index("Dummy") < albums.index('label="Owned"')
+    assert albums.index('label="Owned"') < albums.index("Mine")
+
+    only = client.get("/fragments/budget/picker", params={"artist_id": zed.id}).text
+    assert '<optgroup label="Neither">' in only and '<optgroup label="Wanted">' not in only
+
+
+def test_budget_discount(client: TestClient, client_lib: Library, web_sample: Sample):
+    page = client.get("/budget").text
+    assert 'name="discount"' in page and 'hx-post="/budget/cart/discount"' in page  # empty cart
+
+    item = {"album_id": web_sample.album_id, "format": "cd", "price": "10", "quantity": "2"}
+    client.post("/budget/items", data=item)
+    client.post("/budget/cart/shipping", data={"shipping": "4.50"})
+    page = client.post("/budget/cart/discount", data={"discount": "2,50"}).text
+    assert 'value="2.50"' in page and "$22.00" in page
+    bad = client.post("/budget/cart/discount", data={"discount": "soon"})
+    assert bad.status_code == 422 and "discount must be a number" in bad.text
+
+    page = client.post("/budget/cart/save", data={"name": "Trip"}).text
+    assert '<th colspan="5">Discount</th>' in page and "−$2.50" in page and "$22.00" in page
+    assert client_lib.get_cart().discount == 0
+
+    client.post("/budget/cart/delete")
+    client.post("/budget/cart/discount", data={"discount": ""})
+    assert client_lib.get_cart().discount == 0
+
+
+def test_no_discount_stays_off_saved_budgets(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    item = {"album_id": web_sample.album_id, "format": "cd", "price": "10", "quantity": "1"}
+    client.post("/budget/items", data=item)
+    page = client.post("/budget/cart/save", data={"name": "Trip"}).text
+    assert '<th colspan="5">Discount</th>' not in page.split("🧾 Budgets")[1]

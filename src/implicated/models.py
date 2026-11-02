@@ -207,6 +207,11 @@ class ShippingIn:
 
 
 @dataclass
+class DiscountIn:
+    discount: float
+
+
+@dataclass
 class BudgetIn:
     name: str
 
@@ -220,8 +225,9 @@ class Budget(BudgetIn):
     created_at: str = ""
     bought_at: str | None = None
     in_cart: bool = False
-    # What shipping cost in all, on top of its albums.
+    # What shipping cost in all, on top of its albums, and how much was taken off.
     shipping: float = 0.0
+    discount: float = 0.0
 
 
 @dataclass
@@ -327,8 +333,9 @@ class Cart:
     total: float = 0.0
     # The budget the cart was loaded from to be edited; saving the cart saves it back there.
     editing: Budget | None = None
-    # What shipping costs in all; part of ``total``.
+    # What shipping costs in all and how much is taken off; both are part of ``total``.
     shipping: float = 0.0
+    discount: float = 0.0
 
 
 @dataclass
@@ -350,12 +357,14 @@ class BudgetOverlap:
 
 @dataclass
 class CartOption:
-    """An album on a format that can go in the cart; ``state`` is its ``OWNERSHIP`` there."""
+    """An album on a format that can go in the cart; ``state`` is its ``OWNERSHIP`` there, and
+    ``favorite_artist`` says its artist is a favorite."""
 
     album: Album
     artist_name: str
     format: str
     state: str | None = None
+    favorite_artist: bool = False
 
 
 @dataclass

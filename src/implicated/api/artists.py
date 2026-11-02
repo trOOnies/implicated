@@ -16,8 +16,17 @@ def list_artists(
     country: str | None = None,
     genre: str | None = None,
     language: str | None = None,
+    favorites: bool = False,
+    listen_later: bool = False,
 ) -> list[ArtistSummary]:
-    return lib.list_artists(q, country=country, genre=genre, language=language)
+    return lib.list_artists(
+        q,
+        country=country,
+        genre=genre,
+        language=language,
+        favorites=favorites,
+        listen_later=listen_later,
+    )
 
 
 @router.post("", status_code=201)

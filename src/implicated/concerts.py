@@ -129,7 +129,8 @@ def set_status(
 ) -> None:
     """Mark the concert on ``line`` of the file with ``status``: for one still to come, one of
     ``CONCERT_STATUSES`` (nothing, want to go, going); for a past one, one of
-    ``PAST_CONCERT_STATUSES`` (nothing or went). Only its Want to go and Going cells change.
+    ``PAST_CONCERT_STATUSES`` (the page's Went box: ticked or not). Only its Want to go and Going
+    cells change.
 
     ``day`` and ``band`` must still be on that line, so a file edited since it was read is not
     changed in the wrong place."""

@@ -12,6 +12,7 @@ from implicated.models import (
     CartItem,
     CartItemIn,
     CartOption,
+    DiscountIn,
     ShippingIn,
 )
 
@@ -39,6 +40,12 @@ def clear_cart(lib: Lib) -> Response:
 def set_shipping(lib: Lib, data: ShippingIn) -> Cart:
     """Say what shipping the cart costs in all; it adds up to the total."""
     return call(lib.set_shipping, data.shipping)
+
+
+@router.put("/cart/discount")
+def set_discount(lib: Lib, data: DiscountIn) -> Cart:
+    """Say how much is taken off the cart in all; it comes off the total, down to 0 at most."""
+    return call(lib.set_discount, data.discount)
 
 
 @router.post("/cart/save", status_code=201)

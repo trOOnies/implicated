@@ -356,3 +356,5 @@ def test_album_plays_and_cart_shipping(client: TestClient, web_sample: Sample):
     cart = client.put("/api/budget/cart/shipping", json={"shipping": 4.5})
     assert cart.status_code == 200 and cart.json()["total"] == 4.5
     assert client.put("/api/budget/cart/shipping", json={"shipping": -1}).status_code == 422
+    assert client.put("/api/budget/cart/discount", json={"discount": 1.5}).json()["discount"] == 1.5
+    assert client.put("/api/budget/cart/discount", json={"discount": -1}).status_code == 422

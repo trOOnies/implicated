@@ -1,5 +1,9 @@
 {% from "_line.html" import line_chart %}
 {% from "_bars.html" import bar_chart %}
+{# The link to the full list on `href`, when `records` holds more than the list shows. #}
+{% macro see_more(records, href) %}
+{% if records | length > overview_list %}<p class="see-more"><a href="{{ href }}">See more...</a></p>{% endif %}
+{% endmacro %}
 <div class="tiles">
   <a class="tile" href="/artists"><strong>{{ stats.artists }}</strong> artists</a>
   <a class="tile" href="/albums"><strong>{{ stats.albums }}</strong> albums</a>
@@ -10,8 +14,9 @@
 
 {% if latest_albums %}
 <div class="card">
-  <div class="row"><h2>Latest releases</h2><span class="spacer"></span><a href="/albums">All albums →</a></div>
-  {% with albums=latest_albums %}{% include "_album_grid.html" %}{% endwith %}
+  <h2>Latest releases</h2>
+  {% with albums=latest_albums[:overview_list] %}{% include "_album_grid.html" %}{% endwith %}
+  {{ see_more(latest_albums, '/albums?order=latest') }}
 </div>
 {% elif not stats.artists %}
 <div class="card">
@@ -56,21 +61,24 @@
 <div class="grid">
   <div class="card">
     <h2>Artists to listen to</h2>
-    {% for a in later_artists %}
+    {% for a in later_artists[:overview_list] %}
     <p><a href="/artists/{{ a.artist.id }}">{{ a.artist.name }}</a> <small>{{ a.album_count }} albums</small></p>
     {% else %}<p class="empty">Mark artists with ⧖ to listen to them later.</p>{% endfor %}
+    {{ see_more(later_artists, '/artists?later=1') }}
   </div>
   <div class="card">
     <h2>Albums to listen to</h2>
-    {% for a in later_albums %}
+    {% for a in later_albums[:overview_list] %}
     <p><a href="/albums/{{ a.album.id }}">{{ a.album.title }}</a> <small>{{ a.artist_name }}{% if a.album.year %}, {{ a.album.year }}{% endif %}</small></p>
     {% else %}<p class="empty">No albums to listen to later.</p>{% endfor %}
+    {{ see_more(later_albums, '/albums?later=1') }}
   </div>
   <div class="card">
     <h2>Songs to listen to</h2>
-    {% for s in later_songs %}
+    {% for s in later_songs[:overview_list] %}
     <p><a href="/songs/{{ s.song.id }}">{{ s.song.title }}</a> <small>{{ s.artist_name }}</small></p>
     {% else %}<p class="empty">No songs to listen to later.</p>{% endfor %}
+    {{ see_more(later_songs, '/songs?later=1') }}
   </div>
 </div>
 {% endif %}
@@ -79,21 +87,24 @@
 <div class="grid">
   <div class="card">
     <h2>Favorite artists</h2>
-    {% for a in favorite_artists %}
+    {% for a in favorite_artists[:overview_list] %}
     <p><a href="/artists/{{ a.artist.id }}">{{ a.artist.name }}</a> <small>{{ a.album_count }} albums</small></p>
     {% else %}<p class="empty">Mark artists with ♡ to see them here.</p>{% endfor %}
+    {{ see_more(favorite_artists, '/artists?favorites=1') }}
   </div>
   <div class="card">
     <h2>Favorite albums</h2>
-    {% for a in favorite_albums %}
+    {% for a in favorite_albums[:overview_list] %}
     <p><a href="/albums/{{ a.album.id }}">{{ a.album.title }}</a> <small>{{ a.artist_name }}{% if a.album.year %}, {{ a.album.year }}{% endif %}</small></p>
     {% else %}<p class="empty">No favorite albums yet.</p>{% endfor %}
+    {{ see_more(favorite_albums, '/albums?favorites=1') }}
   </div>
   <div class="card">
     <h2>Favorite songs</h2>
-    {% for s in favorite_songs %}
-    <p>{{ s.song.title }} <small>{{ s.artist_name }}</small></p>
+    {% for s in favorite_songs[:overview_list] %}
+    <p><a href="/songs/{{ s.song.id }}">{{ s.song.title }}</a> <small>{{ s.artist_name }}</small></p>
     {% else %}<p class="empty">No favorite songs yet.</p>{% endfor %}
+    {{ see_more(favorite_songs, '/songs?favorites=1&order=plays') }}
   </div>
 </div>
 {% endif %}

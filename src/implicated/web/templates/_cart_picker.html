@@ -1,6 +1,9 @@
-{# The Band, Album and Format pickers of the Add to cart form, from `bands`, `albums` and
-   `formats` (only what is not in the cart yet) with the `picked` ones; changing the band or the
-   album reloads the pickers after it. #}
+{# The Band, Album and Format pickers of the Add to cart form, from `bands` (favorites first),
+   `album_groups` and `formats` (only what is not in the cart yet) with the `picked` ones; changing
+   the band or the album reloads the pickers after it. #}
+{% macro band_option(b) %}
+<option value="{{ b.id }}"{% if b.id == picked.artist_id %} selected{% endif %}>{{ b.name }}{% if b.wanted %} · {{ b.wanted | length }} wanted{% endif %}</option>
+{% endmacro %}
 {% set reload %}hx-get="/fragments/budget/picker" hx-trigger="change" hx-target="#cart-picker" hx-swap="outerHTML" hx-include="#cart-picker"{% endset %}
 <div id="cart-picker" class="cart-picker">
   <label>Band
@@ -9,20 +12,29 @@
       <option value="">Every album is already in the cart</option>
       {% else %}
       <option value="">Pick a band…</option>
-      {% for b in bands %}
-      <option value="{{ b.id }}"{% if b.id == picked.artist_id %} selected{% endif %}>{{ b.name }}{% if b.wanted %} · {{ b.wanted | length }} wanted{% endif %}</option>
-      {% endfor %}
+      {% set favorites = bands | selectattr('favorite') | list %}
+      {% set others = bands | rejectattr('favorite') | list %}
+      {% if favorites %}
+      <optgroup label="Favorites">{% for b in favorites %}{{ band_option(b) }}{% endfor %}</optgroup>
+      <optgroup label="Other bands">{% for b in others %}{{ band_option(b) }}{% endfor %}</optgroup>
+      {% else %}
+      {% for b in others %}{{ band_option(b) }}{% endfor %}
+      {% endif %}
       {% endif %}
     </select>
   </label>
   <label>Album
-    <select name="album_id" required{% if not albums %} disabled{% endif %} {{ reload }}>
-      {% if not albums %}
+    <select name="album_id" required{% if not album_groups %} disabled{% endif %} {{ reload }}>
+      {% if not album_groups %}
       <option value="">Pick a band first</option>
       {% else %}
       <option value="">Pick an album…</option>
-      {% for a in albums %}
-      <option value="{{ a.album.id }}"{% if a.album.id == picked.album_id %} selected{% endif %}>{{ a.album.title }}{% if a.album.year %} ({{ a.album.year }}){% endif %}{% if a.wanted %} · wanted{% endif %}</option>
+      {% for label, albums in album_groups %}
+      <optgroup label="{{ label }}">
+        {% for a in albums %}
+        <option value="{{ a.id }}"{% if a.id == picked.album_id %} selected{% endif %}>{{ a.title }}{% if a.year %} ({{ a.year }}){% endif %}</option>
+        {% endfor %}
+      </optgroup>
       {% endfor %}
       {% endif %}
     </select>

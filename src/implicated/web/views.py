@@ -9,11 +9,12 @@ so they refresh themselves:
 * ``playlists-changed``: a playlist, or the songs in it, changed (also when a song's favorite or
   listen later mark changes, since the built-in playlists follow them)
 * ``videos-changed``: a song's videos changed
-* ``library-changed``: anything changed; the dashboard overview listens to it
+* ``library-changed``: anything changed; the overview (the page the logo opens) listens to it
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import fields, replace
 from datetime import date, datetime
 from html import escape
@@ -45,10 +46,8 @@ from implicated.models import (
     CONCERT_STATUSES,
     FORMATS,
     OWNERSHIP,
-    PAST_CONCERT_STATUSES,
     Album,
     AlbumIn,
-    AlbumSummary,
     ArtistIn,
     Budget,
     BudgetIn,
@@ -151,7 +150,6 @@ templates.env.globals.update(
     # The latest year a band can have formed in.
     this_year=lambda: date.today().year,
     concert_statuses=CONCERT_STATUSES,
-    past_concert_statuses=PAST_CONCERT_STATUSES,
 )
 
 
@@ -292,12 +290,17 @@ def song_in(song: Song) -> SongIn:
 # Dashboard
 
 
+# How many records each list of the overview shows; the rest are a See more... link away.
+OVERVIEW_LIST = 10
+
+
 def _view_context(lib: Library) -> dict:
     albums = lib.list_albums()
     artists = lib.list_artists()
     return {
         "stats": lib.stats(),
-        "latest_albums": sorted(albums, key=lambda a: a.album.year or 0, reverse=True)[:12],
+        "overview_list": OVERVIEW_LIST,
+        "latest_albums": lib.list_albums(order="latest", limit=OVERVIEW_LIST + 1),
         "favorite_artists": [a for a in artists if a.artist.favorite],
         "favorite_albums": [a for a in albums if a.album.favorite],
         "favorite_songs": lib.list_songs(favorites=True, order="plays"),
@@ -337,8 +340,9 @@ def exit_app(request: Request):
 # Artists
 
 
-# How many artists and songs their pages show at a time.
+# How many artists, albums and songs their pages show at a time.
 ARTISTS_PER_PAGE = 24
+ALBUMS_PER_PAGE = 48
 SONGS_PER_PAGE = 50
 
 
@@ -349,9 +353,18 @@ def _artists_context(
     country: str | None,
     genre: str | None,
     language: str | None,
+    favorites: str | None,
+    later: str | None,
     page: int,
 ) -> dict:
-    query = {"q": q or None, "country": country, "genre": genre, "language": language}
+    query = {
+        "q": q or None,
+        "country": country,
+        "genre": genre,
+        "language": language,
+        "favorites": bool(favorites),
+        "listen_later": bool(later),
+    }
     pager = _pager(request, "/artists", lib.count_artists(**query), page, ARTISTS_PER_PAGE)
     artists = lib.list_artists(**query, limit=ARTISTS_PER_PAGE, offset=pager["offset"])
     return {"artists": artists, "pager": pager}
@@ -365,16 +378,20 @@ def artists_page(
     country: str | None = None,
     genre: str | None = None,
     language: str | None = None,
+    favorites: str | None = None,
+    later: str | None = None,
     page: int = 1,
 ):
     return render(
         request,
         "artists.html",
-        **_artists_context(request, lib, q, country, genre, language, page),
+        **_artists_context(request, lib, q, country, genre, language, favorites, later, page),
         q=q or "",
         country=country or "",
         genre=genre or "",
         language=language or "",
+        favorites=bool(favorites),
+        later=bool(later),
         **lib.artist_options(),
     )
 
@@ -387,9 +404,11 @@ def artists_fragment(
     country: str | None = None,
     genre: str | None = None,
     language: str | None = None,
+    favorites: str | None = None,
+    later: str | None = None,
     page: int = 1,
 ):
-    context = _artists_context(request, lib, q, country, genre, language, page)
+    context = _artists_context(request, lib, q, country, genre, language, favorites, later, page)
     return render(request, "_artists.html", **context)
 
 
@@ -489,8 +508,29 @@ def _albums_query(
     return query
 
 
-def _favorites_first(albums: list[AlbumSummary]) -> list[AlbumSummary]:
-    return sorted(albums, key=lambda a: not a.album.favorite)  # stable: keeps the order
+def _albums_context(
+    request: Request,
+    lib: Library,
+    q: str | None,
+    own: str | None,
+    favorites: str | None,
+    later: str | None,
+    missing: str | None,
+    nocover: str | None,
+    order: str | None,
+    page: int,
+) -> dict:
+    query = _albums_query(q, own, favorites, later, missing, nocover)
+    pager = _pager(request, "/albums", lib.count_albums(**query), page, ALBUMS_PER_PAGE)
+    latest = order == "latest"  # picking it asks for that order alone
+    albums = lib.list_albums(
+        order="latest" if latest else "year",
+        favorites_first=not latest,
+        limit=ALBUMS_PER_PAGE,
+        offset=pager["offset"],
+        **query,
+    )
+    return {"albums": albums, "pager": pager, "order": "latest" if latest else ""}
 
 
 @router.get("/albums")
@@ -503,13 +543,13 @@ def albums_page(
     later: str | None = None,
     missing: str | None = None,
     nocover: str | None = None,
+    order: str | None = None,
+    page: int = 1,
 ):
     return render(
         request,
         "albums.html",
-        albums=_favorites_first(
-            lib.list_albums(**_albums_query(q, own, favorites, later, missing, nocover))
-        ),
+        **_albums_context(request, lib, q, own, favorites, later, missing, nocover, order, page),
         q=q or "",
         own=own if own in FORMAT_FILTERS else "",
         favorites=bool(favorites),
@@ -530,9 +570,11 @@ def albums_fragment(
     later: str | None = None,
     missing: str | None = None,
     nocover: str | None = None,
+    order: str | None = None,
+    page: int = 1,
 ):
-    albums = lib.list_albums(**_albums_query(q, own, favorites, later, missing, nocover))
-    return render(request, "_album_grid.html", albums=_favorites_first(albums))
+    context = _albums_context(request, lib, q, own, favorites, later, missing, nocover, order, page)
+    return render(request, "_album_pages.html", **context)
 
 
 @router.post("/albums")
@@ -1495,6 +1537,18 @@ def _album_order(album: Album) -> tuple:
     return album.year is None, album.year or 0, album.title.casefold(), album.id
 
 
+def _album_groups(albums: Iterable[dict]) -> list[tuple[str, list[Album]]]:
+    """The Album picker's sections, leaving out the empty ones. An album is Wanted when it is on
+    any format the cart can still take, else Owned when you have it on one, else Neither; each
+    section goes by year and title."""
+    groups: dict[str, list[Album]] = {"Wanted": [], "Neither": [], "Owned": []}
+    for album in albums:
+        states = album["states"]
+        name = "Wanted" if "wanted" in states else "Owned" if "owned" in states else "Neither"
+        groups[name].append(album["album"])
+    return [(name, sorted(group, key=_album_order)) for name, group in groups.items() if group]
+
+
 def _cart_picker(lib: Library, form: FormData | dict) -> dict:
     """The Band, Album and Format pickers of the Add to cart form. Each lists what fits the
     picks before it (only albums and formats not in the cart yet) and keeps its own pick while
@@ -1503,7 +1557,13 @@ def _cart_picker(lib: Library, form: FormData | dict) -> dict:
     bands: dict[int, dict] = {}
     for o in options:
         band = bands.setdefault(
-            o.album.artist_id, {"id": o.album.artist_id, "name": o.artist_name, "wanted": set()}
+            o.album.artist_id,
+            {
+                "id": o.album.artist_id,
+                "name": o.artist_name,
+                "favorite": o.favorite_artist,
+                "wanted": set(),
+            },
         )
         if o.state == "wanted":
             band["wanted"].add(o.album.id)
@@ -1513,8 +1573,8 @@ def _cart_picker(lib: Library, form: FormData | dict) -> dict:
     albums: dict[int, dict] = {}
     for o in options:
         if o.album.artist_id == artist_id:
-            album = albums.setdefault(o.album.id, {"album": o.album, "wanted": False})
-            album["wanted"] |= o.state == "wanted"
+            album = albums.setdefault(o.album.id, {"album": o.album, "states": set()})
+            album["states"].add(o.state)
     album_id = _id(form, "album_id")
     if album_id not in albums:
         album_id = next(iter(albums)) if len(albums) == 1 else None
@@ -1524,9 +1584,8 @@ def _cart_picker(lib: Library, form: FormData | dict) -> dict:
     if fmt not in [o.format for o in formats]:
         fmt = formats[0].format if len(formats) == 1 else None
     return {
-        "bands": sorted(bands.values(), key=lambda b: b["name"].casefold()),
-        # ``cart_options`` puts the wanted ones first; here they go by year and title.
-        "albums": sorted(albums.values(), key=lambda a: _album_order(a["album"])),
+        "bands": sorted(bands.values(), key=lambda b: (not b["favorite"], b["name"].casefold())),
+        "album_groups": _album_groups(albums.values()),
         "formats": formats,
         "picked": {"artist_id": artist_id, "album_id": album_id, "format": fmt},
     }
@@ -1639,6 +1698,16 @@ async def set_shipping(request: Request, lib: Lib):
     form = await request.form()
     try:
         lib.set_shipping(_price(form, "shipping") or 0.0)
+    except ValueError as exc:
+        return _budget(request, lib, status_code=422, cart_error=str(exc))
+    return _budget(request, lib)
+
+
+@router.post("/budget/cart/discount")
+async def set_discount(request: Request, lib: Lib):
+    form = await request.form()
+    try:
+        lib.set_discount(_price(form, "discount") or 0.0)
     except ValueError as exc:
         return _budget(request, lib, status_code=422, cart_error=str(exc))
     return _budget(request, lib)

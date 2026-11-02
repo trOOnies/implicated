@@ -16,18 +16,21 @@
     <h2>🗺️ Pages</h2>
     <dl>
       <dt>📊 <a href="/">Overview</a></dt>
-      <dd>Totals, latest releases and charts of your library. Play history and favorites show
-      up here once you have some.</dd>
+      <dd>Click the <strong>implicated logo</strong> at the top left to come here: totals, latest
+      releases and charts of your library. Play history and favorites show up here once you have
+      some. Its lists show 10 records at most; <em>See more...</em> opens the rest on the Artists,
+      Albums or Songs page, already filtered.</dd>
       <dt>🎤 <a href="/artists">Artists</a></dt>
-      <dd>Every artist with their genres, a page at a time; filter them by name, <strong>origin</strong>,
-      <strong>genre</strong> or <strong>language</strong>. The <em>Add artist</em> form can mark a
+      <dd>Every artist with their genres, over a grey picture of them when they have one, a page
+      at a time; filter them by name, <strong>origin</strong>, <strong>genre</strong> or
+      <strong>language</strong>, or show only favorites or listen later. The <em>Add artist</em> form can mark a
       new artist as a favorite or to listen later and rate it right away; the year it formed
       cannot be in the future. Open one to see its line-up and
       discography, edit it (also to write your own notes, which imports leave alone), or add
       albums.</dd>
       <dt>💿 <a href="/albums">Albums</a></dt>
-      <dd>All albums with their covers and how many of their songs have lyrics, your favorites
-      first; the ♡ on a cover marks one. Open one for its tracklist, rating and notes; songs without lyrics are marked
+      <dd>All albums with their covers and how many of their songs have lyrics, a page at a time,
+      your favorites first (or <em>Newest first</em>); the ♡ on a cover marks one. Open one for its tracklist, rating and notes; songs without lyrics are marked
       <span class="tag missing">missing lyrics</span>, and songs with no words to have (tick
       <em>No lyrics</em> when adding or editing them) <span class="tag none">no lyrics</span>.
       Those do not count against the album's lyrics percentage. The <strong>CD</strong> and
@@ -65,11 +68,13 @@
       to them or taking it out sets or clears that mark.</dd>
       <dt>🛒 <a href="/budget">Budget</a></dt>
       <dd>A cart of the CDs and vinyls you plan to buy, and what they cost together. Pick the
-      <strong>band</strong>, then the <strong>album</strong>, then the <strong>format</strong>
-      (each says which ones you marked <em>Wanted</em>), and type its price (<code>24.99</code> or
+      <strong>band</strong> (your favorites come first), then the <strong>album</strong> (split
+      into <em>Wanted</em>, <em>Neither</em> and <em>Owned</em>), then the
+      <strong>format</strong>, and type its price (<code>24.99</code> or
       <code>24,99</code>), how many copies, and if you like a link to it on a shop's website; the
-      cart adds up the total, plus the <strong>Shipping</strong> you type under the albums
-      (<code>0.00</code> until you do), which is saved with the budget. Albums you already own on that format can go in too, but each one
+      cart adds up the total, plus the <strong>Shipping</strong> and minus the optional
+      <strong>Discount</strong> you type under the albums (<code>0.00</code> until you do), both
+      saved with the budget; a discount can take the total down to <code>0.00</code>, no further. Albums you already own on that format can go in too, but each one
       is flagged <span class="warning">⚠ You already own this</span>. <strong>−</strong> and
       <strong>+</strong> change how many copies; − on the last copy asks before taking it out. Under the cart,
       <em>Make Budget</em> saves it under the name you give and empties it, <em>Buy</em> marks
@@ -85,7 +90,7 @@
       <dd>The concerts listed in <code>info/concerts.csv</code> (columns
       <code>date;band;tour;country;city;Want to go;Going</code>),
       upcoming ones first, with the band's picture. Set each one to <em>Want to go</em> or
-      <em>Going</em>, and once it is over to <em>Went</em> (or –); that is saved in the file.
+      <em>Going</em>, and once it is over tick its <em>Went</em> box; that is saved in the file.
       <em>Add concert</em> adds one to the file, and <em>Add tour</em> keeps a band's tour so Add
       concert offers it. The copy button at the end of a row fills Add concert with that concert:
       change what you need and add it. The file is read every time the page opens, so you can also

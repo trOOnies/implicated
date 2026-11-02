@@ -15,9 +15,11 @@
 </head>
 <body{% if active == 'live' %} class="live-page"{% endif %}>
   <header class="site-header">
-    <a class="brand" href="/">implicated</a>
+    <a class="brand" href="/" title="Overview"{% if active == 'home' %} aria-current="page"{% endif %}>
+      <img src="{{ url_for('static', path='favicon.svg') }}" width="26" height="26" alt="">
+      implicated
+    </a>
     <nav>
-      <a href="/" {% if active == 'home' %}aria-current="page"{% endif %}>Overview</a>
       <a href="/artists" {% if active == 'artists' %}aria-current="page"{% endif %}>Artists</a>
       <a href="/albums" {% if active == 'albums' %}aria-current="page"{% endif %}>Albums</a>
       <a href="/songs" {% if active == 'songs' %}aria-current="page"{% endif %}>Songs</a>

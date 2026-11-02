@@ -1217,6 +1217,39 @@ def test_shipping_follows_the_cart_into_budgets(lib: Library, sample: Sample):
     assert lib.get_cart().shipping == 0 and lib.get_budget(budget.id).shipping == 1
 
 
+def test_discount_follows_the_cart_into_budgets(lib: Library, sample: Sample):
+    lib.add_to_cart(CartItemIn(sample.album_id, "cd", 10.1))
+    lib.set_shipping(1)
+    cart = lib.set_discount(0.1)
+    assert (cart.discount, cart.total) == (0.1, 11.0)
+    with pytest.raises(ValueError, match="discount must be a number"):
+        lib.set_discount(-1)
+    assert lib.set_discount(50).total == 0  # never below nothing
+    lib.set_discount(0.1)
+
+    budget = lib.make_budget(BudgetIn("Trip"))
+    assert budget.discount == 0.1 and lib.get_budget_detail(budget.id).total == 11.0
+    assert lib.get_cart().discount == 0
+
+    assert lib.edit_budget(budget.id).discount == 0.1
+    lib.set_discount(2)
+    budget = lib.make_budget(BudgetIn("Trip"))
+    assert budget.discount == 2 and lib.get_budget_detail(budget.id).total == 9.1
+
+    lib.edit_budget(budget.id)
+    lib.clear_cart()
+    assert lib.get_cart().discount == 0 and lib.get_budget(budget.id).discount == 2
+
+
+def test_old_databases_get_discounts(tmp_path):
+    path = tmp_path / "old.db"
+    Library(path)
+    with sqlite3.connect(path) as conn:
+        conn.execute("ALTER TABLE budgets DROP COLUMN discount_cents")
+        conn.execute("ALTER TABLE cart DROP COLUMN discount_cents")
+    assert Library(path).get_cart().discount == 0
+
+
 def test_old_databases_get_shipping(tmp_path):
     path = tmp_path / "old.db"
     Library(path)

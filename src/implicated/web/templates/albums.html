@@ -11,6 +11,10 @@
       <option value="">Any format</option>
       {% for value, (fmt, state, label) in format_filters.items() %}<option value="{{ value }}" {% if own == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
     </select>
+    <select name="order" aria-label="Order">
+      <option value="">Favorites first</option>
+      <option value="latest" {% if order == 'latest' %}selected{% endif %}>Newest first</option>
+    </select>
     <label class="check"><input type="checkbox" name="favorites" value="1" {% if favorites %}checked{% endif %}> Favorites</label>
     <label class="check"><input type="checkbox" name="later" value="1" {% if later %}checked{% endif %}> Listen later</label>
     <label class="check"><input type="checkbox" name="missing" value="1" {% if missing %}checked{% endif %}> Missing lyrics</label>
@@ -18,6 +22,6 @@
   </form>
 </div>
 <section id="albums">
-  {% include "_album_grid.html" %}
+  {% include "_album_pages.html" %}
 </section>
 {% endblock %}

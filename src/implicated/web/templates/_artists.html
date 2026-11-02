@@ -3,6 +3,7 @@
 <ul class="cards">
   {% for a in artists %}
   <li class="card artist-card">
+    {% if a.artist.image %}<img class="artist-bg" src="/api/artists/{{ a.artist.id }}/image?v={{ a.artist.image }}" alt="" loading="lazy">{% endif %}
     <div class="row">
       <a href="/artists/{{ a.artist.id }}"><strong>{{ a.artist.name }}</strong></a>
       <span>

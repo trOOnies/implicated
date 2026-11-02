@@ -1,11 +1,11 @@
 {# The Concerts page body: the `upcoming` and `past` concerts of the file at `path`. Picking a
-   concert's status writes it to the file and reloads this. #}
+   coming concert's status, or ticking whether you went to a past one, writes it to the file and
+   reloads this. #}
 {% macro concert_table(concerts, upcoming) %}
-{% set statuses = concert_statuses if upcoming else past_concert_statuses %}
 <div class="table-scroll">
 <table class="concerts sortable">
   <thead>
-    <tr><th>Date</th><th></th><th>Band</th><th>Tour</th><th>City</th><th>Country</th><th>Status</th><th></th></tr>
+    <tr><th>Date</th><th></th><th>Band</th><th>Tour</th><th>City</th><th>Country</th><th>{{ 'Status' if upcoming else 'Went' }}</th><th></th></tr>
   </thead>
   <tbody>
     {% for c in concerts %}
@@ -28,11 +28,15 @@
         <form hx-post="/concerts/{{ c.line }}/status" hx-trigger="change" hx-target="#concerts" hx-swap="outerHTML">
           <input type="hidden" name="date" value="{{ c.date }}">
           <input type="hidden" name="band" value="{{ c.band }}">
+          {% if upcoming %}
           <select name="status" aria-label="Status of {{ c.band }} on {{ c.date }}">
-            {% for value, label in statuses.items() %}
+            {% for value, label in concert_statuses.items() %}
             <option value="{{ value }}"{% if value == status %} selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
+          {% else %}
+          <input type="checkbox" name="status" value="went" aria-label="Went to {{ c.band }} on {{ c.date }}"{% if status == 'went' %} checked{% endif %}>
+          {% endif %}
         </form>
       </td>
       <td>
