@@ -1,25 +1,59 @@
 # <img src="src/implicated/web/static/favicon.svg" alt="" width="36" height="36"> implicated
-App for managing and exploring your music taste
 
-## Quick start
+**Your music taste, all in one place.** 🎶
+
+implicated is a personal app for keeping track of the artists, albums and songs you love: read
+lyrics, play along with guitar tabs, plan your next record haul and never miss a concert.
+Everything lives on your own computer. ✨
+
+## 🚀 Quick start
 
 ```sh
 make install   # pip install -e ".[dev]"
 make seed      # optional: demo artists, albums, songs and plays
-make serve     # http://127.0.0.1:8000  (JSON API docs at /docs); imports info/ first
+make serve     # http://127.0.0.1:8000 (imports info/ first)
 make test      # run the tests with coverage
 ```
 
-The library is a SQLite file at `local/implicated.db`; set `IMPLICATED_DB` to use another path.
-Album covers and artist images are stored next to it, in `local/covers/` and `local/artists/`.
+Then open **<http://127.0.0.1:8000>** and enjoy! The JSON API docs are at **`/docs`**.
 
-## Importing artists
+> [!TIP]
+> Click the **implicated logo** at the top left, from any page, to get back to your Overview.
 
-`make serve` imports `info/` every time it starts (set `IMPLICATED_INFO` to use another folder),
-so edits to the YAML files show up after a restart. If the folder, its `bands.yaml` or its
-`bands/` folder is missing, startup creates them (`bands.yaml` with a commented example), lists
-them and stops, so you can fill them in and start again. `make import` (or
-`python -m implicated.importer <dir>`) runs the same import on its own. The folder looks like this:
+## 🧭 What's inside
+
+| Page | What you can do there |
+| --- | --- |
+| 📊 **Overview** | See your totals, charts, latest releases, favorites and listen later lists |
+| 🎤 **Artists** | Browse artist cards and filter them by origin, genre, language, favorites or listen later |
+| 💿 **Albums** | Browse covers, filter by CD or vinyl, and spot missing lyrics or covers |
+| 🎵 **Songs** | Search every song, sort it, and open its lyrics, tab and videos |
+| 📜 **Playlists** | Build your own, next to the built-in **Favorites** and **Listen Later** |
+| 🛒 **Budget** | Fill a cart of CDs and vinyls, see what it costs, and save or buy it |
+| 🎟️ **Concerts** | Track the shows you want to see and the ones you went to |
+| 🔴 **Live Play** | Follow an album or playlist as you listen, lyrics included |
+| ❓ **Help** | Read how everything works, right inside the app |
+
+> [!NOTE]
+> The door button 🚪 at the top right stops the app. After you confirm, it closes the window (when
+> the browser allows it; otherwise it says the app stopped) and shuts the `make serve` server down
+> gracefully, reloader included. Everything is saved as you go, so **nothing is lost**.
+
+## 🗂️ Where your data lives
+
+| What | Where | Change it with |
+| --- | --- | --- |
+| 🗄️ The library | `local/implicated.db` (SQLite) | `IMPLICATED_DB` |
+| 🖼️ Album covers | `local/covers/`, next to the library | |
+| 🧑‍🎤 Artist pictures | `local/artists/`, next to the library | |
+| 📥 Files to import | `info/` (git-ignored) | `IMPLICATED_INFO` |
+
+## 📥 Importing artists
+
+`make serve` imports `info/` **every time it starts**, so edits to the YAML files show up after a
+restart. If the folder, its `bands.yaml` or its `bands/` folder is missing, startup creates them
+(`bands.yaml` with a commented example), lists them and stops, so you can fill them in and start
+again. `make import` (or `python -m implicated.importer <dir>`) runs the same import on its own.
 
 ```
 info/
@@ -36,42 +70,87 @@ info/
   tours.csv                       # optional: tours the Add concert form offers
 ```
 
-Re-importing updates what changed and keeps your ratings, notes, favorites, CD and vinyl
-ownership, music videos, song videos, listen later marks, playlists and plays; a broken
-file rolls the whole import back and is reported in the server log. `wiki` must be a link to a
-Wikipedia article (`https://<lang>.wikipedia.org/wiki/<title>`); any other link is ignored with a
-warning, and the API and forms refuse it. The full format is described
-in `src/implicated/importer.py`. `info/` is git-ignored.
+> [!IMPORTANT]
+> Re-importing updates what changed and **keeps** your ratings, notes, favorites, CD and vinyl
+> ownership, music videos, song videos, listen later marks, playlists and plays. A broken file
+> rolls the whole import back and is reported in the server log.
+
+- 🔗 **`wiki`** must be a link to a Wikipedia article (`https://<lang>.wikipedia.org/wiki/<title>`).
+  Any other link is ignored with a warning, and the API and forms refuse it.
+- 📖 The **full format** is described in `src/implicated/importer.py`.
+
+## 🎸 Lyrics and tabs
+
+### 📝 Lyrics
 
 Lyrics files are named after the song, with `/` turned into `_` and the characters Windows refuses
-in file names (`<>:"\|?*`) left out, so `S/C/A/R/E/C/R/O/W` is `S_C_A_R_E_C_R_O_W.txt`. Every song
-has a lyrics file: the import, the Add song forms and the API create an empty one when it is
-missing (also for artists that are not in `bands.yaml`), and renaming a song renames its file.
-Each song has its own page with its lyrics, read again from the file on every visit, and buttons
-to open the file in your default text editor (under WSL, the Windows one) and to reload it. Album
-pages mark the songs still missing lyrics, and album lists show the share of songs that have them.
-The Albums and Songs pages can show only the albums and songs still missing lyrics. Songs with `no_lyrics` (set in `albums.yaml`, or with the No lyrics box when adding or editing a
-song) have no words, so they are never missing lyrics and do not count in that share.
+in file names (`<>:"\|?*`) left out, so `S/C/A/R/E/C/R/O/W` is `S_C_A_R_E_C_R_O_W.txt`.
 
-Songs can have a guitar tab: a Guitar Pro file in `bands/<artist name>/tabs/`, named like the
-lyrics file but ending in `.gp5` (or `.gp`, `.gpx`, `.gp4`, `.gp3`). In TuxGuitar, use File > Save
-As and pick Guitar Pro 5; its own `.tg` files cannot be read. The song page draws the tab as
-notation and tablature with [alphaTab](https://www.alphatab.net/) (bundled in
-`src/implicated/web/static/alphatab/`, MPL-2.0), can play it back, lets you pick the track when the
-file holds several, and has buttons to open the file in TuxGuitar and to reload it after saving.
+- 📄 **Every song has a lyrics file**: the import, the Add song forms and the API create an empty
+  one when it is missing (also for artists that are not in `bands.yaml`), and renaming a song
+  renames its file.
+- 🔄 **Song pages** read the file again on every visit, with buttons to open it in your default
+  text editor (under WSL, the Windows one) and to reload it.
+- 🔍 **Missing lyrics are easy to find**: album pages mark those songs, album lists show the share
+  of songs that have them, and the Albums and Songs pages can show only what still needs them.
+- 🎼 **Instrumentals** have `no_lyrics` (set in `albums.yaml`, or with the No lyrics box when adding
+  or editing a song), so they never count as missing.
 
-The **Budget** page is a cart of CDs and vinyls to buy: pick a band, then one of its albums, then
-the format (each picker says which ones you marked *Wanted*), and give its price, quantity and, optionally, a link to it in a
-shop; the cart adds up the total. Albums you already own on that format can go in too, but each is
-flagged. The cart's *Shipping* field (0.00 until you change it, and there even while the cart is
-empty) goes on top of the total and is saved with the budget. *Make Budget* saves the cart under a name and empties it; *Buy* marks its albums owned on
-their formats and keeps it as a bought budget. Saved budgets can be bought, deleted, or loaded back
-into the cart to edit. Buying albums that other budgets also hold (on the same format) first asks
-whether to drop them from those budgets, deleting any budget that leaves empty. Prices show with
-a generic `$`, whatever currency the shops charge in. The API has it all under `/api/budget`.
+### 🎼 Guitar tabs
 
-The **Concerts** page lists the concerts in `info/concerts.csv`, read again on every visit (no
-restart needed): upcoming ones first, soonest at the top, then past ones. The file is optional; its
+A song can have a Guitar Pro file in `bands/<artist name>/tabs/`, named like the lyrics file but
+ending in `.gp5` (or `.gp`, `.gpx`, `.gp4`, `.gp3`).
+
+> [!TIP]
+> In TuxGuitar, use **File > Save As** and pick **Guitar Pro 5**: its own `.tg` files cannot be read.
+
+The song page draws the tab as notation and tablature with
+[alphaTab](https://www.alphatab.net/) (bundled in `src/implicated/web/static/alphatab/`, MPL-2.0),
+can play it back, lets you pick the track when the file holds several, and has buttons to open the
+file in TuxGuitar and to reload it after saving.
+
+## 🧭 Browsing your library
+
+- 📊 **Overview lists** show **10 records** at most. When there are more, *See more...* opens the
+  full list on the Artists, Albums or Songs page, already filtered.
+- 📄 **Long lists come in pages**: 24 artists, 48 albums or 50 songs at a time, with buttons above
+  and below the list. Filters and order selectors apply to the whole list, while clicking a column
+  header sorts the page in view.
+- 🖼️ **Artist cards** show the artist's picture in grey behind the card, when they have one.
+- ♡ **Favorites come first** on the Artists and Albums pages and in the Songs page's A–Z order.
+  Album tiles have a ♡ to mark them. The Albums page can also go *Newest first*.
+- ✏️ **Songs are edited** from album pages, not from the Songs page.
+- 🏷️ **Cover tags**: albums without a cover of their own are tagged *no cover* (the ♪ placeholder
+  shows instead) or *shared cover* (the same image as another album, say a deluxe edition that
+  matched the original's cover file), and the Albums page can show only those.
+
+## 🛒 Budget
+
+A cart of CDs and vinyls to buy. Pick a **band** (your favorites come first), then one of its
+**albums** (split into *Wanted*, *Neither* and *Owned*), then the **format**, and give its price,
+quantity and, optionally, a link to it in a shop.
+
+| Cart field | What it does |
+| --- | --- |
+| 📦 **Shipping** | Goes **on top** of the total. It is `0.00` until you change it |
+| 🏷️ **Discount** | Optional. Comes **off** the total, which never goes below `0.00` |
+
+Both show even while the cart is empty, and both are saved with the budget.
+
+- ⚠️ **Albums you already own** on that format can go in too, but each one is flagged.
+- 💾 **Make Budget** saves the cart under a name and empties it.
+- 💳 **Buy** marks its albums owned on their formats and keeps it as a bought budget.
+- ✏️ **Saved budgets** can be bought, deleted, or loaded back into the cart to edit.
+- 🔀 **Buying albums other budgets also hold** (on the same format) first asks whether to drop them
+  from those budgets, deleting any budget that leaves empty.
+
+Prices show with a generic `$`, whatever currency the shops charge in. The API has it all under
+`/api/budget`.
+
+## 🎟️ Concerts
+
+The page lists the concerts in `info/concerts.csv`, **read again on every visit** (no restart
+needed): upcoming ones first, soonest at the top, then past ones. The file is optional, and its
 first line names the columns, separated by `;`:
 
 ```
@@ -79,67 +158,83 @@ date;band;tour;country;city;Want to go;Going
 2026-12-09;Sleeping With Sirens;Complete Collapse Tour;Argentina;Buenos Aires;true;true
 ```
 
-The tour may be left empty in the file, but the *Add concert* form asks for it, and adds one concert
-to the file (creating it if missing). A column it needs that the file lacks, such as `tour`, is added
-after `band`. *Add tour* takes a band and a tour's name and keeps them in `info/tours.csv` (columns
-`band;tour`), so Add concert suggests that band's tours, along with those its concerts already name.
-The copy button at the end of a row fills Add concert with that concert, to change what differs and
-add it as a new one. Bands in your library show their picture and link to their page. Each
-concert has a status: nothing, *Want to go* or *Going* while it is still to come, and nothing or
-*Went* once it is over (*Going* turns into *Went*). Changing it on the page writes the Want to go
-and Going columns of its row back to the file. Rows that cannot be read are listed on the page.
+| When | What you set | Saved in the file as |
+| --- | --- | --- |
+| ⏳ **Upcoming** | **Status**: nothing, *Want to go* or *Going* | Want to go and Going columns |
+| ✅ **Past** | **Went**: a box to tick | The same columns (*Going* turns into *Went*) |
 
-The door button at the top right stops the app: after you confirm, it closes the window (when the
-browser allows it; otherwise it says the app stopped) and shuts the `make serve` server down
-gracefully, reloader included. Everything is saved as you go, so nothing is lost.
+- ➕ **Add concert** adds one concert to the file, creating it if missing. The tour may be left
+  empty in the file, but the form asks for it. A column it needs that the file lacks, such as
+  `tour`, is added after `band`.
+- 🚌 **Add tour** takes a band and a tour's name and keeps them in `info/tours.csv` (columns
+  `band;tour`), so Add concert suggests that band's tours, along with those its concerts already
+  name.
+- 📋 **The copy button** at the end of a row fills Add concert with that concert, to change what
+  differs and add it as a new one.
+- 🖼️ **Bands in your library** show their picture and link to their page.
+- ⚠️ **Rows that cannot be read** are listed on the page.
 
-The Artists and Songs pages show 24 artists and 50 songs at a time, with buttons to the other pages
-above and below the list; filters and sort orders apply to the whole list, while clicking a column
-header sorts the page in view. Favorite albums come first on the Albums page and favorite songs on the
-Songs page's A–Z order, and album tiles have a ♡ to mark them. Songs are edited from album pages, not from the Songs page.
+## 🔴 Live Play
 
 An album page's *▶ Played* button logs a listen of each of its songs. **Live Play**, started with
 the button on an album or playlist page (nothing else leads to it), follows the list as you listen
-along: it shows the cover, song, length, artist and lyrics, with buttons to go to the previous
-song, pause it, play this one again or go to the next, and a ♡ and a ⧖ for the song. Every song that comes on logs a
-listen, and when its length has gone by the next one comes on by itself (songs without a length
-wait for the button). Every song that comes on starts playing, and Play/Pause stops and resumes its
-bar and the wait for the next song. Reloading the page logs nothing, and the songs stay the same for the whole
-Live Play, even if the playlist changes meanwhile. The top of the page stays in place while the lyrics
-and the song list scroll on their own, except on narrow or very short windows, where the page scrolls.
+along:
 
-Albums without a cover of their own are tagged *no cover* (the ♪ placeholder shows instead) or
-*shared cover* (the same image as another album, say a deluxe edition that matched the original's
-cover file), and the Albums page can show only those.
+- 👀 **It shows** the cover, song, length, artist and lyrics, with a ♡ and a ⧖ for the song.
+- ⏯️ **Its buttons** go to the previous song, pause it, play this one again or go to the next.
+- ⏭️ **Songs move on by themselves**: every song that comes on starts playing and logs a listen, and
+  when its length has gone by the next one comes on (songs without a length wait for the button).
+- ⏸️ **Play/Pause** stops and resumes the song's bar and the wait for the next song.
+- 🔒 **The list stays fixed**: reloading the page logs nothing, and the songs stay the same for the
+  whole Live Play, even if the playlist changes meanwhile.
+- 📌 **The top stays in place** while the lyrics and the song list scroll on their own, except on
+  narrow or very short windows, where the page scrolls.
 
-## Your own data
+## 💛 Your own data
 
 Besides what the import brings, the app keeps:
 
-- **Ratings** of artists, albums and songs, from 1 to 5 stars, set by clicking the stars.
-- **Notes** on artists, albums and songs (artists' notes are separate from their imported description).
-- **CD and vinyl ownership** of albums: each format is unset, wanted or owned, picked with a
-  selector on the album page and in the artist's discography. The Albums page filters by
-  Wanted (CD), Owned (CD), Wanted (Vinyl) and Owned (Vinyl).
-- **YouTube videos**: one music video per song, plus any number of other videos (lessons,
-  covers, live takes), each with a title and a start time, in your own order. They are entered
-  as a link or the bare 11-character video id. Links from `youtube.com` (`watch?v=`, `/embed/`,
-  `/shorts/`, `/live/`, `/v/`, also `m.` and `music.`), `youtu.be` and `youtube-nocookie.com`
-  are accepted; anything else is refused, and only the id (and a `t=` start) is stored. Song
-  pages embed them.
-- **Playlists** of songs, in your own order. Songs are added one by one from their page, several
-  at once with the Add songs form at the bottom of the playlist, or a whole album at a time from
-  the album page; a song is in a playlist at most once.
-  **Favorites** and **Listen Later** are built-in playlists that cannot be renamed or deleted:
+- ⭐ **Ratings** of artists, albums and songs, from 1 to 5 stars, set by clicking the stars.
+- 📝 **Notes** on artists, albums and songs (artists' notes are separate from their imported
+  description).
+- 💿 **CD and vinyl ownership** of albums: each format is unset, wanted or owned, picked with a
+  selector on the album page and in the artist's discography. The Albums page filters by Wanted
+  (CD), Owned (CD), Wanted (Vinyl) and Owned (Vinyl).
+- 📺 **YouTube videos**: one music video per song, plus any number of other videos (lessons, covers,
+  live takes), each with a title and a start time, in your own order. Song pages embed them.
+- 📜 **Playlists** of songs, in your own order. Add songs one by one from their page, several at
+  once with the Add songs form at the bottom of the playlist, or a whole album at a time from the
+  album page. A song is in a playlist at most once.
+- 💖 **Favorites** and ⧖ **Listen Later** are built-in playlists that cannot be renamed or deleted:
   they always hold the songs with that mark, and adding or removing songs sets or clears it.
-- **Listen later** marks on artists, albums and songs. A song's mark goes away when you log a play
+- ⧖ **Listen later** marks on artists, albums and songs. A song's mark goes away when you log a play
   of it.
 
-## Layout
+<details>
+<summary>🔗 <strong>Which YouTube links work?</strong></summary>
 
-- `src/implicated/models.py`: dataclass models (`Artist`, `Member`, `Album`, `Song`, `SongVideo`, `Play`, `Playlist`, and their `*In` inputs)
-- `src/implicated/library.py`: SQLite storage and stats
-- `src/implicated/importer.py`: YAML importer for artists, members, albums, songs, covers and lyrics
-- `src/implicated/concerts.py`: reads `concerts.csv` for the Concerts page
-- `src/implicated/api/`: JSON routes under `/api/...`, one router (and API page tag) per resource
-- `src/implicated/web/`: server-rendered pages (Jinja2 + vendored htmx, plain CSS, a little plain JS for sortable tables, no build step)
+Videos are entered as a link or the bare 11-character video id. These are accepted:
+
+- `youtube.com` links (`watch?v=`, `/embed/`, `/shorts/`, `/live/`, `/v/`), also on `m.` and
+  `music.`
+- `youtu.be` links
+- `youtube-nocookie.com` links
+
+Anything else is refused, and only the id (and a `t=` start) is stored.
+
+</details>
+
+## 🏗️ Project layout
+
+| Path | What's there |
+| --- | --- |
+| `src/implicated/models.py` | Dataclass models (`Artist`, `Member`, `Album`, `Song`, `SongVideo`, `Play`, `Playlist`, and their `*In` inputs) |
+| `src/implicated/library.py` | SQLite storage and stats |
+| `src/implicated/importer.py` | YAML importer for artists, members, albums, songs, covers and lyrics |
+| `src/implicated/concerts.py` | Reads and updates `concerts.csv` for the Concerts page |
+| `src/implicated/api/` | JSON routes under `/api/...`, one router (and API page tag) per resource |
+| `src/implicated/web/` | Server-rendered pages: Jinja2, vendored htmx, plain CSS and a little plain JS, with **no build step** |
+
+## 📜 License
+
+implicated is free software under the **GNU General Public License v3.0**. See [LICENSE](LICENSE). ⭐
