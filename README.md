@@ -181,6 +181,7 @@ date;band;tour;country;city;Want to go;Going
 | --- | --- | --- |
 | ⏳ **Upcoming** | **Status**: nothing, *Want to go* or *Going* | Want to go and Going columns |
 | ✅ **Past** | **Went**: a box to tick | The same columns (*Going* turns into *Went*) |
+| 🎶 **Either** | **Setlist**: one of your playlists, optional | A `Setlist` column with its name |
 
 - ➕ **Add concert** adds one concert to the file, creating it if missing. The tour may be left
   empty in the file, but the form asks for it. A column it needs that the file lacks, such as
@@ -190,6 +191,10 @@ date;band;tour;country;city;Want to go;Going
   name.
 - 📋 **The copy button** at the end of a row fills Add concert with that concert, to change what
   differs and add it as a new one.
+- 🎶 **Setlists** link a concert to a playlist of the songs played there, picked in its row or in
+  Add concert. The `Setlist` column is added at the end of the file the first time one is set.
+  Renaming the playlist renames it in the file; a name no playlist has any more is flagged on the
+  page, and the playlist page lists the concerts it is the setlist of.
 - 🖼️ **Bands in your library** show their picture and link to their page.
 - ⚠️ **Rows that cannot be read** are listed on the page.
 

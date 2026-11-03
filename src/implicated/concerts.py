@@ -12,6 +12,10 @@ Dates are ``YYYY-MM-DD``; *Want to go* and *Going* are ``true`` or ``false`` (al
 ignore case, spaces and underscores; only ``date`` and ``band`` are required, and the tour is
 optional. Concerts added on the page go at the end of the file, which is created if missing.
 
+A concert can have a *Setlist*: the name of a playlist holding the songs played (or to be
+played) there. The column is added the first time a concert gets one, and renaming the playlist
+renames it here too (see ``rename_setlist``).
+
 Tours have no dates of their own, so they are kept in ``tours.csv``, next to it, for the page to
 offer them when adding a concert::
 
@@ -31,7 +35,7 @@ from implicated.models import CONCERT_STATUSES, PAST_CONCERT_STATUSES, Concert
 
 CONCERTS_FILE = "concerts.csv"
 TOURS_FILE = "tours.csv"
-COLUMNS = ("date", "band", "tour", "country", "city", "want_to_go", "going")
+COLUMNS = ("date", "band", "tour", "country", "city", "want_to_go", "going", "setlist")
 HEADER = ("date", "band", "tour", "country", "city", "Want to go", "Going")
 TRUE = {"true", "yes", "y", "1", "x"}
 FALSE = {"false", "no", "n", "0", ""}
@@ -117,6 +121,7 @@ def read_concerts(path: str | Path) -> tuple[list[Concert], list[str]]:
                 want_to_go=_flag(values.get("want_to_go"), where, warnings),
                 going=_flag(values.get("going"), where, warnings),
                 tour=values.get("tour") or None,
+                setlist=values.get("setlist") or None,
                 line=number,
             )
         )
@@ -143,11 +148,7 @@ def set_status(
     header = [_column(name) for name in _cells(lines[0], delimiter)] if lines else []
     if "want_to_go" not in header or "going" not in header:
         raise ValueError(f"{path.name} needs a Want to go and a Going column")
-    row = _cells(lines[line - 1], delimiter) if 1 < line <= len(lines) else []
-    row += [""] * (len(header) - len(row))
-    values = dict(zip(header, (cell.strip() for cell in row), strict=False))
-    if values.get("date") != day.isoformat() or values.get("band") != band:
-        raise ValueError(f"{path.name} changed since the page was loaded; reload it")
+    row = _concert_row(path, lines, delimiter, header, line, day, band)
     if past:
         # Whether you wanted to go no longer shows, so it stays as it was.
         flags = {"going": status == "went"} | ({"want_to_go": True} if status == "went" else {})
@@ -155,9 +156,68 @@ def set_status(
         flags = {"want_to_go": status in ("want", "going"), "going": status == "going"}
     for name, value in flags.items():
         row[header.index(name)] = "true" if value else "false"
-    ending = lines[line - 1][len(lines[line - 1].rstrip("\r\n")) :]
-    lines[line - 1] = _line(row, delimiter, ending)
+    lines[line - 1] = _line(row, delimiter, _ending(lines[line - 1]))
     _write(path, lines)
+
+
+def _ending(line: str) -> str:
+    return line[len(line.rstrip("\r\n")) :]
+
+
+def _concert_row(
+    path: Path, lines: list[str], delimiter: str, header: list[str], line: int, day: date, band: str
+) -> list[str]:
+    """The cells of the concert on ``line``, one per column; ``day`` and ``band`` must still be
+    there, so a file edited since it was read is not changed in the wrong place."""
+    row = _cells(lines[line - 1], delimiter) if 1 < line <= len(lines) else []
+    row += [""] * (len(header) - len(row))
+    values = dict(zip(header, (cell.strip() for cell in row), strict=False))
+    if values.get("date") != day.isoformat() or values.get("band") != band:
+        raise ValueError(f"{path.name} changed since the page was loaded; reload it")
+    return row
+
+
+def set_setlist(path: str | Path, line: int, day: date, band: str, setlist: str | None) -> None:
+    """Make the playlist called ``setlist`` the setlist of the concert on ``line`` (``None``
+    takes it away), adding the Setlist column at the end when the file lacks it. ``day`` and
+    ``band`` must still be on that line."""
+    path = Path(path)
+    _text, lines, delimiter = _read(path)
+    header = [_column(name) for name in _cells(lines[0], delimiter)] if lines else []
+    if "date" not in header or "band" not in header:
+        raise ValueError(f"{path.name} needs a date and a band column")
+    _concert_row(path, lines, delimiter, header, line, day, band)  # still the same concert
+    if "setlist" not in header:
+        if setlist is None:
+            return
+        lines = _with_column(lines, delimiter, len(header), len(header), "Setlist")
+        header.append("setlist")
+    row = _concert_row(path, lines, delimiter, header, line, day, band)
+    row[header.index("setlist")] = " ".join((setlist or "").split())
+    lines[line - 1] = _line(row, delimiter, _ending(lines[line - 1]))
+    _write(path, lines)
+
+
+def rename_setlist(path: str | Path, old: str, new: str) -> int:
+    """Point the concerts whose setlist is the playlist ``old`` (ignoring case) at ``new``, its
+    new name; how many changed. Nothing happens without the file or its Setlist column."""
+    path = Path(path)
+    if not path.is_file():
+        return 0
+    _text, lines, delimiter = _read(path)
+    header = [_column(name) for name in _cells(lines[0], delimiter)] if lines else []
+    if "setlist" not in header:
+        return 0
+    index, changed = header.index("setlist"), 0
+    for number, line in enumerate(lines[1:], start=1):
+        row = _cells(line, delimiter)
+        if index < len(row) and row[index].strip().casefold() == old.strip().casefold():
+            row[index] = " ".join(new.split())
+            lines[number] = _line(row, delimiter, _ending(line))
+            changed += 1
+    if changed:
+        _write(path, lines)
+    return changed
 
 
 def _for_adding(path: Path, header: tuple[str, ...]) -> tuple[list[str], str, str]:
@@ -178,7 +238,8 @@ def _for_adding(path: Path, header: tuple[str, ...]) -> tuple[list[str], str, st
 
 def add_concerts(path: str | Path, concerts: list[Concert]) -> None:
     """Add the concerts at the end of the file, without any status, creating it when missing.
-    The columns they need and the file lacks are added after the band."""
+    The columns they need and the file lacks are added after the band (the Setlist one at the
+    end)."""
     path = Path(path)
     lines, delimiter, ending = _for_adding(path, HEADER)
     header = [_column(name) for name in _cells(lines[0], delimiter)]
@@ -188,6 +249,9 @@ def add_concerts(path: str | Path, concerts: list[Concert]) -> None:
         if name not in header and any(getattr(c, name) for c in concerts):
             lines = _with_column(lines, delimiter, len(header), header.index("band") + 1, name)
             header.insert(header.index("band") + 1, name)
+    if "setlist" not in header and any(c.setlist for c in concerts):
+        lines = _with_column(lines, delimiter, len(header), len(header), "Setlist")
+        header.append("setlist")
     for concert in concerts:
         values = {
             "date": concert.date.isoformat(),
@@ -197,6 +261,7 @@ def add_concerts(path: str | Path, concerts: list[Concert]) -> None:
             "city": concert.city,
             "want_to_go": "false",
             "going": "false",
+            "setlist": concert.setlist,
         }
         # Lines are read one by one, so a line break in a value would split the row.
         cells = [" ".join((values.get(name) or "").split()) for name in header]

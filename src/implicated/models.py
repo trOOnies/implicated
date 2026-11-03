@@ -247,6 +247,8 @@ class Concert:
     want_to_go: bool = False
     going: bool = False
     tour: str | None = None
+    # The name of the playlist holding the songs played there.
+    setlist: str | None = None
     # Where it is in the file (the header is line 1), to change it there.
     line: int = 0
 

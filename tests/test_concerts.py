@@ -3,7 +3,15 @@ from pathlib import Path
 
 import pytest
 
-from implicated.concerts import add_concerts, read_concerts, read_tours, save_tour, set_status
+from implicated.concerts import (
+    add_concerts,
+    read_concerts,
+    read_tours,
+    rename_setlist,
+    save_tour,
+    set_setlist,
+    set_status,
+)
 from implicated.models import Concert
 
 TODAY = date(2026, 10, 28)
@@ -115,6 +123,49 @@ def test_add_concerts_without_the_tour_column_in_use(tmp_path: Path):
     path.write_text("band\n")
     with pytest.raises(ValueError, match="needs a date and a band column"):
         add_concerts(path, [Concert(date(2026, 12, 9), "Air")])
+
+
+def test_setlists(tmp_path: Path):
+    path = tmp_path / "concerts.csv"
+    path.write_bytes(
+        b"date;band;Want to go;Going\r\n2026-12-09;Air;true;false\r\n2026-12-10;Air;;\r\n"
+    )
+    assert read_concerts(path)[0][0].setlist is None
+    set_setlist(path, 2, date(2026, 12, 9), "Air", None)  # nothing to take away: no new column
+    assert b"Setlist" not in path.read_bytes()
+
+    # The column is added at the end, the first time a concert gets one.
+    set_setlist(path, 2, date(2026, 12, 9), "Air", " Moon  Safari ")
+    assert path.read_bytes() == (
+        b"date;band;Want to go;Going;Setlist\r\n"
+        b"2026-12-09;Air;true;false;Moon Safari\r\n"
+        b"2026-12-10;Air;;;\r\n"
+    )
+    set_setlist(path, 3, date(2026, 12, 10), "Air", "moon safari")
+    assert [c.setlist for c in read_concerts(path)[0]] == ["Moon Safari", "moon safari"]
+    with pytest.raises(ValueError, match="changed since"):
+        set_setlist(path, 3, date(2026, 12, 9), "Air", "Talkie Walkie")
+
+    # Renaming the playlist renames every setlist naming it, ignoring case.
+    assert rename_setlist(path, "Moon Safari", "Moon Safari (Live)") == 2
+    assert [c.setlist for c in read_concerts(path)[0]] == ["Moon Safari (Live)"] * 2
+    assert rename_setlist(path, "Nothing", "Else") == 0
+    assert rename_setlist(tmp_path / "missing.csv", "A", "B") == 0
+
+    set_setlist(path, 2, date(2026, 12, 9), "Air", None)
+    assert read_concerts(path)[0][0].setlist is None
+    assert not read_concerts(path)[1]  # a known column
+
+
+def test_add_concerts_with_a_setlist(tmp_path: Path):
+    path = tmp_path / "concerts.csv"
+    add_concerts(path, [Concert(date(2026, 12, 9), "Air")])
+    add_concerts(path, [Concert(date(2026, 12, 10), "Air", setlist="Moon Safari")])
+    assert path.read_text() == (
+        "date;band;tour;country;city;Want to go;Going;Setlist\n"
+        "2026-12-09;Air;;;;false;false;\n"
+        "2026-12-10;Air;;;;false;false;Moon Safari\n"
+    )
 
 
 def test_tours_file(tmp_path: Path):

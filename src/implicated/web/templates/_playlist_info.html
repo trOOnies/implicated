@@ -13,6 +13,9 @@
     {% endif %}
   </div>
   <p class="muted">{{ songs | length }} songs · {{ total_seconds | duration }}</p>
+  {% if setlist_of %}
+  <p class="small">🎟️ Setlist of {% for c in setlist_of %}<a href="/concerts">{{ c.band }}, {{ c.date }}{% if c.city %} in {{ c.city }}{% endif %}</a>{{ ', ' if not loop.last }}{% endfor %}.</p>
+  {% endif %}
   {% if playlist.kind == 'favorites' %}
   <p class="small">Every song marked ♥ is here. Adding a song to this playlist marks it as a favorite, and removing it (or its ♥) takes the mark off.</p>
   {% elif playlist.kind == 'listen_later' %}

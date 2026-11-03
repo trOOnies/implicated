@@ -5,7 +5,7 @@
 <div class="table-scroll">
 <table class="concerts sortable">
   <thead>
-    <tr><th>Date</th><th></th><th>Band</th><th>Tour</th><th>City</th><th>Country</th><th>{{ 'Status' if upcoming else 'Went' }}</th><th></th></tr>
+    <tr><th>Date</th><th></th><th>Band</th><th>Tour</th><th>City</th><th>Country</th><th>{{ 'Status' if upcoming else 'Went' }}</th><th>Setlist</th><th></th></tr>
   </thead>
   <tbody>
     {% for c in concerts %}
@@ -39,8 +39,23 @@
           {% endif %}
         </form>
       </td>
+      {% set setlist = setlists.get(c.setlist | lower) if c.setlist else None %}
+      <td class="setlist" data-sort="{{ c.setlist or '' }}">
+        <form hx-post="/concerts/{{ c.line }}/setlist" hx-trigger="change" hx-target="#concerts" hx-swap="outerHTML">
+          <input type="hidden" name="date" value="{{ c.date }}">
+          <input type="hidden" name="band" value="{{ c.band }}">
+          <select name="playlist_id" aria-label="Setlist of {{ c.band }} on {{ c.date }}">
+            <option value="">–</option>
+            {% if c.setlist and not setlist %}<option value="" selected>{{ c.setlist }} (missing)</option>{% endif %}
+            {% for p in playlists %}
+            <option value="{{ p.id }}"{% if setlist and p.id == setlist.id %} selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
+        </form>
+        {% if setlist %}<a class="small" href="/playlists/{{ setlist.id }}" title="Open the setlist">Open ›</a>{% endif %}
+      </td>
       <td>
-        {% set copied = dict(band=c.band, tour=c.tour or '', date=c.date | string, country=c.country or '', city=c.city or '') %}
+        {% set copied = dict(band=c.band, tour=c.tour or '', date=c.date | string, country=c.country or '', city=c.city or '', playlist_id=setlist.id if setlist else '') %}
         <button type="button" class="link" hx-get="/fragments/concerts/form?{{ copied | urlencode }}" hx-target="#add-concert" hx-swap="outerHTML show:#add-concert:top"
                 title="Copy to Add concert" aria-label="Copy {{ c.band }} on {{ c.date }} to Add concert">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -99,5 +114,6 @@
     </section>
   </aside>
   </div>
-  <p class="small">Read from <code>{{ path or 'concerts.csv' }}</code> every time this page opens: edit the file and reload the page. Changing a status or adding concerts saves it there.</p>
+  <p class="small">Read from <code>{{ path or 'concerts.csv' }}</code> every time this page opens: edit the file and reload the page. Changing a status or a setlist, or adding concerts, saves it there. A setlist is one of your
+  <a href="/playlists">playlists</a>, kept in the file by its name.</p>
 </div>

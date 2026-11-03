@@ -14,6 +14,7 @@ so they refresh themselves:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from dataclasses import fields, replace
 from datetime import date, datetime
@@ -37,7 +38,9 @@ from implicated.concerts import (
     add_concerts,
     read_concerts,
     read_tours,
+    rename_setlist,
     save_tour,
+    set_setlist,
     set_status,
 )
 from implicated.library import Library, NotFound
@@ -55,6 +58,7 @@ from implicated.models import (
     CartItemIn,
     Concert,
     Member,
+    Playlist,
     PlaylistIn,
     Point,
     Song,
@@ -63,6 +67,7 @@ from implicated.models import (
 )
 from implicated.web import editor, shutdown
 
+logger = logging.getLogger("uvicorn.error")  # like the app's own messages
 router = APIRouter(default_response_class=HTMLResponse, include_in_schema=False)
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
@@ -1301,6 +1306,7 @@ def _playlist_context(lib: Library, playlist_id: int) -> dict:
     detail = found(lib.get_playlist_detail, playlist_id)
     return {
         "playlist": detail.playlist,
+        "setlist_of": _setlist_of(lib, detail.playlist),
         "songs": detail.songs,
         "total_seconds": sum(s.song.duration_seconds or 0 for s in detail.songs),
     }
@@ -1337,17 +1343,29 @@ async def update_playlist(request: Request, lib: Lib, playlist_id: int):
     form = await request.form()
     playlist = found(lib.get_playlist, playlist_id)
     try:
-        lib.update_playlist(playlist_id, PlaylistIn(_text(form, "name") or ""))
+        renamed = lib.update_playlist(playlist_id, PlaylistIn(_text(form, "name") or ""))
     except ValueError as exc:
         return render(
             request, "_playlist_edit.html", status_code=422, error=str(exc), playlist=playlist
         )
+    _rename_setlists(lib, playlist.name, renamed.name)
     return render(
         request,
         "_playlist_info.html",
         trigger=("playlists-changed",),
         **_playlist_context(lib, playlist_id),
     )
+
+
+def _rename_setlists(lib: Library, old: str, new: str) -> None:
+    """Keep concerts.csv's setlists on a renamed playlist, unless another playlist still has
+    its old name (and so is now the setlist)."""
+    if lib.info_dir is None or old.casefold() in _setlist_playlists(lib):
+        return
+    try:
+        rename_setlist(lib.info_dir / CONCERTS_FILE, old, new)
+    except (OSError, UnicodeDecodeError) as exc:
+        logger.warning("could not rename the setlist %r in %s: %s", old, CONCERTS_FILE, exc)
 
 
 @router.post("/playlists/{playlist_id}/delete")
@@ -1853,6 +1871,43 @@ def _tours(pairs: list[tuple[str, str]], band: str | None) -> list[str]:
     return sorted(tours.values(), key=str.casefold)
 
 
+def _own_playlists(lib: Library) -> list[Playlist]:
+    """Your own playlists, which can be setlists, A–Z."""
+    return [p.playlist for p in lib.list_playlists() if not p.playlist.kind]
+
+
+def _setlist_playlists(lib: Library) -> dict[str, Playlist]:
+    """The playlist each setlist name stands for: the oldest of your playlists called that,
+    ignoring case."""
+    by_name: dict[str, Playlist] = {}
+    for playlist in sorted(_own_playlists(lib), key=lambda p: p.id):
+        by_name.setdefault(playlist.name.casefold(), playlist)
+    return by_name
+
+
+def _setlist_warnings(lib: Library, concerts: list[Concert]) -> list[str]:
+    names = [p.name.casefold() for p in _own_playlists(lib)]
+    warnings = []
+    for name in sorted({c.setlist for c in concerts if c.setlist}, key=str.casefold):
+        count = names.count(name.casefold())
+        if count == 0:
+            warnings.append(f"Setlist {name!r}: there is no playlist with that name")
+        elif count > 1:
+            warnings.append(f"Setlist {name!r}: {count} playlists have that name; it is the oldest")
+    return warnings
+
+
+def _concert_setlist(lib: Library, form: FormData) -> str | None:
+    """The name of the playlist picked as a setlist in ``form``; ``None`` for none."""
+    playlist_id = _int(form, "playlist_id")
+    if playlist_id is None:
+        return None
+    playlist = found(lib.get_playlist, playlist_id)
+    if playlist.kind:
+        raise ValueError(f"{playlist.name} cannot be a setlist; pick one of your own playlists")
+    return playlist.name
+
+
 def _concerts_context(lib: Library, **extra) -> dict:
     """The concerts in the info folder's ``concerts.csv``, read again every time."""
     path = lib.info_dir / CONCERTS_FILE if lib.info_dir else None
@@ -1867,6 +1922,7 @@ def _concerts_context(lib: Library, **extra) -> dict:
         except (OSError, UnicodeDecodeError) as exc:
             warnings.append(f"Could not read {path.with_name(TOURS_FILE)}: {exc}")
     named_tours = [(c.band, c.tour) for c in concerts if c.tour]
+    warnings += _setlist_warnings(lib, concerts)
     today = date.today()
     return {
         "path": path,
@@ -1875,6 +1931,8 @@ def _concerts_context(lib: Library, **extra) -> dict:
         "upcoming": [c for c in concerts if c.date >= today],
         "past": [c for c in reversed(concerts) if c.date < today],
         "artists": {a.artist.name.casefold(): a.artist for a in lib.list_artists()},
+        "playlists": _own_playlists(lib),
+        "setlists": _setlist_playlists(lib),
         "warnings": warnings,
         "tours": _tours(added_tours + named_tours, extra.get("concert_form", {}).get("band")),
         "concert_form": {},
@@ -1921,7 +1979,14 @@ async def add_concert(request: Request, lib: Lib):
         except ValueError:
             raise ValueError("date must look like 2026-12-09") from None
         band = _band(form)
-        concert = Concert(day, band, _text(form, "country"), _text(form, "city"), tour=_tour(form))
+        concert = Concert(
+            day,
+            band,
+            _text(form, "country"),
+            _text(form, "city"),
+            tour=_tour(form),
+            setlist=_concert_setlist(lib, form),
+        )
         add_concerts(path, [concert])
     except (OSError, ValueError) as exc:
         context = _concerts_context(lib, concert_error=str(exc), concert_form=form)
@@ -1977,3 +2042,29 @@ async def set_concert_status(request: Request, lib: Lib, line: int):
         context = _concerts_context(lib, error=str(exc))
         return render(request, "_concerts.html", status_code=422, **context)
     return render(request, "_concerts.html", **_concerts_context(lib))
+
+
+@router.post("/concerts/{line}/setlist")
+async def set_concert_setlist(request: Request, lib: Lib, line: int):
+    """Make one of your playlists the concert's setlist in the file, or take it away."""
+    path = _concerts_file(request, lib)
+    form = await request.form()
+    try:
+        day = date.fromisoformat(_text(form, "date") or "")
+        set_setlist(path, line, day, _text(form, "band") or "", _concert_setlist(lib, form))
+    except (OSError, ValueError) as exc:
+        context = _concerts_context(lib, error=str(exc))
+        return render(request, "_concerts.html", status_code=422, **context)
+    return render(request, "_concerts.html", **_concerts_context(lib))
+
+
+def _setlist_of(lib: Library, playlist: Playlist) -> list[Concert]:
+    """The concerts whose setlist is ``playlist``, by date."""
+    if lib.info_dir is None or playlist.kind:
+        return []
+    try:
+        concerts, _warnings = read_concerts(lib.info_dir / CONCERTS_FILE)
+    except (OSError, UnicodeDecodeError):
+        return []
+    setlists = _setlist_playlists(lib)
+    return [c for c in concerts if c.setlist and setlists.get(c.setlist.casefold()) == playlist]

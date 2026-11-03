@@ -1250,7 +1250,7 @@ def test_concerts_page(client: TestClient, client_lib: Library, web_sample: Samp
     assert '<option value="" selected>–</option>' in upcoming  # Zero 7
     assert "<th>Went</th>" in past and "<th>Status</th>" not in past
     assert 'name="status" value="went" aria-label="Went to Portishead' in past
-    assert " checked>" in past and "Want to go" not in past and "<select" not in past
+    assert " checked>" in past and "Want to go" not in past and '<select name="status"' not in past
 
     url, htmx = "/concerts/{}/status", {"HX-Request": "true"}
     assert client.post(url.format(3), data={"status": "going"}).status_code == 403
@@ -1442,6 +1442,7 @@ def test_add_concert_and_tour(client: TestClient, client_lib: Library, web_sampl
     assert '<option value="Portishead">' in page
     form = page.split('id="add-concert"')[1].split("</section>")[0]
     names = ['name="band"', 'name="tour"', 'name="date"', 'name="country"', 'name="city"']
+    names.append('name="playlist_id"')
     assert sorted(names, key=form.index) == names
     assert 'name="dates"' not in page and "(optional)" not in form
 
@@ -1516,6 +1517,83 @@ def test_copying_a_concert_fills_add_concert(client: TestClient, client_lib: Lib
         assert f'value="{value}"' in form
     assert f'value="{date.today() + timedelta(days=5)}"' in form
     assert 'name="status"' not in form
+
+
+def test_concert_setlists(client: TestClient, client_lib: Library, web_sample: Sample):
+    concerts = client_lib.info_dir / "concerts.csv"
+    soon, gone = date.today() + timedelta(days=5), date.today() - timedelta(days=5)
+    concerts.write_text(
+        "date;band;tour;country;city;Want to go;Going\n"
+        f"{soon};Portishead;Roseland;France;Paris;true;true\n"
+        f"{gone};Portishead;Roseland;Spain;Madrid;true;true\n"
+    )
+    setlist = client_lib.create_playlist(PlaylistIn("Roseland setlist"))
+    client_lib.add_to_playlist(setlist.id, web_sample.song_ids)
+    favorites = client_lib.special_playlist("favorites")
+    page = client.get("/concerts").text
+    assert (
+        "<th>Setlist</th>" in page and page.count('name="playlist_id"') == 3
+    )  # rows + Add concert
+    assert f'<option value="{setlist.id}">Roseland setlist</option>' in page
+    assert f'<option value="{favorites.id}"' not in page  # only your own playlists
+
+    url, htmx = "/concerts/{}/setlist", {"HX-Request": "true"}
+    paris = {"date": str(soon), "band": "Portishead"}
+    assert client.post(url.format(2), data=paris | {"playlist_id": setlist.id}).status_code == 403
+    changed = client.post(url.format(2), data=paris | {"playlist_id": setlist.id}, headers=htmx)
+    assert changed.status_code == 200
+    assert f'<option value="{setlist.id}" selected>Roseland setlist</option>' in changed.text
+    assert f'href="/playlists/{setlist.id}" title="Open the setlist"' in changed.text
+    assert concerts.read_text().splitlines() == [
+        "date;band;tour;country;city;Want to go;Going;Setlist",
+        f"{soon};Portishead;Roseland;France;Paris;true;true;Roseland setlist",
+        f"{gone};Portishead;Roseland;Spain;Madrid;true;true;",
+    ]
+    madrid = {"date": str(gone), "band": "Portishead", "playlist_id": setlist.id}
+    assert client.post(url.format(3), data=madrid, headers=htmx).status_code == 200  # past too
+    builtin = client.post(url.format(3), data=madrid | {"playlist_id": favorites.id}, headers=htmx)
+    assert builtin.status_code == 422 and "cannot be a setlist" in builtin.text
+    assert (
+        client.post(url.format(3), data=madrid | {"playlist_id": 99}, headers=htmx).status_code
+        == 404
+    )
+    moved = client.post(url.format(2), data=madrid, headers=htmx)
+    assert moved.status_code == 422 and "changed since" in moved.text
+
+    # The playlist page says which concerts it is the setlist of.
+    info = client.get(f"/playlists/{setlist.id}").text
+    assert f'Setlist of <a href="/concerts">Portishead, {gone} in Madrid</a>' in info
+    assert f"Portishead, {soon} in Paris" in info
+
+    # Renaming the playlist renames it in the file; another playlist with the old name keeps it.
+    client.post(f"/playlists/{setlist.id}", data={"name": "Roseland 2026"})
+    assert concerts.read_text().count(";Roseland 2026") == 2
+    twin = client_lib.create_playlist(PlaylistIn("Roseland 2026"))
+    client.post(f"/playlists/{twin.id}", data={"name": "Other"})
+    assert concerts.read_text().count(";Roseland 2026") == 2
+    client_lib.update_playlist(twin.id, PlaylistIn("Roseland 2026"))
+    page = client.get("/concerts").text
+    assert "2 playlists have that name; it is the oldest" in page
+    assert f'<option value="{setlist.id}" selected>' in page
+
+    # A setlist no playlist has is shown as missing; picking none takes it away.
+    client_lib.delete_playlist(twin.id)
+    client_lib.delete_playlist(setlist.id)
+    page = client.get("/concerts").text
+    assert "there is no playlist with that name" in page
+    assert '<option value="" selected>Roseland 2026 (missing)</option>' in page
+    client.post(url.format(2), data=paris | {"playlist_id": ""}, headers=htmx)
+    assert concerts.read_text().splitlines()[1].endswith(";true;true;")
+
+    # Add concert takes one too, and copying a concert carries its setlist along.
+    again = client_lib.create_playlist(PlaylistIn("Encore"))
+    data = {"band": "Air", "tour": "Moon", "date": str(soon), "playlist_id": again.id}
+    assert client.post("/concerts", data=data, headers=htmx).status_code == 200
+    assert concerts.read_text().splitlines()[-1].endswith(";false;false;Encore")
+    page = client.get("/concerts").text
+    copy = re.findall(r'hx-get="(/fragments/concerts/form\?[^"]*)"', page)
+    form = client.get(next(u for u in copy if "Air" in u).replace("&amp;", "&")).text
+    assert f'<option value="{again.id}" selected>Encore</option>' in form
 
 
 def test_albums_tab_has_the_favorite_button(
