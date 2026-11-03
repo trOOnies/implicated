@@ -978,6 +978,15 @@ def test_song_rows_show_the_album_cover(
     assert f'<img class="cover mini" src="{src}"' in rows
 
 
+def test_help_index_links_to_every_section(client: TestClient):
+    page = client.get("/help").text
+    assert 'id="index"' in page
+    targets = re.findall(r'href="#([\w-]+)"', page)
+    assert {"pages", "albums", "live-play", "actions", "rating", "importing", "license"} <= set(targets)
+    for target in targets:
+        assert page.count(f'id="{target}"') == 1, target
+
+
 def test_help_mentions_the_license_and_repo(client: TestClient):
     page = client.get("/help").text
     assert "GNU General Public License v3.0" in page

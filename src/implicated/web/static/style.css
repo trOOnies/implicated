@@ -100,6 +100,13 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 2rem; }
 .help .symbol { color: var(--accent); }
 .help strong { color: var(--text); font-weight: 600; }
 .help h2 { display: flex; align-items: center; gap: .4rem; }
+.help [id] { scroll-margin-top: 1rem; }
+.help dt:target, .help section:target { animation: help-flash 1.6s ease-out; }
+@keyframes help-flash { from { background: var(--accent-soft); } }
+.help-index ol { margin: 0; padding-left: 1.4rem; columns: 2 14rem; column-gap: 2rem; }
+.help-index li { break-inside: avoid; }
+.help-index ul { margin: .1rem 0 .4rem; padding-left: 1.1rem; color: var(--muted); }
+.help-back { margin: .8rem 0 0; font-size: .85rem; text-align: right; }
 
 .card {
   background: var(--surface);
