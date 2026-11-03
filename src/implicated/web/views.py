@@ -25,12 +25,13 @@ from typing import Annotated
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from starlette.background import BackgroundTask
 from starlette.datastructures import FormData, ImmutableMultiDict
 
+from implicated import duo
 from implicated.api import get_library
 from implicated.concerts import (
     CONCERTS_FILE,
@@ -65,7 +66,7 @@ from implicated.models import (
     SongIn,
     SongVideoIn,
 )
-from implicated.userdata import ImportReport, import_data, read_file
+from implicated.userdata import ImportReport, export_data, import_data, read_file
 from implicated.web import editor, shutdown
 
 logger = logging.getLogger("uvicorn.error")  # like the app's own messages
@@ -332,12 +333,108 @@ def help_page(request: Request):
     return render(request, "help.html")
 
 
+# Duo: your data, and recommendations from it and a friend's
+
+# What importing your data changes: every list.
+IMPORT_TRIGGER = (
+    "artists-changed", "albums-changed", "songs-changed", "plays-changed", "playlists-changed",
+    "videos-changed", "library-changed",
+)  # fmt: skip
+
+
+def _duo_context(lib: Library, friend: str | None, **extra) -> dict:
+    friends = duo.list_friends(lib)
+    chosen = next((f for f in friends if f.slug == friend), None)
+    if chosen is None and friend is None and friends:
+        chosen = friends[0]
+    comparison = None
+    if chosen is not None:
+        comparison = duo.compare(
+            export_data(lib), duo.load_friend(lib, chosen.slug), duo.library_ids(lib)
+        )
+    return {
+        "stats": lib.stats(),
+        "friends": friends,
+        "friend": chosen,
+        "duo": comparison,
+        "duo_shown": DUO_SHOWN,
+        **extra,
+    }
+
+
+# How many records each Duo section shows before the rest is folded away.
+DUO_SHOWN = 8
+
+
 @router.get("/data")
-def data_page(request: Request, lib: Lib):
-    return render(request, "data.html", stats=lib.stats())
+def data_page():
+    """The Duo page's old name."""
+    return RedirectResponse("/duo", status_code=301)
 
 
-@router.post("/data/import")
+@router.get("/duo")
+def duo_page(request: Request, lib: Lib, friend: str | None = None):
+    context = _duo_context(lib, friend)
+    if friend and context["friend"] is None:
+        context["friend_error"] = "That friend's file is gone; pick another one."
+    return render(request, "duo.html", **context)
+
+
+@router.post("/duo/friends")
+async def add_friend(request: Request, lib: Lib):
+    """Keep a friend's data file and show what you two have in common."""
+    form = await request.form()
+    upload = form.get("file")
+    try:
+        if upload is None or isinstance(upload, str) or not upload.filename:
+            raise ValueError("Pick your friend's file first.")
+        friend = duo.save_friend(lib, read_file(await upload.read()), _text(form, "name"))
+    except ValueError as exc:
+        context = _duo_context(lib, None, friend_error=f"{exc} Nothing was added.")
+        return render(request, "duo.html", status_code=422, **context)
+    return RedirectResponse(f"/duo?friend={friend.slug}", status_code=303)
+
+
+@router.post("/duo/friends/{slug}/delete")
+def delete_friend(lib: Lib, slug: str):
+    """Forget a friend's file (your library never had any of it)."""
+    try:
+        duo.delete_friend(lib, slug)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, "no such friend") from exc
+    return RedirectResponse("/duo", status_code=303)
+
+
+@router.post("/duo/friends/{slug}/playlists/{section_id}")
+def duo_playlist(request: Request, lib: Lib, slug: str, section_id: str):
+    """Make (or refill) a playlist of your songs in one of the Duo sections."""
+    try:
+        data = duo.load_friend(lib, slug)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(404, "no such friend") from exc
+    comparison = duo.compare(export_data(lib), data, duo.library_ids(lib))
+    section = next((s for s in comparison.sections if s.id == section_id), None)
+    if section is None or not section.song_ids:
+        raise HTTPException(404, "no songs to make a playlist of")
+    name = f"{comparison.friend} & me: {section.title}"
+    existing = next(
+        (p.playlist for p in lib.list_playlists()
+         if not p.playlist.kind and p.playlist.name.casefold() == name.casefold()),
+        None,
+    )  # fmt: skip
+    playlist = existing or lib.create_playlist(PlaylistIn(name))
+    lib.set_playlist_songs(playlist.id, section.song_ids)
+    return render(
+        request,
+        "_duo_playlist.html",
+        playlist=playlist,
+        count=len(section.song_ids),
+        refilled=existing is not None,
+        trigger=("playlists-changed", "library-changed"),
+    )
+
+
+@router.post("/duo/import")
 async def import_data_file(request: Request, lib: Lib):
     """Import a file downloaded with Export: the result, and every list refreshes."""
     form = await request.form()
@@ -354,15 +451,7 @@ async def import_data_file(request: Request, lib: Lib):
         "_data_import.html",
         report=report,
         file_name=upload.filename,
-        trigger=(
-            "artists-changed",
-            "albums-changed",
-            "songs-changed",
-            "plays-changed",
-            "playlists-changed",
-            "videos-changed",
-            "library-changed",
-        ),  # fmt: skip
+        trigger=IMPORT_TRIGGER,
     )
 
 

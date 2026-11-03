@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% set active = 'duo' %}
+{% block title %}Duo{% endblock %}
+{% set kinds = {'artist': ('🎤', '/artists/'), 'album': ('💿', '/albums/'), 'song': ('🎵', '/songs/')} %}
+{% macro duo_item(i) %}
+{% set icon, href = kinds[i.kind] %}
+<li>
+  <span class="duo-kind" title="{{ i.kind | capitalize }}">{{ icon }}</span>
+  <span>
+    {% if i.id %}<a href="{{ href }}{{ i.id }}">{{ i.title }}</a>{% else %}<strong>{{ i.title }}</strong>{% endif %}
+    {% if i.artist %}<span class="small">· {{ i.artist }}{% if i.album %} · {{ i.album }}{% endif %}</span>{% endif %}
+    {% if i.genres %}<span class="small">· {{ i.genres | join(', ') }}</span>{% endif %}
+    {% if i.note %}<br><span class="small">{{ i.note }}</span>{% endif %}
+  </span>
+</li>
+{% endmacro %}
+{% block content %}
+<div class="page-head"><h1>Duo</h1></div>
+
+<section class="card">
+  <h2>👥 You and a friend</h2>
+  <p>Ask a friend for the file <em>Download my data</em> gives them, add it here, and see what
+  your tastes have in common and what each of you should listen to next. Their file is kept on
+  its own, next to your library: <strong>none of it goes into your library</strong>.</p>
+  {% if friend_error %}<p class="error">{{ friend_error }}</p>{% endif %}
+  <div class="duo-friends">
+    {% if friends %}
+    <form class="duo-pick" action="/duo" method="get">
+      <label>Compare with
+        <select name="friend" onchange="this.form.submit()">
+          {% for f in friends %}
+          <option value="{{ f.slug }}"{% if friend and f.slug == friend.slug %} selected{% endif %}>{{ f.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <noscript><button type="submit">Compare</button></noscript>
+    </form>
+    {% endif %}
+    <form class="duo-add" action="/duo/friends" method="post" enctype="multipart/form-data">
+      <label>Friend's file <input type="file" name="file" accept=".json,application/json" required></label>
+      <label>Name <span class="small">(optional; else the file's)</span> <input name="name"></label>
+      <button type="submit">Add friend</button>
+    </form>
+  </div>
+  {% if friend %}
+  <p class="small">{{ friend.name }}'s file: {{ friend.artists }} artists, {{ friend.songs }}
+  songs, {{ friend.plays }} plays{% if friend.exported_at %}, exported {{ friend.exported_at[:10] }}{% endif %}.
+  Adding a newer file with the same name replaces it.</p>
+  <form action="/duo/friends/{{ friend.slug }}/delete" method="post" onsubmit="return confirm(this.dataset.confirm)"
+        data-confirm="Forget {{ friend.name }}'s file? Your library stays as it is.">
+    <button type="submit" class="link">Forget {{ friend.name }}</button>
+  </form>
+  {% endif %}
+</section>
+
+{% if duo %}
+<div class="tiles">
+  <div class="tile"><strong>{{ duo.match }}%</strong> taste match</div>
+  <div class="tile"><strong>{{ duo.shared_artists }}</strong> artists in common</div>
+  <div class="tile"><strong>{{ duo.shared_songs }}</strong> songs in common</div>
+  {% if duo.genres %}
+  <div class="tile"><strong>{{ duo.genres[0][0] }}</strong> your top shared genre</div>
+  {% endif %}
+</div>
+{% if duo.genres | length > 1 %}
+<p class="small">Genres you both like: {% for g, n in duo.genres %}{{ g }} ({{ n }}){{ ', ' if not loop.last }}{% endfor %}.</p>
+{% endif %}
+
+<div class="grid duo">
+  {% for s in duo.sections if s.items %}
+  <section class="card" id="duo-{{ s.id }}">
+    <h2>{{ s.emoji }} {{ s.title }} <span class="small">{{ s.items | length }}</span></h2>
+    <p class="small">{{ s.blurb }}</p>
+    <ul class="duo-list">
+      {% for i in s.items[:duo_shown] %}{{ duo_item(i) }}{% endfor %}
+    </ul>
+    {% if s.items | length > duo_shown %}
+    <details>
+      <summary>{{ s.items | length - duo_shown }} more</summary>
+      <ul class="duo-list">
+        {% for i in s.items[duo_shown:] %}{{ duo_item(i) }}{% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+    {% if s.song_ids %}
+    <div id="duo-playlist-{{ s.id }}">
+      <button type="button" class="link" hx-post="/duo/friends/{{ friend.slug }}/playlists/{{ s.id }}"
+              hx-target="#duo-playlist-{{ s.id }}">Make a playlist of its {{ s.song_ids | length }} song{{ 's' if s.song_ids | length != 1 }}</button>
+    </div>
+    {% endif %}
+  </section>
+  {% else %}
+  <section class="card">
+    <p class="empty">Nothing in common yet. Favorites, listen later marks, ratings and plays
+    are what Duo compares: mark a few, and ask {{ duo.friend }} for a newer file.</p>
+  </section>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2 class="duo-head">💾 Your data</h2>
+<div class="grid">
+  <section class="card">
+    <h2>📤 Export</h2>
+    <p>Download your <strong>favorites, listen later marks, ratings, notes, CD and vinyl
+    ownership, music videos, featured artists, song videos, playlists and listening
+    history</strong> ({{ stats.plays }} play{{ 's' if stats.plays != 1 }}) as one JSON file.
+    Give it to a friend for their Duo page, or keep it as a backup.</p>
+    <p class="small">Artists, albums and songs are named, not numbered, so the file can be
+    imported into another library built from the same <code>info/</code> folder.</p>
+    <form class="stack" action="/api/data/export" method="get">
+      <input type="hidden" name="download" value="true">
+      <label>Your name <span class="small">(optional, says whose taste it is)</span>
+        <input name="owner" autocomplete="name"></label>
+      <button type="submit">Download my data</button>
+    </form>
+  </section>
+  <section class="card">
+    <h2>📥 Import</h2>
+    <p>Bring back <strong>your own</strong> file downloaded here. The records it names take its
+    marks, ratings, notes and videos; plays are added to your history (never twice) and
+    playlists are created, or replaced, by name. A friend's file goes in <em>Add friend</em>
+    above instead.</p>
+    <p class="small">Artists, albums and songs your library does not have are skipped and
+    listed. Import <code>info/</code> first if they are missing.</p>
+    <form class="stack" hx-post="/duo/import" hx-encoding="multipart/form-data"
+          hx-target="#data-import" hx-swap="outerHTML"
+          hx-confirm="Import this file into your library? Its marks, ratings and notes replace the ones of the same records here.">
+      <label>File <input type="file" name="file" accept=".json,application/json" required></label>
+      <button type="submit">Import</button>
+    </form>
+    {% include "_data_import.html" %}
+  </section>
+</div>
+{% endblock %}

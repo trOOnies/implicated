@@ -231,20 +231,20 @@ def test_api_export_and_import(client, web_sample, client_lib):
 
 
 def test_data_page_imports_an_uploaded_file(client, web_sample, client_lib):
-    page = client.get("/data")
+    page = client.get("/duo")
     assert page.status_code == 200 and "Download my data" in page.text
     client_lib.toggle("artist", web_sample.artist_id, "favorite")
     body = json.dumps(export_data(client_lib, "Sol")).encode()
     client_lib.toggle("artist", web_sample.artist_id, "favorite")
 
-    answer = client.post("/data/import", files={"file": ("me.json", body, "application/json")})
+    answer = client.post("/duo/import", files={"file": ("me.json", body, "application/json")})
     assert answer.status_code == 200
     assert "(Sol's data)" in answer.text and "library-changed" in answer.headers["hx-trigger"]
     assert client_lib.get_artist(web_sample.artist_id).favorite
 
-    bad = client.post("/data/import", files={"file": ("x.json", b"[]", "application/json")})
+    bad = client.post("/duo/import", files={"file": ("x.json", b"[]", "application/json")})
     assert bad.status_code == 422 and "Nothing was imported" in bad.text
-    assert client.post("/data/import", data={}).status_code == 422
+    assert client.post("/duo/import", data={}).status_code == 422
 
 
 def test_album_singles_round_trip(lib, tmp_path: Path):

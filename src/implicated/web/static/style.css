@@ -441,3 +441,15 @@ fieldset.featuring-pick { border: 1px solid var(--border); border-radius: 6px; p
 fieldset.featuring-pick legend { font-size: .85rem; color: var(--muted); padding: 0 .3rem; }
 .pick-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: .2rem .8rem; max-height: 12rem; overflow-y: auto; }
 .pick-list label.check { color: var(--text); }
+
+/* Duo */
+.duo-friends { display: flex; flex-wrap: wrap; gap: 1rem 2rem; align-items: end; }
+.duo-friends form { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: end; }
+.duo-friends label { display: flex; flex-direction: column; gap: .2rem; }
+.duo-friends input[type=file] { max-width: 100%; }
+.duo-head { margin: 1.5rem 0 .75rem; }
+.duo-list { list-style: none; margin: .5rem 0; padding: 0; }
+.duo-list li { display: flex; gap: .5rem; align-items: baseline; padding: .3rem 0; border-top: 1px solid var(--border); }
+.duo-list li:first-child { border-top: 0; }
+.duo-kind { flex: none; width: 1.4em; text-align: center; }
+.duo .card h2 .small { font-weight: normal; }

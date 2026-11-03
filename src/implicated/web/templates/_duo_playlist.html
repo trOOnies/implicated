@@ -1,0 +1,3 @@
+{# After making a playlist from a Duo section. #}
+<p class="notice" role="status">{{ 'Refilled' if refilled else 'Made' }}
+<a href="/playlists/{{ playlist.id }}">{{ playlist.name }}</a> with {{ count }} song{{ 's' if count != 1 }}.</p>

@@ -32,7 +32,7 @@ Then open **<http://127.0.0.1:8000>** and enjoy! The JSON API docs are at **`/do
 | 🛒 **Budget** | Fill a cart of CDs and vinyls, see what it costs, and save or buy it |
 | 🎟️ **Concerts** | Track the shows you want to see and the ones you went to |
 | 🔴 **Live Play** | Follow an album or playlist as you listen, lyrics included |
-| 💾 **Data** | Download your own data as a file, or import one back |
+| 👥 **Duo** | Compare your taste with a friend's for recommendations, and download or import your own data |
 | ❓ **Help** | Read how everything works, right inside the app |
 
 > [!NOTE]
@@ -257,7 +257,7 @@ Anything else is refused, and only the id (and a `t=` start) is stored.
 
 ### 💾 Exporting and importing it
 
-The **Data** page downloads all of it, plus your listening history, as one JSON file, and imports
+The **Duo** page downloads all of it, plus your listening history, as one JSON file, and imports
 such a file back: to move to another computer, to keep a backup, or to start over from a fresh
 database. The same is at `GET /api/data/export` and `POST /api/data/import`, and on the command
 line:
@@ -276,10 +276,35 @@ make import-data FILE=my-data.json
 - ⚠️ **Records the library does not have are skipped** and listed after the import, and the ones
   the file does not name stay as they are. A broken file imports nothing.
 - 👥 **Made to be compared**: every artist, album and song of the library is in the file, with its
-  genres, languages, origin, year and length, and an optional **owner** name. A friend's file
-  makes sense on its own, ready for recommendations from both of your tastes.
+  genres, languages, origin, year and length, and an optional **owner** name, so a friend's file
+  makes sense on its own (see Duo, below).
 
 The format is described in `src/implicated/userdata.py`.
+
+## 👥 Duo
+
+Swap data files with a friend: each of you downloads yours on the Duo page, and adds the other's
+with **Add friend**. Their file is kept in `local/friends/`, next to the library, and **none of it
+goes into your library**. Pick a friend to see a **taste match** (how many of the artists either
+of you likes both of you like), the artists and songs you have in common, the genres you share,
+and these sections:
+
+| Section | What's in it |
+| --- | --- |
+| 💞 **You both love** | Artists, albums and songs you both have as favorites |
+| ⧖ **Listen later, together** | What's on both your listen later lists |
+| 🔁 **Both on repeat** | Songs you have each played 3 times or more |
+| ⏩ **Move it up your queue** | Your listen later records your friend loves or plays a lot |
+| 🎁 ***Friend* recommends** | Records in your library your friend loves and you haven't played |
+| 🔥 ***Friend*'s heavy rotation** | Songs your friend keeps playing that you never played |
+| 📣 **Share with *friend*** | Your favorites they haven't played, or don't even have |
+| 🔭 **Discover** | Artists and albums your friend loves that aren't in your library |
+| 💿 **Swap shelf** | Albums one of you owns on CD or vinyl and the other wants: borrow or lend |
+
+"Loving" a record means a favorite or 4 stars or more, and an album or artist counts as played when
+any of its songs was. Records go by name, as in the data import. A section with songs has a button
+to make them a playlist (*Sol & me: You both love*), refilled when pressed again. Adding a newer
+file under the same name replaces the old one, and *Forget* removes it.
 
 ## 🏗️ Project layout
 
@@ -290,6 +315,7 @@ The format is described in `src/implicated/userdata.py`.
 | `src/implicated/importer.py` | YAML importer for artists, members, albums, songs, covers and lyrics |
 | `src/implicated/concerts.py` | Reads and updates `concerts.csv` for the Concerts page |
 | `src/implicated/userdata.py` | Exports your own data to a JSON file and imports it back |
+| `src/implicated/duo.py` | Keeps friends' data files and compares them with yours for the Duo page |
 | `src/implicated/api/` | JSON routes under `/api/...`, one router (and API page tag) per resource |
 | `src/implicated/web/` | Server-rendered pages: Jinja2, vendored htmx, plain CSS and a little plain JS, with **no build step** |
 
