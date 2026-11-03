@@ -42,6 +42,8 @@ and the song lyrics::
         duration: 1:52
       - name: Intro (instrumental)
         no_lyrics: true           # optional; the song has no words, so no lyrics are missing
+      - name: Everything Has Changed
+        featuring: Ed Sheeran     # optional; a single name or a list, of artists in bands.yaml
 
 Lyrics files are named after the song (see ``lyrics_file_name``): ``/`` becomes ``_`` and the
 characters Windows does not allow in file names (``<>:"\\|?*``) are left out, so "S/C/A/R/E/C/R/O/W"
@@ -55,6 +57,10 @@ lyrics are not missing. The lines themselves are read when they are shown, not i
 Tabs are Guitar Pro files named like the lyrics file (``Sing.gp5``), shown and played on the song
 page. TuxGuitar saves them with File > Save As, choosing Guitar Pro 5 (``.gp5``); its own ``.tg``
 files cannot be read. Songs without a tab simply have none, and the import does not read them.
+
+A song's ``featuring`` replaces the artists it features (``featuring: []`` takes them all away);
+without the key, the ones picked in the app stay. Names that are not an artist of ``bands.yaml``
+(or already in the library) are left out with a warning.
 
 Importing again updates what changed and never touches ratings, notes, favorites, CD and vinyl
 ownership, music videos, song videos, listen later marks, playlists or plays.
@@ -91,7 +97,7 @@ BAND_KEYS = {
 }  # fmt: skip
 MEMBER_KEYS = {"name", "roles", "from", "to"}
 ALBUM_KEYS = {"release_year", "kind", "unreleased", "cover", "songs"}
-SONG_KEYS = {"name", "duration", "no_lyrics"}
+SONG_KEYS = {"name", "duration", "no_lyrics", "featuring"}
 
 # Words that say nothing about which album a cover file belongs to.
 COVER_STOPWORDS = {
@@ -112,6 +118,9 @@ class Report:
     lyrics: int = 0
     lyrics_files: int = 0
     warnings: list[str] = field(default_factory=list)
+    # Songs whose ``featuring`` names artists, linked once every band is in: (song id, names,
+    # where the song is in the files).
+    featuring: list[tuple[int, list[str], str]] = field(default_factory=list, repr=False)
 
     def count(self, kind: str, created: bool) -> None:
         (self.created if created else self.updated)[kind] += 1
@@ -289,7 +298,25 @@ def import_dir(lib: Library, info_dir: str | Path) -> Report:
     raw = _load(info_dir / "bands.yaml")
     with lib.transaction():
         _import_bands(lib, info_dir, raw, report)
+        _import_featuring(lib, report)
     return report
+
+
+def _import_featuring(lib: Library, report: Report) -> None:
+    """Link songs to the artists they feature, now that every artist of ``bands.yaml`` exists
+    (one further down the file may be featured on an earlier one's song)."""
+    for song_id, names, where in report.featuring:
+        own = lib.get_song(song_id).artist_id
+        artist_ids = []
+        for name in names:
+            artist = lib.find_artist(name)
+            if artist is None:
+                report.warnings.append(f"{where}: featured artist {name!r} is not in bands.yaml")
+            elif artist.id == own:
+                report.warnings.append(f"{where}: a song cannot feature its own artist")
+            else:
+                artist_ids.append(artist.id)
+        lib.set_featuring(song_id, artist_ids)
 
 
 def _import_bands(lib: Library, info_dir: Path, raw: object, report: Report) -> None:
@@ -533,6 +560,8 @@ def _import_song(
     else:
         song = lib.create_song(song_in)
     report.count("songs", existing is None)
+    if "featuring" in data:
+        report.featuring.append((song.id, _strings(data["featuring"]), f"{where} / {title}"))
     return song
 
 

@@ -244,6 +244,36 @@ def test_reimport_no_lyrics(lib: Library, info: Path):
     assert any("no_lyrics must be true or false" in w for w in report.warnings)
 
 
+def test_import_featuring(lib: Library, info: Path):
+    albums = info / "bands" / "My Chemical Romance" / "albums.yaml"
+    albums.write_text(
+        MCR_ALBUMS.replace(
+            "    duration: 0:29\n",
+            "    duration: 0:29\n    featuring: [taylor swift, Nobody, My Chemical Romance]\n",
+        )
+    )
+    # Taylor Swift comes after My Chemical Romance in bands.yaml, and is still found.
+    report = import_dir(lib, info)
+    mcr, taylor = lib.find_artist("My Chemical Romance"), lib.find_artist("Taylor Swift")
+    look_alive = lib.find_song(
+        mcr.id, lib.find_album(mcr.id, "Danger Days").id, "Look Alive, Sunshine"
+    )
+    assert [a.id for a in lib.list_featuring(look_alive.id)] == [taylor.id]
+    assert [s.song.id for s in lib.featured_songs(taylor.id)] == [look_alive.id]
+    assert any("featured artist 'Nobody' is not in bands.yaml" in w for w in report.warnings)
+    assert any("cannot feature its own artist" in w for w in report.warnings)
+
+    # Without the key, what the app picked stays; an empty list takes them away.
+    sing = lib.find_song(mcr.id, lib.find_album(mcr.id, "Danger Days").id, "Sing")
+    lib.set_featuring(sing.id, [taylor.id])
+    albums.write_text(
+        MCR_ALBUMS.replace("    duration: 0:29\n", "    duration: 0:29\n    featuring: []\n")
+    )
+    import_dir(lib, info)
+    assert lib.list_featuring(look_alive.id) == []
+    assert [a.id for a in lib.list_featuring(sing.id)] == [taylor.id]
+
+
 def test_reimport_unreleased(lib: Library, info: Path):
     albums = info / "bands" / "My Chemical Romance" / "albums.yaml"
     albums.write_text(

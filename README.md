@@ -61,7 +61,8 @@ info/
                                   #   languages, description, wiki, members
   bands/<artist name>/albums.yaml # album title -> release_year, unreleased: true for scrapped
                                   #   or leaked albums, songs (name, duration,
-                                  #   no_lyrics: true for instrumentals)
+                                  #   no_lyrics: true for instrumentals, featuring:
+                                  #   other artists of bands.yaml on the song)
   bands/<artist name>/band.jpg    # picture of the artist (.jpg, .png, .webp, .avif, ...)
   bands/<artist name>/covers/     # cover images, matched to albums by file name
   bands/<artist name>/songs/      # lyrics, one <song title>.txt per song (empty = missing),
@@ -224,7 +225,7 @@ Besides what the import brings, the app keeps:
 - 📺 **YouTube videos**: one music video per song, plus any number of other videos (lessons, covers,
   live takes), each with a title and a start time, in your own order. Song pages embed them.
 - 🤝 **Featured artists** of songs ("feat."), picked with Edit details on the song page from the
-  other artists in the library. The song page credits them, and each of them lists the song in a
+  other artists in the library, or listed under a song's `featuring` in `albums.yaml`. The song page credits them, and each of them lists the song in a
   Songs featured section on their own page.
 - 📜 **Playlists** of songs, in your own order. Add songs one by one from their page, several at
   once with the Add songs form at the bottom of the playlist, or a whole album at a time from the
