@@ -118,6 +118,13 @@ CREATE TABLE IF NOT EXISTS songs (
     mv               TEXT,
     listen_later     INTEGER NOT NULL DEFAULT 0
 );
+-- Other artists a song features ("feat."), in the order they are credited.
+CREATE TABLE IF NOT EXISTS song_features (
+    song_id   INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+    artist_id INTEGER NOT NULL REFERENCES artists(id) ON DELETE CASCADE,
+    position  INTEGER NOT NULL,
+    PRIMARY KEY (song_id, artist_id)
+);
 CREATE TABLE IF NOT EXISTS song_videos (
     id            INTEGER PRIMARY KEY,
     song_id       INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
@@ -185,6 +192,7 @@ CREATE INDEX IF NOT EXISTS idx_songs_artist ON songs(artist_id);
 CREATE INDEX IF NOT EXISTS idx_plays_song ON plays(song_id);
 CREATE INDEX IF NOT EXISTS idx_playlist_songs_song ON playlist_songs(song_id);
 CREATE INDEX IF NOT EXISTS idx_song_videos_song ON song_videos(song_id);
+CREATE INDEX IF NOT EXISTS idx_song_features_artist ON song_features(artist_id);
 """
 
 # Columns added after the first release: (table, column, declaration). Older databases get them
@@ -236,6 +244,8 @@ SONGS_WHERE = """
      AND (:album_id IS NULL OR s.album_id = :album_id)
      AND (:playlist_id IS NULL OR ps.playlist_id IS NOT NULL)
      AND (:song_ids IS NULL OR s.id IN (SELECT value FROM json_each(:song_ids)))
+     AND (:featuring IS NULL OR EXISTS (SELECT 1 FROM song_features
+                                         WHERE song_id = s.id AND artist_id = :featuring))
      AND (:favorites = 0 OR s.favorite = 1)
      AND (:listen_later = 0 OR s.listen_later = 1)
      AND (:missing_lyrics = 0 OR (s.lyrics IS NULL AND s.no_lyrics = 0))
@@ -862,9 +872,9 @@ class Library:
 
     def copy_album(self, album_id: int, title: str) -> Album:
         """Make a new album of the same artist called ``title`` with everything the album has:
-        its details, cover and songs, with their details, lyrics and videos. Plays and playlist
-        entries stay with the original (copied favorites and listen later marks still land in
-        those playlists)."""
+        its details, cover and songs, with their details, lyrics, featured artists and videos.
+        Plays and playlist entries stay with the original (copied favorites and listen later marks
+        still land in those playlists)."""
         album = self.get_album(album_id)
         title = title.strip()
         if _dashless(title).casefold() == _dashless(album.title).casefold():
@@ -882,6 +892,7 @@ class Library:
                 values = {f.name: getattr(song, f.name) for f in fields(SongIn)}
                 new = self.create_song(SongIn(**{**values, "album_id": copy.id}))
                 self.set_lyrics(new.id, song.lyrics)
+                self.set_featuring(new.id, [a.id for a in self.list_featuring(song.id)])
                 for video in self.list_videos(song.id):
                     self.add_video(
                         new.id, SongVideoIn(video.youtube, video.title, video.start_seconds)
@@ -987,13 +998,15 @@ class Library:
         missing_lyrics: bool = False,
         playlist_id: int | None = None,
         song_ids: list[int] | None = None,
+        featuring: int | None = None,
         order: str = "title",
         favorites_first: bool = False,
         limit: int | None = None,
         offset: int = 0,
     ) -> list[SongSummary]:
         """Songs matching every filter given (``missing_lyrics``: songs with words but no lyrics
-        yet), and only ``limit`` of them after the first ``offset``; ``order="playlist"`` keeps
+        yet; ``featuring``: songs of other artists that feature this one), and only ``limit``
+        of them after the first ``offset``; ``order="playlist"`` keeps
         the order of the songs in ``playlist_id``, and ``favorites_first`` goes before it."""
         order_by = {
             "title": "s.title COLLATE NOCASE",
@@ -1021,6 +1034,7 @@ class Library:
                 missing_lyrics,
                 playlist_id,
                 song_ids,
+                featuring,
             ),
             "limit": -1 if limit is None else limit,
             "offset": offset,
@@ -1066,12 +1080,14 @@ class Library:
         missing_lyrics: bool,
         playlist_id: int | None = None,
         song_ids: list[int] | None = None,
+        featuring: int | None = None,
     ) -> dict:
         return {
             "artist_id": artist_id,
             "album_id": album_id,
             "playlist_id": playlist_id,
             "song_ids": None if song_ids is None else json.dumps(song_ids),
+            "featuring": featuring,
             "favorites": int(favorites),
             "listen_later": int(listen_later),
             "missing_lyrics": int(missing_lyrics),
@@ -1152,6 +1168,11 @@ class Library:
                        mv = :mv, listen_later = :listen_later
                    WHERE id = :id""",
                 {**self._song_values(data), "id": song_id},
+            )
+            # An artist is not featured on its own song.
+            conn.execute(
+                "DELETE FROM song_features WHERE song_id = ? AND artist_id = ?",
+                (song_id, data.artist_id),
             )
         self._sync_marks(song_id)
         # A renamed song takes its lyrics, timed lyrics and tab files along (copies, if another
@@ -1287,6 +1308,41 @@ class Library:
         values["mv"] = youtube_id(data.mv, "mv")
         values["listen_later"] = int(data.listen_later)
         return values
+
+    # Featured artists
+
+    def list_featuring(self, song_id: int) -> list[Artist]:
+        """The other artists the song features, in the order they are credited."""
+        self.get_song(song_id)
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT a.* FROM song_features f JOIN artists a ON a.id = f.artist_id
+                    WHERE f.song_id = ? ORDER BY f.position""",
+                (song_id,),
+            ).fetchall()
+        return [_artist(row) for row in rows]
+
+    def set_featuring(self, song_id: int, artist_ids: list[int]) -> list[Artist]:
+        """Replace the artists the song features with ``artist_ids``, in that order (repeats
+        count once). The song's own artist cannot be one of them."""
+        song = self.get_song(song_id)
+        artist_ids = list(dict.fromkeys(artist_ids))
+        for artist_id in artist_ids:
+            self.get_artist(artist_id)
+            if artist_id == song.artist_id:
+                raise ValueError("a song cannot feature its own artist")
+        with self.connect() as conn:
+            conn.execute("DELETE FROM song_features WHERE song_id = ?", (song_id,))
+            conn.executemany(
+                "INSERT INTO song_features (song_id, artist_id, position) VALUES (?, ?, ?)",
+                [(song_id, artist_id, i) for i, artist_id in enumerate(artist_ids)],
+            )
+        return self.list_featuring(song_id)
+
+    def featured_songs(self, artist_id: int) -> list[SongSummary]:
+        """Songs of other artists that feature this one, A–Z."""
+        self.get_artist(artist_id)
+        return self.list_songs(featuring=artist_id)
 
     # Song videos
 

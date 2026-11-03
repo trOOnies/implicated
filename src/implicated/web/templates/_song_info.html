@@ -14,10 +14,11 @@
     <button type="button" hx-post="/songs/{{ s.song.id }}/play" hx-vals='{"ctx": "page"}'
             hx-target="#song-info" hx-swap="outerHTML" title="Log a listen">▶ Played</button>
     <button type="button" class="secondary" hx-get="/fragments/songs/{{ s.song.id }}/details"
-            hx-target="#song-info" hx-swap="outerHTML">Edit notes &amp; MV</button>
+            hx-target="#song-info" hx-swap="outerHTML">Edit details</button>
   </div>
   <p class="muted">
-    <a href="/artists/{{ artist.id }}">{{ artist.name }}</a>
+    <a href="/artists/{{ artist.id }}">{{ artist.name }}</a>{% if featuring %}
+    <span class="featuring">feat. {% for a in featuring %}<a href="/artists/{{ a.id }}">{{ a.name }}</a>{{ ', ' if not loop.last }}{% endfor %}</span>{% endif %}
     · {% if s.song.album_id %}{% if s.song.track_number %}track {{ s.song.track_number }} of {% endif %}<a href="/albums/{{ s.song.album_id }}">{{ s.album_title }}</a>{% else %}single{% endif %}
     · {{ s.song.duration_seconds | duration }}
     · {{ s.play_count }} plays · last played {{ s.last_played | when }}

@@ -73,8 +73,8 @@ info/
 
 > [!IMPORTANT]
 > Re-importing updates what changed and **keeps** your ratings, notes, favorites, CD and vinyl
-> ownership, music videos, song videos, listen later marks, playlists and plays. A broken file
-> rolls the whole import back and is reported in the server log.
+> ownership, music videos, featured artists, song videos, listen later marks, playlists and
+> plays. A broken file rolls the whole import back and is reported in the server log.
 
 - 🔗 **`wiki`** must be a link to a Wikipedia article (`https://<lang>.wikipedia.org/wiki/<title>`).
   Any other link is ignored with a warning, and the API and forms refuse it.
@@ -223,6 +223,9 @@ Besides what the import brings, the app keeps:
   (CD), Owned (CD), Wanted (Vinyl) and Owned (Vinyl).
 - 📺 **YouTube videos**: one music video per song, plus any number of other videos (lessons, covers,
   live takes), each with a title and a start time, in your own order. Song pages embed them.
+- 🤝 **Featured artists** of songs ("feat."), picked with Edit details on the song page from the
+  other artists in the library. The song page credits them, and each of them lists the song in a
+  Songs featured section on their own page.
 - 📜 **Playlists** of songs, in your own order. Add songs one by one from their page, several at
   once with the Add songs form at the bottom of the playlist, or a whole album at a time from the
   album page. A song is in a playlist at most once.

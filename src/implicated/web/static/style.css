@@ -434,3 +434,10 @@ details.budget > .row { margin-top: .5rem; }
 
 /* Concerts you are going to stand out */
 .concerts tr.going td { background: var(--accent-soft); }
+
+/* Featured artists of a song */
+.featuring { margin-left: .2rem; }
+fieldset.featuring-pick { border: 1px solid var(--border); border-radius: 6px; padding: .4rem .7rem .6rem; margin: 0; }
+fieldset.featuring-pick legend { font-size: .85rem; color: var(--muted); padding: 0 .3rem; }
+.pick-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: .2rem .8rem; max-height: 12rem; overflow-y: auto; }
+.pick-list label.check { color: var(--text); }

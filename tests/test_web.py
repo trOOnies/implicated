@@ -577,10 +577,71 @@ def test_artist_notes(client: TestClient, client_lib: Library, web_sample: Sampl
     assert (artist.notes, artist.listen_later) == ("Saw them in 2022", True)
 
 
+def test_song_featuring(client: TestClient, client_lib: Library, web_sample: Sample):
+    song_id, other_id = web_sample.song_ids
+    tricky = client_lib.create_artist(ArtistIn("Tricky"))
+    massive = client_lib.create_artist(ArtistIn("Massive Attack"))
+    assert "feat." not in client.get(f"/songs/{song_id}").text
+    assert "Songs featured" not in client.get(f"/artists/{tricky.id}").text
+
+    # The form offers every other artist, not the song's own.
+    edit = client.get(f"/fragments/songs/{song_id}/details").text
+    assert f'name="featuring" value="{tricky.id}"' in edit
+    assert f'name="featuring" value="{massive.id}"' in edit
+    assert f'value="{web_sample.artist_id}"' not in edit
+
+    form = {"notes": "Duet", "mv": "", "featuring": [str(massive.id), str(tricky.id)]}
+    info = client.post(f"/songs/{song_id}/details", data=form)
+    assert info.status_code == 200
+    assert re.search(
+        rf'feat\. <a href="/artists/{massive.id}">Massive Attack</a>, '
+        rf'<a href="/artists/{tricky.id}">Tricky</a>',
+        info.text,
+    )
+    assert [a.id for a in client_lib.list_featuring(song_id)] == [massive.id, tricky.id]
+    assert client_lib.get_song(song_id).notes == "Duet"
+
+    # Ticked, and listed first in their order, when editing again.
+    edit = client.get(f"/fragments/songs/{song_id}/details").text
+    assert f'value="{massive.id}" checked' in edit and f'value="{tricky.id}" checked' in edit
+    assert edit.index("Massive Attack") < edit.index("Tricky")
+
+    # The featured artist's page lists the song, by its own artist, without editing it.
+    page = client.get(f"/artists/{tricky.id}").text
+    assert "Songs featured" in page and f'href="/songs/{song_id}">Mysterons</a>' in page
+    assert f'href="/songs/{other_id}"' not in page
+    card = page[page.index("Songs featured") :]
+    assert "<th>Artist</th>" in card and "Portishead" in card
+    assert f"/fragments/songs/{song_id}/edit" not in card and f"/songs/{song_id}/delete" not in card
+    fragment = client.get(f"/fragments/artists/{tricky.id}/featured").text
+    assert "Songs featured" in fragment and '"ctx": "featured"' in fragment
+    played = client.post(f"/songs/{song_id}/play", data={"ctx": "featured"}).text
+    assert "<td><a href" in played and "/delete" not in played
+    assert client.get("/fragments/artists/99/featured").status_code == 404
+
+    # Bad picks are refused and keep the form as it was.
+    for featuring, message in [
+        ([str(web_sample.artist_id)], "own artist"),
+        (["99"], "no longer in the library"),
+        (["x"], "artist ids"),
+    ]:
+        bad = client.post(
+            f"/songs/{song_id}/details", data={"notes": "Changed", "featuring": featuring}
+        )
+        assert bad.status_code == 422 and message in bad.text and "Changed" in bad.text
+    assert client_lib.get_song(song_id).notes == "Duet"
+    assert len(client_lib.list_featuring(song_id)) == 2
+
+    # Unticking every artist takes the credits away.
+    client.post(f"/songs/{song_id}/details", data={"notes": "Duet"})
+    assert client_lib.list_featuring(song_id) == []
+    assert "Songs featured" not in client.get(f"/fragments/artists/{tricky.id}/featured").text
+
+
 def test_song_notes_and_music_video(client: TestClient, client_lib: Library, web_sample: Sample):
     song_id = web_sample.song_ids[0]
     page = client.get(f"/songs/{song_id}").text
-    assert "Edit notes &amp; MV" in page and "Music video" not in page
+    assert "Edit details" in page and "Music video" not in page
 
     edit = client.get(f"/fragments/songs/{song_id}/details").text
     assert 'name="notes"' in edit and 'name="mv"' in edit

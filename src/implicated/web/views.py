@@ -436,6 +436,7 @@ def _artist_context(lib: Library, artist_id: int) -> dict:
     return {
         **_artist_info_context(lib, artist_id),
         "albums": albums,
+        "featured": lib.featured_songs(artist_id),
         "album_plays": [Point(a.album.title, a.play_count) for a in albums if a.play_count],
     }
 
@@ -458,6 +459,13 @@ def artist_edit(request: Request, lib: Lib, artist_id: int):
 @router.get("/fragments/artists/{artist_id}/albums")
 def artist_albums(request: Request, lib: Lib, artist_id: int):
     return render(request, "_albums.html", albums=lib.list_albums(artist_id), show_artist=False)
+
+
+@router.get("/fragments/artists/{artist_id}/featured")
+def artist_featured(request: Request, lib: Lib, artist_id: int):
+    """The Songs featured card, gone again when no song features the artist any more."""
+    featured = found(lib.featured_songs, artist_id)
+    return render(request, "_featured.html", featured=featured)
 
 
 @router.post("/artists/{artist_id}")
@@ -834,9 +842,10 @@ async def create_song(request: Request, lib: Lib):
 
 
 def _ctx(form_or_query) -> str:
-    """Where a song row is shown; "page" is the song's own page, "playlist" a playlist's."""
+    """Where a song row is shown; "page" is the song's own page, "playlist" a playlist's and
+    "featured" the Songs featured card of an artist the song features."""
     ctx = form_or_query.get("ctx") or "all"
-    return ctx if ctx in ("all", "album", "playlist", "page") else "all"
+    return ctx if ctx in ("all", "album", "playlist", "page", "featured") else "all"
 
 
 def _lyrics_context(lib: Library, song_id: int, **extra) -> dict:
@@ -877,6 +886,7 @@ def _song_info_context(lib: Library, song_id: int) -> dict:
         "s": summary,
         "artist": lib.get_artist(summary.song.artist_id),
         "album": lib.get_album(album_id) if album_id else None,
+        "featuring": lib.list_featuring(song_id),
         "previous": previous,
         "following": following,
     }
@@ -1012,35 +1022,55 @@ def song_info(request: Request, lib: Lib, song_id: int):
     return render(request, "_song_info.html", **_song_info_context(lib, song_id))
 
 
+def _song_details_context(lib: Library, song: Song, form, featuring: list[int]) -> dict:
+    """The details form; it offers every other artist to feature, the ``featuring`` ones
+    ticked (and listed first, in their order)."""
+    others = [a.artist for a in lib.list_artists() if a.artist.id != song.artist_id]
+    rank = {artist_id: i for i, artist_id in enumerate(featuring)}
+    others.sort(key=lambda artist: rank.get(artist.id, len(rank)))
+    return {"song": song, "form": form, "artists": others, "featuring": set(featuring)}
+
+
+def _featuring_ids(form: FormData) -> list[int]:
+    try:
+        return [int(value) for value in form.getlist("featuring")]
+    except ValueError:
+        raise ValueError("featuring must be artist ids") from None
+
+
 @router.get("/fragments/songs/{song_id}/details")
 def song_details_edit(request: Request, lib: Lib, song_id: int):
     song = found(lib.get_song, song_id)
+    form = {"notes": song.notes or "", "mv": song.mv or ""}
+    featuring = [artist.id for artist in lib.list_featuring(song_id)]
     return render(
-        request,
-        "_song_details_edit.html",
-        song=song,
-        form={"notes": song.notes or "", "mv": song.mv or ""},
+        request, "_song_details_edit.html", **_song_details_context(lib, song, form, featuring)
     )
 
 
 @router.post("/songs/{song_id}/details")
 async def update_song_details(request: Request, lib: Lib, song_id: int):
-    """Change only the notes and the music video of a song, from its page."""
+    """Change only the notes, the music video and the featured artists of a song, from its
+    page."""
     form = await request.form()
     song = found(lib.get_song, song_id)
     data = song_in(song)
     data.notes = _text(form, "notes")
     data.mv = _text(form, "mv")
+    featuring: list[int] = []
     try:
-        lib.update_song(song_id, data)
-    except ValueError as exc:
+        featuring = _featuring_ids(form)
+        with lib.transaction():
+            lib.update_song(song_id, data)
+            lib.set_featuring(song_id, featuring)
+    except (ValueError, NotFound) as exc:
+        message = "That artist is no longer in the library." if isinstance(exc, NotFound) else exc
         return render(
             request,
             "_song_details_edit.html",
             status_code=422,
-            error=str(exc),
-            song=song,
-            form=form,
+            error=str(message),
+            **_song_details_context(lib, song, form, featuring),
         )
     return render(
         request,

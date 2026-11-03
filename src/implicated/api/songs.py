@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import FileResponse
 
 from implicated.api.deps import Lib, call
-from implicated.models import Song, SongIn, SongSummary
+from implicated.models import Artist, Song, SongIn, SongSummary
 
 router = APIRouter(prefix="/songs", tags=["Songs"])
 
@@ -48,6 +48,18 @@ def update_song(lib: Lib, song_id: int, data: SongIn) -> Song:
 def delete_song(lib: Lib, song_id: int) -> Response:
     call(lib.delete_song, song_id)
     return Response(status_code=204)
+
+
+@router.get("/{song_id}/featuring")
+def list_featuring(lib: Lib, song_id: int) -> list[Artist]:
+    """The other artists the song features ("feat."), in the order they are credited."""
+    return call(lib.list_featuring, song_id)
+
+
+@router.put("/{song_id}/featuring")
+def set_featuring(lib: Lib, song_id: int, artist_ids: list[int]) -> list[Artist]:
+    """Replace the artists the song features with these artist ids, in this order."""
+    return call(lib.set_featuring, song_id, artist_ids)
 
 
 @router.get("/{song_id}/tab", response_class=FileResponse)

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Response
 from fastapi.responses import FileResponse
 
 from implicated.api.deps import Lib, call, image
-from implicated.models import Artist, ArtistIn, ArtistSummary
+from implicated.models import Artist, ArtistIn, ArtistSummary, SongSummary
 
 router = APIRouter(prefix="/artists", tags=["Artists"])
 
@@ -48,6 +48,12 @@ def update_artist(lib: Lib, artist_id: int, data: ArtistIn) -> Artist:
 def delete_artist(lib: Lib, artist_id: int) -> Response:
     call(lib.delete_artist, artist_id)
     return Response(status_code=204)
+
+
+@router.get("/{artist_id}/featured")
+def featured_songs(lib: Lib, artist_id: int) -> list[SongSummary]:
+    """Songs of other artists that feature this one."""
+    return call(lib.featured_songs, artist_id)
 
 
 @router.get("/{artist_id}/image", response_class=FileResponse)

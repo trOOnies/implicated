@@ -50,6 +50,26 @@ def test_member_routes(client: TestClient, web_sample: Sample):
     assert client.put("/api/artists/99/members", json=[]).status_code == 404
 
 
+def test_featuring_routes(client: TestClient, web_sample: Sample):
+    song_id = web_sample.song_ids[0]
+    tricky = client.post("/api/artists", json={"name": "Tricky"}).json()
+    url = f"/api/songs/{song_id}/featuring"
+    assert client.get(url).json() == []
+
+    saved = client.put(url, json=[tricky["id"]])
+    assert saved.status_code == 200 and [a["name"] for a in saved.json()] == ["Tricky"]
+    assert [a["id"] for a in client.get(url).json()] == [tricky["id"]]
+    featured = client.get(f"/api/artists/{tricky['id']}/featured").json()
+    assert [(s["song"]["title"], s["artist_name"]) for s in featured] == [
+        ("Mysterons", "Portishead")
+    ]
+
+    assert client.put(url, json=[web_sample.artist_id]).status_code == 422
+    assert client.put(url, json=[99]).status_code == 404
+    assert client.get("/api/songs/99/featuring").status_code == 404
+    assert client.get("/api/artists/99/featured").status_code == 404
+
+
 def test_album_routes(client: TestClient, web_sample: Sample):
     body = {"artist_id": web_sample.artist_id, "title": "Third", "year": 2008}
     album = client.post("/api/albums", json=body).json()
@@ -151,6 +171,8 @@ def test_routes_are_grouped_by_tag(client: TestClient):
     assert tags[("put", "/api/artists/{artist_id}/members")] == ["Members"]
     assert tags[("get", "/api/albums/{album_id}/cover")] == ["Albums"]
     assert tags[("post", "/api/songs/{song_id}/plays")] == ["Plays"]
+    assert tags[("put", "/api/songs/{song_id}/featuring")] == ["Songs"]
+    assert tags[("get", "/api/artists/{artist_id}/featured")] == ["Artists"]
     assert tags[("put", "/api/playlists/{playlist_id}/songs")] == ["Playlists"]
     assert tags[("post", "/api/budget/cart/items")] == ["Budget"]
     assert tags[("get", "/api/stats")] == ["Stats"]

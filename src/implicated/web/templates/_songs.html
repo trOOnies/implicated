@@ -1,4 +1,5 @@
-{# ctx is "all" (with a `pager`), "album" or "playlist" (with `playlist_id`); it decides which
+{# ctx is "all" (with a `pager`), "album", "playlist" (with `playlist_id`) or "featured" (an
+   artist's Songs featured card); it decides which
    columns and buttons rows show. #}
 {% if pager %}{% with noun='songs', target='songs', place='top' %}{% include "_pager.html" %}{% endwith %}{% endif %}
 {% if songs %}
@@ -8,7 +9,7 @@
     <tr>
       {% if ctx == 'album' %}<th data-type="number">#</th>{% endif %}
       <th></th><th>Title</th>
-      {% if ctx in ('all', 'playlist') %}<th>Artist</th>{% endif %}
+      {% if ctx in ('all', 'playlist', 'featured') %}<th>Artist</th>{% endif %}
       {% if ctx != 'album' %}<th>Album</th>{% endif %}
       {% if ctx == 'all' %}<th data-type="number">Missing lyrics</th>{% endif %}
       <th data-type="number">Length</th><th data-type="number">Rating</th>

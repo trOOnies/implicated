@@ -1,0 +1,7 @@
+{# Songs of other artists that feature this one; nothing at all when there are none. #}
+{% if featured %}
+<section class="card">
+  <h2>Songs featured</h2>
+  {% with songs=featured, ctx='featured', pager=None %}{% include "_songs.html" %}{% endwith %}
+</section>
+{% endif %}

@@ -16,6 +16,12 @@
   </div>
 </section>
 
+{# Songs of other artists that feature this one; reloaded when a song is deleted. #}
+<div id="featured" hx-get="/fragments/artists/{{ artist.id }}/featured"
+     hx-trigger="songs-changed from:body" hx-swap="innerHTML">
+  {% include "_featured.html" %}
+</div>
+
 <div class="grid">
   {% if album_plays %}
   <div class="card">{{ bar_chart(album_plays, "Plays per album") }}</div>

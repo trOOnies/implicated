@@ -50,7 +50,9 @@
       only favorites, listen later or the ones <em>missing lyrics</em>. The Missing lyrics column marks the songs that
       still need theirs. Songs are edited on their album's page, not here. Open a song to read its lyrics, or press <em>Open lyrics file</em> to
       write them in your text editor; save the file and press <em>Reload lyrics</em>.
-      <em>Edit notes &amp; MV</em> on a song's page takes your notes and the song's music video.
+      <em>Edit details</em> on a song's page takes your notes, the song's music video and the
+      other artists it features: they show as <em>feat.</em> next to the song's artist, and the
+      song shows in the <strong>Songs featured</strong> section of their own pages.
       The <strong>Videos</strong> card below holds as many other videos as you like (lessons,
       covers, live takes), each with a title and where to start playing, which you can reorder.
       Paste YouTube links (<code>youtube.com/watch?v=…</code>, <code>youtu.be/…</code>, shorts,
@@ -149,15 +151,15 @@
     timestamp per line like <code>[01:23.40]Words</code>; an empty <code>.txt</code> takes its words from it.</p>
     <p>🔄 The server imports the folder <strong>every time it starts</strong>, so restart it
     after editing the files. Importing again updates what changed and keeps your ratings, notes,
-    favorites, CD and vinyl ownership, music videos, song videos, listen later marks, playlists
-    and plays. Problems are listed in the server log.</p>
+    favorites, CD and vinyl ownership, music videos, featured artists, song videos, listen later
+    marks, playlists and plays. Problems are listed in the server log.</p>
   </section>
 
   <section class="card">
     <h2>🔌 API</h2>
     <p>Everything is also available as JSON under <code>/api</code>. The
     <a href="/docs">API page</a> lists every route, grouped by what it works on (artists,
-    members, albums, songs, song videos, playlists, plays and stats), and lets you try them in the browser.</p>
+    members, albums, songs, featured artists, song videos, playlists, plays and stats), and lets you try them in the browser.</p>
   </section>
 
   <section class="card">

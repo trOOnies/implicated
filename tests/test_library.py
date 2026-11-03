@@ -289,6 +289,59 @@ def test_song_crud(lib: Library, sample: Sample):
         lib.update_song(song.id, SongIn(sample.artist_id, "Gone"))
 
 
+def test_featuring(lib: Library, sample: Sample):
+    song_id = sample.song_ids[0]
+    tricky = lib.create_artist(ArtistIn("Tricky"))
+    massive = lib.create_artist(ArtistIn("Massive Attack"))
+    assert lib.list_featuring(song_id) == []
+    assert lib.featured_songs(tricky.id) == []
+
+    featuring = lib.set_featuring(song_id, [tricky.id, massive.id, tricky.id])
+    assert [a.name for a in featuring] == ["Tricky", "Massive Attack"]
+    assert [s.song.title for s in lib.featured_songs(tricky.id)] == ["Mysterons"]
+    assert lib.featured_songs(tricky.id)[0].artist_name == "Portishead"
+    assert lib.list_songs(featuring=massive.id)[0].song.id == song_id
+    assert lib.featured_songs(sample.artist_id) == []
+
+    # In the order given, and replaced as a whole.
+    assert [a.name for a in lib.set_featuring(song_id, [massive.id, tricky.id])] == [
+        "Massive Attack", "Tricky",
+    ]  # fmt: skip
+    assert [a.name for a in lib.set_featuring(song_id, [massive.id])] == ["Massive Attack"]
+    assert lib.featured_songs(tricky.id) == []
+
+    # Editing the song keeps them; they go with the song or the featured artist.
+    lib.update_song(song_id, SongIn(sample.artist_id, "Mysterons", sample.album_id, 1, rating=4))
+    assert [a.id for a in lib.list_featuring(song_id)] == [massive.id]
+    lib.delete_artist(massive.id)
+    assert lib.list_featuring(song_id) == []
+    lib.set_featuring(song_id, [tricky.id])
+    lib.delete_song(song_id)
+    assert lib.featured_songs(tricky.id) == []
+
+
+def test_featuring_validation(lib: Library, sample: Sample):
+    song_id = sample.song_ids[0]
+    tricky = lib.create_artist(ArtistIn("Tricky"))
+    lib.set_featuring(song_id, [tricky.id])
+    with pytest.raises(ValueError, match="own artist"):
+        lib.set_featuring(song_id, [sample.artist_id])
+    with pytest.raises(NotFound):
+        lib.set_featuring(song_id, [tricky.id, 99])
+    assert [a.id for a in lib.list_featuring(song_id)] == [tricky.id]  # left as it was
+    with pytest.raises(NotFound):
+        lib.set_featuring(99, [tricky.id])
+    with pytest.raises(NotFound):
+        lib.list_featuring(99)
+    with pytest.raises(NotFound):
+        lib.featured_songs(99)
+
+    # A featured artist who becomes the song's own artist stops being featured on it.
+    album = lib.create_album(AlbumIn(tricky.id, "Maxinquaye"))
+    lib.update_song(song_id, SongIn(tricky.id, "Mysterons", album.id))
+    assert lib.list_featuring(song_id) == []
+
+
 @pytest.mark.parametrize(
     "changes, message",
     [
@@ -974,6 +1027,8 @@ def test_copy_album(lib: Library, sample: Sample, image):
     lib.set_lyrics(first, "Did you really want")
     lib.add_video(first, SongVideoIn("aaaaaaaaaaa", "Lesson", 12))
     lib.record_play(second)
+    tricky = lib.create_artist(ArtistIn("Tricky"))
+    lib.set_featuring(second, [tricky.id])
 
     copy = lib.copy_album(sample.album_id, " Dummy (Deluxe) ")
     assert copy.id != sample.album_id
@@ -996,6 +1051,8 @@ def test_copy_album(lib: Library, sample: Sample, image):
     video = lib.list_videos(mysterons.id)[0]
     assert (video.youtube, video.title, video.start_seconds) == ("aaaaaaaaaaa", "Lesson", 12)
     assert songs[1].play_count == 0  # plays stay with the original
+    assert [a.id for a in lib.list_featuring(sour_times.id)] == [tricky.id]
+    assert len(lib.featured_songs(tricky.id)) == 2
     assert len(lib.list_songs(album_id=sample.album_id)) == 2
 
 
