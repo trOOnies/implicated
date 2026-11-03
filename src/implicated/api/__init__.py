@@ -12,6 +12,7 @@ from implicated.api import (
     albums,
     artists,
     budget,
+    data,
     members,
     playlists,
     plays,
@@ -47,8 +48,13 @@ TAGS = [
         "where to buy them and the total, and the budgets saved from it.",
     },
     {"name": "Stats", "description": "Totals and chart data for the whole library."},
+    {
+        "name": "Your data",
+        "description": "Download your marks, ratings, notes, playlists and plays as a JSON file, "
+        "and import such a file back.",
+    },
 ]
 
 router = APIRouter(prefix="/api")
-for module in (artists, members, albums, songs, videos, playlists, plays, budget, stats):
+for module in (artists, members, albums, songs, videos, playlists, plays, budget, stats, data):
     router.include_router(module.router)

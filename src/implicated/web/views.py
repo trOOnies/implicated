@@ -65,6 +65,7 @@ from implicated.models import (
     SongIn,
     SongVideoIn,
 )
+from implicated.userdata import ImportReport, import_data, read_file
 from implicated.web import editor, shutdown
 
 logger = logging.getLogger("uvicorn.error")  # like the app's own messages
@@ -329,6 +330,40 @@ def view_fragment(request: Request, lib: Lib):
 @router.get("/help")
 def help_page(request: Request):
     return render(request, "help.html")
+
+
+@router.get("/data")
+def data_page(request: Request, lib: Lib):
+    return render(request, "data.html", stats=lib.stats())
+
+
+@router.post("/data/import")
+async def import_data_file(request: Request, lib: Lib):
+    """Import a file downloaded with Export: the result, and every list refreshes."""
+    form = await request.form()
+    upload = form.get("file")
+    if upload is None or isinstance(upload, str) or not upload.filename:
+        return render(request, "_data_import.html", status_code=422, error="Pick a file first.")
+    try:
+        report: ImportReport = import_data(lib, read_file(await upload.read()))
+    except ValueError as exc:
+        return render(request, "_data_import.html", status_code=422, error=str(exc))
+    logger.info("Imported %s:\n%s", upload.filename, report.summary())
+    return render(
+        request,
+        "_data_import.html",
+        report=report,
+        file_name=upload.filename,
+        trigger=(
+            "artists-changed",
+            "albums-changed",
+            "songs-changed",
+            "plays-changed",
+            "playlists-changed",
+            "videos-changed",
+            "library-changed",
+        ),  # fmt: skip
+    )
 
 
 @router.post("/exit")

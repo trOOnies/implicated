@@ -16,6 +16,10 @@ seed: ## Fill the local library with demo data
 	$(PYTHON) -m implicated.seed
 import: ## Import artists, albums, songs and covers from info/
 	$(PYTHON) -m implicated.importer info
+export-data: ## Download your own data to a JSON file (OWNER=name to add yours)
+	$(PYTHON) -m implicated.userdata export $(if $(OWNER),--owner "$(OWNER)")
+import-data: ## Import your own data from a JSON file: make import-data FILE=...
+	$(PYTHON) -m implicated.userdata import "$(FILE)"
 test: ## Run the test suite
 	$(PYTHON) -m pytest --cov
 lint: ## Apply the linter

@@ -1,0 +1,21 @@
+{# The result of importing a data file: its `report`, or the `error` that stopped it. #}
+<div id="data-import">
+  {% if error %}<p class="error">{{ error }} Nothing was imported.</p>{% endif %}
+  {% if report %}
+  <p class="notice" role="status">
+    Imported {{ file_name }}{% if report.owner %} ({{ report.owner }}'s data){% endif %}:
+    {{ report.matched.artists }} artists, {{ report.matched.albums }} albums and
+    {{ report.matched.songs }} songs updated, {{ report.plays_added }} plays added,
+    {{ report.playlists_created }} playlists created and {{ report.playlists_updated }} updated.
+  </p>
+  {% set skipped = report.skipped.values() | sum %}
+  {% if report.warnings %}
+  <details{% if skipped %} open{% endif %}>
+    <summary>{{ report.warnings | length }} warning{{ 's' if report.warnings | length != 1 }}{% if skipped %}, {{ skipped }} record{{ 's' if skipped != 1 }} not in your library{% endif %}</summary>
+    <ul class="small">
+      {% for w in report.warnings %}<li>{{ w }}</li>{% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+  {% endif %}
+</div>

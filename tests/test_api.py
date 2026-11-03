@@ -160,7 +160,7 @@ def test_routes_are_grouped_by_tag(client: TestClient):
     schema = client.get("/openapi.json").json()
     assert [t["name"] for t in schema["tags"]] == [
         "Artists", "Members", "Albums", "Songs", "Song videos", "Playlists", "Plays",
-        "Budget", "Stats",
+        "Budget", "Stats", "Your data",
     ]  # fmt: skip
     tags = {
         (method, path): op["tags"]
@@ -176,6 +176,7 @@ def test_routes_are_grouped_by_tag(client: TestClient):
     assert tags[("put", "/api/playlists/{playlist_id}/songs")] == ["Playlists"]
     assert tags[("post", "/api/budget/cart/items")] == ["Budget"]
     assert tags[("get", "/api/stats")] == ["Stats"]
+    assert tags[("post", "/api/data/import")] == ["Your data"]
     assert all(len(t) == 1 for t in tags.values())
     assert not any(path.startswith("/fragments") for path in schema["paths"])
 

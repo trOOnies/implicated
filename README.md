@@ -32,6 +32,7 @@ Then open **<http://127.0.0.1:8000>** and enjoy! The JSON API docs are at **`/do
 | 🛒 **Budget** | Fill a cart of CDs and vinyls, see what it costs, and save or buy it |
 | 🎟️ **Concerts** | Track the shows you want to see and the ones you went to |
 | 🔴 **Live Play** | Follow an album or playlist as you listen, lyrics included |
+| 💾 **Data** | Download your own data as a file, or import one back |
 | ❓ **Help** | Read how everything works, right inside the app |
 
 > [!NOTE]
@@ -254,6 +255,32 @@ Anything else is refused, and only the id (and a `t=` start) is stored.
 
 </details>
 
+### 💾 Exporting and importing it
+
+The **Data** page downloads all of it, plus your listening history, as one JSON file, and imports
+such a file back: to move to another computer, to keep a backup, or to start over from a fresh
+database. The same is at `GET /api/data/export` and `POST /api/data/import`, and on the command
+line:
+
+```sh
+make export-data                   # implicated-<date>.json (OWNER=Sol adds your name to it)
+make import-data FILE=my-data.json
+```
+
+- 🏷️ **Records go by name**, not by database id: artists by name, albums by artist and title,
+  songs by artist, album and title, compared like the import does (ignoring case and kinds of
+  dash). So import `info/` first, then your data.
+- 🔁 **Each record in the file is the full picture** of it: its marks, rating, notes, ownership,
+  music video, featured artists and videos become the file's. Plays are **added** (never twice
+  at the same moment), and playlists are created, or have their songs replaced, by name.
+- ⚠️ **Records the library does not have are skipped** and listed after the import, and the ones
+  the file does not name stay as they are. A broken file imports nothing.
+- 👥 **Made to be compared**: every artist, album and song of the library is in the file, with its
+  genres, languages, origin, year and length, and an optional **owner** name. A friend's file
+  makes sense on its own, ready for recommendations from both of your tastes.
+
+The format is described in `src/implicated/userdata.py`.
+
 ## 🏗️ Project layout
 
 | Path | What's there |
@@ -262,6 +289,7 @@ Anything else is refused, and only the id (and a `t=` start) is stored.
 | `src/implicated/library.py` | SQLite storage and stats |
 | `src/implicated/importer.py` | YAML importer for artists, members, albums, songs, covers and lyrics |
 | `src/implicated/concerts.py` | Reads and updates `concerts.csv` for the Concerts page |
+| `src/implicated/userdata.py` | Exports your own data to a JSON file and imports it back |
 | `src/implicated/api/` | JSON routes under `/api/...`, one router (and API page tag) per resource |
 | `src/implicated/web/` | Server-rendered pages: Jinja2, vendored htmx, plain CSS and a little plain JS, with **no build step** |
 
