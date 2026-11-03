@@ -64,7 +64,8 @@ info/
                                   #   no_lyrics: true for instrumentals)
   bands/<artist name>/band.jpg    # picture of the artist (.jpg, .png, .webp, .avif, ...)
   bands/<artist name>/covers/     # cover images, matched to albums by file name
-  bands/<artist name>/songs/      # lyrics, one <song title>.txt per song (empty = missing)
+  bands/<artist name>/songs/      # lyrics, one <song title>.txt per song (empty = missing),
+                                  #   and optional timed lyrics, <song title>.lrc
   bands/<artist name>/tabs/       # optional guitar tabs, <song title>.gp5 (or .gp, .gpx, .gp4, .gp3)
   concerts.csv                    # optional: concerts for the Concerts page (see below)
   tours.csv                       # optional: tours the Add concert form offers
@@ -95,6 +96,23 @@ in file names (`<>:"\|?*`) left out, so `S/C/A/R/E/C/R/O/W` is `S_C_A_R_E_C_R_O_
   of songs that have them, and the Albums and Songs pages can show only what still needs them.
 - 🎼 **Instrumentals** have `no_lyrics` (set in `albums.yaml`, or with the No lyrics box when adding
   or editing a song), so they never count as missing.
+
+### ⏱️ Timed lyrics
+
+A song can also have an `.lrc` file next to its `.txt`, with the same name. It is a text file with
+a timestamp per line, which Live Play follows:
+
+```
+[00:12.40]First line
+[00:15.10][01:20.00]A chorus, sung twice
+[00:18.00]
+```
+
+- ⌛ **Stamps** are `[mm:ss]`, with or without hundredths or thousandths. A stamp with no words is an
+  instrumental gap, and `[offset:250]` shows every line 250 ms sooner (negative numbers, later).
+- 📄 **The `.txt` is optional then**: an empty one takes its words from the `.lrc`, so the song isn't
+  missing its lyrics. A `.txt` with words keeps showing on the song page.
+- ✏️ *Open lyrics file* opens the `.lrc` when the song has one, and renaming a song renames it too.
 
 ### 🎼 Guitar tabs
 
@@ -181,6 +199,9 @@ the button on an album or playlist page (nothing else leads to it), follows the 
 along:
 
 - 👀 **It shows** the cover, song, length, artist and lyrics, with a ♡ and a ⧖ for the song.
+- ⏱️ **Timed lyrics** (see above) light up line by line and scroll along, for songs with a length.
+  The app plays no sound, so its clock starts when the song comes on here: click a line as you hear
+  it to catch up with your music.
 - ⏯️ **Its buttons** go to the previous song, pause it, play this one again or go to the next.
 - ⏭️ **Songs move on by themselves**: every song that comes on starts playing and logs a listen, and
   when its length has gone by the next one comes on (songs without a length wait for the button).

@@ -144,6 +144,14 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 2rem; }
 .tag.owned { background: var(--accent); color: var(--surface); }
 .tag.wanted, .tag.later { background: transparent; border: 1px dashed var(--accent); color: var(--accent); }
 .lyrics { white-space: pre-line; margin: 0; max-width: 70ch; line-height: 1.6; }
+/* Timed lyrics: live.js marks the line that is playing, and clicking one moves the song there */
+.lyrics-timed { list-style: none; margin: 0; padding: 0; max-width: 70ch; line-height: 1.6; }
+.lyrics-timed button { display: block; width: 100%; padding: 0; border: none; border-radius: 0; background: none; color: var(--muted); font-weight: 400; text-align: left; }
+.lyrics-timed button:hover { color: var(--text); }
+.lyrics-timed button[aria-current] { color: var(--text); font-weight: 600; }
+@media (prefers-reduced-motion: no-preference) {
+  .live-page #lyrics { scroll-behavior: smooth; }
+}
 
 /* Tabs, drawn by alphaTab in black, so on white in either theme */
 .tab-score { background: #fff; color: #000; border-radius: var(--radius); overflow-x: auto; }
@@ -413,7 +421,7 @@ details.budget > .row { margin-top: .5rem; }
 .live-progress span { display: block; height: 100%; background: var(--accent); transform-origin: left; animation: live-progress linear forwards; }
 @keyframes live-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 /* What is playing stays put and only the boxes below it scroll, when the window has room for that */
-.live-tracks { position: relative; }
+.live-tracks, #lyrics { position: relative; }
 @media (min-width: 861px) and (min-height: 640px) {
   body.live-page { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
   .live-page main { flex: 1; min-height: 0; width: 100%; padding-bottom: 1rem; }

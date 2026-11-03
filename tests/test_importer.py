@@ -307,6 +307,30 @@ def test_reimport_updates_lyrics(lib: Library, info: Path):
     assert any("lyrics 'Sing.txt' is not UTF-8" in w for w in report.warnings)
 
 
+def test_import_timed_lyrics(lib: Library, info: Path):
+    import_dir(lib, info)
+    mcr = lib.find_artist("My Chemical Romance")
+    sing = lib.find_song(mcr.id, lib.find_album(mcr.id, "Danger Days").id, "Sing")
+    songs = info / "bands" / "My Chemical Romance" / "songs"
+    (songs / "Sing.txt").write_text("")
+    (songs / "sing.lrc").write_text("[00:01.00]Timed words")
+
+    report = import_dir(lib, info)
+    assert lib.get_song(sing.id).lyrics == "Timed words"
+    assert not any("sing.lrc" in w for w in report.warnings)
+
+    (songs / "Sing.txt").write_text("Written words")
+    import_dir(lib, info)
+    assert lib.get_song(sing.id).lyrics == "Written words"
+
+    (songs / "sing.lrc").write_bytes(b"\xff\xfe")
+    (songs / "Nobody.lrc").write_text("[00:01.00]Words")
+    report = import_dir(lib, info)
+    assert lib.get_song(sing.id).lyrics == "Written words"
+    assert any("lyrics 'sing.lrc' is not UTF-8" in w for w in report.warnings)
+    assert any("lyrics 'Nobody.lrc' matched no song" in w for w in report.warnings)
+
+
 def test_pages_show_members_and_covers(tmp_path: Path, info: Path):
     app = create_app(tmp_path / "local" / "implicated.db")
     lib = app.state.library

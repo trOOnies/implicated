@@ -6,6 +6,7 @@ import pytest
 from conftest import Sample, add_sample
 
 from implicated.library import Library, NotFound
+from implicated.lrc import TimedLine
 from implicated.models import (
     AlbumIn,
     ArtistIn,
@@ -858,6 +859,53 @@ def test_reload_lyrics(files_lib: Library, lib: Library, sample: Sample):
     # Without an info folder there are no files.
     assert lib.lyrics_path(sample.song_ids[0]) is None
     assert lib.reload_lyrics(sample.song_ids[0]).lyrics is None
+
+
+def test_timed_lyrics(files_lib: Library, lib: Library, sample: Sample):
+    song_id = add_sample(files_lib).song_ids[0]
+    text = files_lib.lyrics_path(song_id)
+    assert files_lib.lrc_path(song_id) is None and files_lib.timed_lyrics(song_id) == []
+
+    lrc = text.with_name("mysterons.lrc")  # names match ignoring case
+    lrc.write_text("[00:01.00]Timed words\n[00:02.00]")
+    assert files_lib.lrc_path(song_id) == lrc
+    assert files_lib.timed_lyrics(song_id) == [TimedLine(1000, "Timed words"), TimedLine(2000, "")]
+
+    # An empty lyrics file takes the words, so they are not missing; written lyrics stay.
+    assert files_lib.reload_lyrics(song_id).lyrics == "Timed words"
+    assert text.read_text() == ""
+    text.write_text("Written words")
+    assert files_lib.reload_lyrics(song_id).lyrics == "Written words"
+
+    text.write_text("")
+    lrc.write_bytes(b"\xff\xfe")
+    with pytest.raises(ValueError, match="mysterons.lrc is not UTF-8"):
+        files_lib.reload_lyrics(song_id)
+    lrc.unlink()
+    assert files_lib.reload_lyrics(song_id).lyrics is None
+
+    assert lib.lrc_path(sample.song_ids[0]) is None  # no info folder, no files
+    assert lib.timed_lyrics(sample.song_ids[0]) == []
+
+
+def test_renamed_songs_take_their_timed_lyrics(files_lib: Library):
+    sample = add_sample(files_lib)
+    song_id = sample.song_ids[0]
+    old = files_lib.lyrics_path(song_id).with_suffix(".lrc")
+    old.write_text("[00:01.00]Words")
+
+    def rename(id_: int, title: str) -> None:
+        song = files_lib.get_song(id_)
+        files_lib.update_song(id_, SongIn(song.artist_id, title, album_id=song.album_id))
+
+    rename(song_id, "Renamed")
+    moved = old.with_name("Renamed.lrc")
+    assert moved.is_file() and not old.exists()
+
+    # Another song with the same title keeps its file: this one takes a copy.
+    twin = files_lib.create_song(SongIn(sample.artist_id, "Renamed"))
+    rename(twin.id, "Copied")
+    assert moved.is_file() and moved.with_name("Copied.lrc").read_text() == "[00:01.00]Words"
 
 
 def test_tab_path(files_lib: Library, lib: Library, sample: Sample, tmp_path):

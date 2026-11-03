@@ -100,7 +100,8 @@
       the song and its length, the artist, a ♡ and a ⧖ for the song, and its lyrics. ‹ and › go to the
       previous and next song, the middle button pauses and resumes the song, and ↺ plays it again. Every song that comes on logs a listen,
       and when its length has gone by the next one comes on by itself, unless it is paused. Reloading the page or the
-      lyrics logs nothing.</dd>
+      lyrics logs nothing. A song with a length and a timed lyrics file (<code>.lrc</code>) lights up its lines as they go by.
+      implicated plays no sound, so its clock starts when the song comes on here: click a line as you hear it to catch up with your music.</dd>
       <dt>🚪 Exit</dt>
       <dd>The door at the top right closes implicated: confirm, and the window closes (if the
       browser lets it) and the server stops. Everything is saved as you go.</dd>
@@ -143,7 +144,9 @@
     <code>bands/&lt;artist&gt;/band.jpg</code> (a picture of the artist) and <code>bands/&lt;artist&gt;/covers/</code> (cover images, matched to albums by file
     name) and <code>bands/&lt;artist&gt;/songs/&lt;song title&gt;.txt</code> (lyrics; a
     <code>/</code> in the title becomes <code>_</code>, and <code>&lt;&gt;:"\|?*</code> are left
-    out). Every song gets one: songs you add without a file get an empty one.</p>
+    out). Every song gets one: songs you add without a file get an empty one. An optional
+    <code>&lt;song title&gt;.lrc</code> next to it holds timed lyrics for Live Play, with a
+    timestamp per line like <code>[01:23.40]Words</code>; an empty <code>.txt</code> takes its words from it.</p>
     <p>🔄 The server imports the folder <strong>every time it starts</strong>, so restart it
     after editing the files. Importing again updates what changed and keeps your ratings, notes,
     favorites, CD and vinyl ownership, music videos, song videos, listen later marks, playlists

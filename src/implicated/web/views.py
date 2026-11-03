@@ -840,12 +840,20 @@ def _ctx(form_or_query) -> str:
 
 
 def _lyrics_context(lib: Library, song_id: int, **extra) -> dict:
-    """The song with its lyrics read again from its file, so edits show straight away."""
+    """The song with its lyrics read again from its files, so edits show straight away."""
+    timed_lines = []
     try:
         found(lib.reload_lyrics, song_id)
+        timed_lines = lib.timed_lyrics(song_id)
     except (OSError, ValueError) as exc:
         extra.setdefault("error", f"Could not read the lyrics file: {exc}")
-    return {"s": lib.get_song_summary(song_id), "lyrics_path": lib.lyrics_path(song_id), **extra}
+    return {
+        "s": lib.get_song_summary(song_id),
+        "lyrics_path": lib.lyrics_path(song_id),
+        "lrc_path": lib.lrc_path(song_id),
+        "timed_lines": timed_lines,
+        **extra,
+    }
 
 
 def _tab_context(lib: Library, song_id: int, **extra) -> dict:
@@ -894,6 +902,7 @@ def song_page(request: Request, lib: Lib, song_id: int):
         **_tab_context(lib, song_id),
         videos=lib.list_videos(song_id),
         lyrics_path=context["lyrics_path"],
+        lrc_path=context["lrc_path"],
         error=context.get("error"),
     )
 
@@ -1061,23 +1070,24 @@ async def add_song_to_playlist(request: Request, lib: Lib, song_id: int):
 
 
 @router.get("/fragments/songs/{song_id}/lyrics")
-def song_lyrics(request: Request, lib: Lib, song_id: int):
-    return render(request, "_lyrics.html", **_lyrics_context(lib, song_id))
+def song_lyrics(request: Request, lib: Lib, song_id: int, live: bool = False):
+    return render(request, "_lyrics.html", **_lyrics_context(lib, song_id, live=live))
 
 
 @router.post("/songs/{song_id}/lyrics/open")
-def open_lyrics(request: Request, lib: Lib, song_id: int):
+def open_lyrics(request: Request, lib: Lib, song_id: int, live: bool = False):
     # Only the page's own buttons may open files: other sites cannot send this header.
     if "hx-request" not in request.headers:
         raise HTTPException(403, "open the lyrics file from the song page")
-    path = found(lib.ensure_lyrics_file, song_id)
+    path = found(lib.lrc_path, song_id) or found(lib.ensure_lyrics_file, song_id)
     if path is None:
         raise HTTPException(404, "the library has no folder for lyrics files")
     try:
         editor.open_file(path)
     except OSError as exc:
-        return render(request, "_lyrics.html", **_lyrics_context(lib, song_id, error=str(exc)))
-    return render(request, "_lyrics.html", **_lyrics_context(lib, song_id, opened=True))
+        context = _lyrics_context(lib, song_id, live=live, error=str(exc))
+        return render(request, "_lyrics.html", **context)
+    return render(request, "_lyrics.html", **_lyrics_context(lib, song_id, live=live, opened=True))
 
 
 @router.get("/fragments/songs/{song_id}/tab")
@@ -1454,7 +1464,7 @@ def _live_context(lib: Library, kind: str, record_id: int, queue: list[int], at:
     at = min(max(at, 1), max(len(songs), 1))
     context = {"s": None, "lyrics_path": None}
     if songs:
-        context = _lyrics_context(lib, songs[at - 1].song.id)
+        context = _lyrics_context(lib, songs[at - 1].song.id, live=True)
     return {
         **context,
         "kind": kind,

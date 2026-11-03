@@ -12,6 +12,7 @@ and the song lyrics::
       bands/<artist name>/band.jpg          # any of ``IMAGE_TYPES``
       bands/<artist name>/covers/<image>.jpg
       bands/<artist name>/songs/<song title>.txt
+      bands/<artist name>/songs/<song title>.lrc  # optional; timed lyrics
       bands/<artist name>/tabs/<song title>.gp5   # optional; any of ``TAB_TYPES``
 
 ``bands.yaml``::
@@ -47,6 +48,10 @@ characters Windows does not allow in file names (``<>:"\\|?*``) are left out, so
 is ``S_C_A_R_E_C_R_O_W.txt`` and "Question...?" is ``Question....txt``. Case does not matter. An
 empty file means the lyrics are still missing; songs without a file get an empty one.
 
+Timed lyrics are ``.lrc`` files named like the lyrics file (see ``implicated.lrc``), which Live Play
+follows line by line. An empty lyrics file takes its words from the ``.lrc`` file, so the song's
+lyrics are not missing. The lines themselves are read when they are shown, not imported.
+
 Tabs are Guitar Pro files named like the lyrics file (``Sing.gp5``), shown and played on the song
 page. TuxGuitar saves them with File > Save As, choosing Guitar Pro 5 (``.gp5``); its own ``.tg``
 files cannot be read. Songs without a tab simply have none, and the import does not read them.
@@ -67,6 +72,7 @@ from pathlib import Path
 import yaml
 
 from implicated.library import IMAGE_TYPES, Library
+from implicated.lrc import plain_lyrics, read_lrc
 from implicated.models import (
     AlbumIn,
     ArtistIn,
@@ -386,6 +392,11 @@ def _import_albums(
         if p.is_file() and p.suffix.lower() == ".txt"
     }
     used_lyrics: set[Path] = set()
+    timed = {
+        p.name.casefold(): p
+        for p in sorted((band_dir / "songs").glob("*"))
+        if p.is_file() and p.suffix.lower() == ".lrc"
+    }
     for raw_title, raw in albums.items():
         title = _title(raw_title)
         where = f"{artist.name} / {title}"
@@ -444,24 +455,33 @@ def _import_albums(
                 if not path.exists():
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_text("", encoding="utf-8")
-                _import_lyrics(lib, imported.id, path, report)
-                used_lyrics.add(path)
+                lrc = timed.get(f"{name.removesuffix('.txt')}.lrc".casefold())
+                _import_lyrics(lib, imported.id, path, lrc, report)
+                used_lyrics.update(p for p in (path, lrc) if p)
 
     for path in covers:
         if path not in used_covers:
             report.warnings.append(f"{artist.name}: cover {path.name!r} matched no album")
-    for path in lyrics.values():
+    for path in [*lyrics.values(), *timed.values()]:
         if path not in used_lyrics:
             report.warnings.append(f"{artist.name}: lyrics {path.name!r} matched no song")
 
 
-def _import_lyrics(lib: Library, song_id: int, path: Path, report: Report) -> None:
+def _import_lyrics(
+    lib: Library, song_id: int, path: Path, lrc: Path | None, report: Report
+) -> None:
     try:
         text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         report.warnings.append(f"{path.parent.parent.name}: lyrics {path.name!r} is not UTF-8")
         return
-    if lib.set_lyrics(song_id, text).lyrics:
+    words = ""
+    if lrc is not None:
+        try:
+            words = plain_lyrics(read_lrc(lrc))
+        except ValueError:
+            report.warnings.append(f"{lrc.parent.parent.name}: lyrics {lrc.name!r} is not UTF-8")
+    if lib.set_lyrics(song_id, text.strip() or words).lyrics:
         report.lyrics += 1
 
 

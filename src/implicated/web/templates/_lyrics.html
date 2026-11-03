@@ -1,18 +1,26 @@
-{# The lyrics card of a song page. `lyrics_path` is the song's lyrics file, or None when the library has no folder for them. #}
+{# The lyrics card of a song page or Live Play (`live`). `lyrics_path` is the song's lyrics file, or None when the library has no folder for them; `lrc_path` is its timed lyrics file, if any, and `timed_lines` what that holds. Live Play has a clock, so it shows those lines for live.js to follow; everywhere else they read as plain lyrics. #}
+{% set file = lrc_path or lyrics_path %}
+{% set query = '?live=1' if live else '' %}
 <section id="lyrics" class="card">
   <div class="row">
     <h2>Lyrics</h2>
     <span class="spacer"></span>
     {% if lyrics_path %}
-    <button type="button" {% if s.song.lyrics or s.song.no_lyrics %}class="secondary"{% endif %} hx-post="/songs/{{ s.song.id }}/lyrics/open"
-            hx-target="#lyrics" hx-swap="outerHTML" title="Open {{ lyrics_path.name }} in your text editor">Open lyrics file</button>
-    <button type="button" class="secondary" hx-get="/fragments/songs/{{ s.song.id }}/lyrics"
+    <button type="button" {% if s.song.lyrics or s.song.no_lyrics %}class="secondary"{% endif %} hx-post="/songs/{{ s.song.id }}/lyrics/open{{ query }}"
+            hx-target="#lyrics" hx-swap="outerHTML" title="Open {{ file.name }} in your text editor">Open lyrics file</button>
+    <button type="button" class="secondary" hx-get="/fragments/songs/{{ s.song.id }}/lyrics{{ query }}"
             hx-target="#lyrics" hx-swap="outerHTML" title="Read the lyrics file again">Reload lyrics</button>
     {% endif %}
   </div>
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
-  {% if opened %}<p class="muted">Opened <code>{{ lyrics_path.name }}</code>. Save it, then press Reload lyrics.</p>{% endif %}
-  {% if s.song.lyrics %}
+  {% if opened %}<p class="muted">Opened <code>{{ file.name }}</code>. Save it, then press Reload lyrics.</p>{% endif %}
+  {% if live and timed_lines and s.song.duration_seconds %}
+  <ol class="lyrics-timed">
+    {% for line in timed_lines %}
+    <li><button type="button" data-at="{{ line.ms }}" title="This line is playing now">{{ line.text or '♪' }}</button></li>
+    {% endfor %}
+  </ol>
+  {% elif s.song.lyrics %}
   <p class="lyrics">{{ s.song.lyrics }}</p>
   {% elif s.song.no_lyrics %}
   <p class="empty">This song has no lyrics.</p>
@@ -21,5 +29,5 @@
   {% else %}
   <p class="empty">No lyrics yet.</p>
   {% endif %}
-  {% if lyrics_path %}<p class="small">File: <code>{{ lyrics_path }}</code></p>{% endif %}
+  {% if lyrics_path %}<p class="small">File: <code>{{ file }}</code></p>{% endif %}
 </section>

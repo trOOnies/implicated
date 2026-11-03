@@ -13,6 +13,7 @@ from dataclasses import asdict, fields
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from implicated.lrc import TimedLine, plain_lyrics, read_lrc
 from implicated.models import (
     FORMATS,
     SPECIAL_PLAYLISTS,
@@ -1140,6 +1141,7 @@ class Library:
     def update_song(self, song_id: int, data: SongIn) -> Song:
         old_path = self.lyrics_path(song_id)
         old_tab = self.tab_path(song_id)
+        old_lrc = self.lrc_path(song_id)
         shared = self._shares_lyrics_file(self.get_song(song_id))
         with self.connect() as conn:
             conn.execute(
@@ -1152,13 +1154,15 @@ class Library:
                 {**self._song_values(data), "id": song_id},
             )
         self._sync_marks(song_id)
-        # A renamed song takes its lyrics and tab files along (copies, if another song still
-        # uses them).
+        # A renamed song takes its lyrics, timed lyrics and tab files along (copies, if another
+        # song still uses them).
         new_path = self.lyrics_path(song_id)
         if old_path and new_path and old_path.is_file():
             _move_file(old_path, new_path, copy=shared)
         if old_tab and self.tab_path(song_id) is None:
             _move_file(old_tab, self.new_tab_path(song_id, old_tab.suffix), copy=shared)
+        if old_lrc and self.lrc_path(song_id) is None:
+            _move_file(old_lrc, new_path.with_suffix(".lrc"), copy=shared)
         self.ensure_lyrics_file(song_id)
         return self.get_song(song_id)
 
@@ -1182,6 +1186,23 @@ class Library:
         folder = self._song_folder(song, "songs")
         name = lyrics_file_name(song.title)
         return _find_file(folder, [name]) or folder / name
+
+    def lrc_path(self, song_id: int) -> Path | None:
+        """The song's timed lyrics, an ``.lrc`` file next to its lyrics file and named like it
+        (ignoring case); ``None`` when it has none."""
+        song = self.get_song(song_id)
+        if self.info_dir is None:
+            return None
+        stem = lyrics_file_name(song.title).removesuffix(".txt")
+        return _find_file(self._song_folder(song, "songs"), [f"{stem}.lrc"])
+
+    def timed_lyrics(self, song_id: int) -> list[TimedLine]:
+        """The lines of the song's ``.lrc`` file, read now, so edits show without a new import.
+
+        Raises ``ValueError`` when the file is not UTF-8 text.
+        """
+        path = self.lrc_path(song_id)
+        return read_lrc(path) if path else []
 
     def tab_path(self, song_id: int) -> Path | None:
         """The song's tab, a Guitar Pro file in ``bands/<artist>/tabs/`` named like its lyrics
@@ -1226,7 +1247,8 @@ class Library:
         return path
 
     def reload_lyrics(self, song_id: int) -> Song:
-        """Read the song's lyrics again from its file, so edits show without a new import.
+        """Read the song's lyrics again from its file, so edits show without a new import. A
+        blank file takes the words of the song's ``.lrc`` file, if it has one.
 
         Raises ``ValueError`` when the file is not UTF-8 text; the stored lyrics stay as they are.
         """
@@ -1237,7 +1259,7 @@ class Library:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             raise ValueError(f"{path.name} is not UTF-8 text") from None
-        return self.set_lyrics(song_id, text)
+        return self.set_lyrics(song_id, text.strip() or plain_lyrics(self.timed_lyrics(song_id)))
 
     def set_lyrics(self, song_id: int, lyrics: str | None) -> Song:
         """Store the song's lyrics; blank text marks them as missing again."""

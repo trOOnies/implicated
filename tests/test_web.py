@@ -1502,6 +1502,56 @@ def test_live_play_listen_later_and_lyrics(
     assert 'aria-label="Next song" disabled' in last
 
 
+def test_live_play_timed_lyrics(client: TestClient, client_lib: Library, web_sample: Sample):
+    first, second = web_sample.song_ids
+    client_lib.update_song(
+        second,
+        SongIn(web_sample.artist_id, "Sour Times", web_sample.album_id, duration_seconds=None),
+    )
+    for song_id in web_sample.song_ids:
+        lrc = client_lib.lyrics_path(song_id).with_suffix(".lrc")
+        lrc.write_text("[00:01.50]Timed <words>\n[00:03.00]")
+    url = client.post(f"/live/album/{web_sample.album_id}").headers["HX-Redirect"]
+
+    page = client.get(url).text
+    assert '<button type="button" data-at="1500"' in page and "Timed &lt;words&gt;</button>" in page
+    assert ">♪</button>" in page
+    assert f'/songs/{first}/lyrics?live=1"' in page
+    assert f'/songs/{first}/lyrics/open?live=1"' in page
+    assert "Mysterons.lrc</code>" in page
+
+    # Reloading the lyrics in Live Play keeps the lines, and they need a clock to follow.
+    assert "data-at" in client.get(f"/fragments/songs/{first}/lyrics?live=1").text
+    assert "data-at" not in client.get(f"/fragments/songs/{first}/lyrics").text
+    assert "data-at" not in client.get(f"/songs/{first}").text
+    assert "Timed &lt;words&gt;" in client.get(f"/songs/{first}").text
+    assert "data-at" not in client.get(url.replace("at=1", "at=2")).text
+
+    client_lib.lyrics_path(first).with_suffix(".lrc").write_bytes(b"\xff\xfe")
+    assert "Mysterons.lrc is not UTF-8" in client.get(url).text
+
+
+def test_live_play_without_timed_lyrics_stays_plain(client: TestClient, web_sample: Sample):
+    url = client.post(f"/live/album/{web_sample.album_id}").headers["HX-Redirect"]
+    page = client.get(url).text
+    assert "data-at" not in page and "lyrics-timed" not in page
+
+
+def test_open_lyrics_opens_the_timed_file(
+    client: TestClient, client_lib: Library, web_sample: Sample, monkeypatch
+):
+    opened = []
+    monkeypatch.setattr(editor, "open_file", opened.append)
+    song_id = web_sample.song_ids[0]
+    path = client_lib.lyrics_path(song_id).with_suffix(".lrc")
+    path.write_text("[00:01.00]Words")
+
+    url = f"/songs/{song_id}/lyrics/open?live=1"
+    response = client.post(url, headers={"HX-Request": "true"})
+    assert opened == [path]
+    assert "Opened <code>Mysterons.lrc</code>" in response.text and "data-at" in response.text
+
+
 def test_live_play_list_links_each_song_with_its_length(client: TestClient, web_sample: Sample):
     first, second = web_sample.song_ids
     url = client.post(f"/live/album/{web_sample.album_id}").headers["HX-Redirect"]
