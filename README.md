@@ -11,7 +11,7 @@ Everything lives on your own computer. ✨
 ```sh
 make install   # pip install -e ".[dev]"
 make seed      # optional: demo artists, albums, songs and plays
-make serve     # http://127.0.0.1:8000 (imports info/ first)
+make serve     # http://127.0.0.1:8000
 make test      # run the tests with coverage
 ```
 
@@ -33,6 +33,7 @@ Then open **<http://127.0.0.1:8000>** and enjoy! The JSON API docs are at **`/do
 | 🎟️ **Concerts** | Track the shows you want to see and the ones you went to |
 | 🔴 **Live Play** | Follow an album or playlist as you listen, lyrics included |
 | 👥 **Duo** | Compare your taste with a friend's for recommendations, and download or import your own data |
+| 📥 **Import** | Preview and accept a batch of files from the inbox, manage its archives, and download a backup or an export |
 | ❓ **Help** | Read how everything works, right inside the app |
 
 > [!NOTE]
@@ -42,45 +43,80 @@ Then open **<http://127.0.0.1:8000>** and enjoy! The JSON API docs are at **`/do
 
 ## 🗂️ Where your data lives
 
+**The library is the one source of truth**: everything the app keeps lives in one folder,
+`local/`, so a backup is a zip of it. **`info/` is only an inbox** for batches of files you
+prepare by hand, imported when you say so.
+
 | What | Where | Change it with |
 | --- | --- | --- |
 | 🗄️ The library | `local/implicated.db` (SQLite) | `IMPLICATED_DB` |
 | 🖼️ Album covers | `local/covers/`, next to the library | |
 | 🧑‍🎤 Artist pictures | `local/artists/`, next to the library | |
-| 📥 Files to import | `info/` (git-ignored) | `IMPLICATED_INFO` |
+| 📝 Lyrics, timed lyrics, tabs | `local/bands/<artist>/songs/` and `tabs/` | |
+| 🎟️ Concerts and tours | `local/concerts.csv`, `local/tours.csv` | |
+| 📥 The inbox, and its archives | `info/` and `info/archive/` (git-ignored) | `IMPLICATED_INFO` |
 
-## 📥 Importing artists
+> [!TIP]
+> Coming from an older version, where `info/` held the lyrics, tabs and concerts and was imported
+> on every start? Run **`make migrate-info`** once: it shows what the YAML files still differ in
+> (the library is kept), moves the lyrics, tabs and concerts into `local/`, and archives the rest.
 
-`make serve` imports `info/` **every time it starts**, so edits to the YAML files show up after a
-restart. If the folder, its `bands.yaml` or its `bands/` folder is missing, startup creates them
-(`bands.yaml` with a commented example), lists them and stops, so you can fill them in and start
-again. `make import` (or `python -m implicated.importer <dir>`) runs the same import on its own.
+## 📥 Importing a batch of files
+
+Small edits belong in the app. Bigger ones (an artist's whole discography, a list of concerts) are
+easier as files: put them in `info/` (or upload them, zipped, on the **Import** page), **preview**
+what they would change, and **accept**. Nothing is imported on its own, **not even on startup**, so
+what you edit in the app always stays.
+
+```sh
+make import-preview  # only show what would change
+make import          # show it, and import if you say yes (python -m implicated.importer --yes skips asking)
+```
 
 ```
 info/
-  bands.yaml                      # artists: name, origin, creation_year, genres,
+  bands.yaml                      # artists: name, uid, origin, creation_year, genres,
                                   #   languages, description, wiki, members
-  bands/<artist name>/albums.yaml # album title -> release_year, unreleased: true for scrapped
-                                  #   or leaked albums, songs (name, duration,
-                                  #   no_lyrics: true for instrumentals, featuring:
+  bands/<artist name>/albums.yaml # album title -> uid, release_year, unreleased: true for
+                                  #   scrapped or leaked albums, cover, songs (name, uid,
+                                  #   duration, no_lyrics: true for instrumentals, featuring:
                                   #   other artists of bands.yaml on the song)
   bands/<artist name>/band.jpg    # picture of the artist (.jpg, .png, .webp, .avif, ...)
   bands/<artist name>/covers/     # cover images (no GIFs), matched to albums by file name
-  bands/<artist name>/songs/      # lyrics, one <song title>.txt per song (empty = missing),
-                                  #   and optional timed lyrics, <song title>.lrc
-  bands/<artist name>/tabs/       # optional guitar tabs, <song title>.gp5 (or .gp, .gpx, .gp4, .gp3)
-  concerts.csv                    # optional: concerts for the Concerts page (see below)
-  tours.csv                       # optional: tours the Add concert form offers
+  bands/<artist name>/songs/      # lyrics, <song title>.txt, and timed lyrics, <song title>.lrc
+  bands/<artist name>/tabs/       # guitar tabs, <song title>.gp5 (or .gp, .gpx, .gp4, .gp3)
+  concerts.csv, tours.csv         # added to the library's (see Concerts, below)
+  userdata.json                   # a Download my data file, applied after the rest
 ```
 
-> [!IMPORTANT]
-> Re-importing updates what changed and **keeps** your ratings, notes, favorites, CD and vinyl
-> ownership, music videos, featured artists, song videos, listen later marks, playlists and
-> plays. A broken file rolls the whole import back and is reported in the server log.
-
+- 🧩 **Matching**: records are found by their `uid` (exports carry one on every record, so a
+  renamed artist, album or song is still found), or else by name, ignoring case and kinds of dash.
+  Anything not found is created.
+- ✍️ **A key in the file wins; a key left out keeps what the library has**, so a file only needs
+  what it changes. Ratings, notes, favorites, CD and vinyl ownership, videos, listen later marks,
+  playlists and plays are never touched by the YAML (`userdata.json` is the way to bring those).
+- 🔍 **The preview** lists the new records and every changed field (now → from the file), with the
+  warnings. Accept imports exactly what the preview showed: if the inbox changed meanwhile, it asks
+  you to preview again.
+- 🗃️ **Accepted files move to `info/archive/<when>/`**, so the inbox is empty again and the same
+  files are never imported twice. The Import page lists the archives and deletes them, one or all,
+  after asking.
+- 📄 **Lyrics, timed lyrics and tabs are copied into `local/bands/`**, replacing the library's file
+  when theirs has other words; an empty lyrics file in the inbox changes nothing.
+- 💥 **A broken file stops the whole import**, which then changes nothing, and is reported.
 - 🔗 **`wiki`** must be a link to a Wikipedia article (`https://<lang>.wikipedia.org/wiki/<title>`).
   Any other link is ignored with a warning, and the API and forms refuse it.
 - 📖 The **full format** is described in `src/implicated/importer.py`.
+
+## 📦 Backups and exports
+
+| | What's in it | How |
+| --- | --- | --- |
+| 💾 **Backup** | `local/`, exactly: a snapshot of the database, covers, pictures, lyrics, tabs, concerts, friends | *Download a backup* on the Import page, or `make backup [FILE=...]`. `make restore FILE=...` (app stopped) puts it back, after zipping what was there |
+| 📤 **Export** | The library as an **inbox**: YAML with a `uid` on every record, covers, pictures, lyrics, tabs, concerts and `userdata.json` | *Download an export*, or `make export [FILE=...] [OWNER=...]`. Upload it on the Import page, here or in a fresh library, to rebuild it, or unzip it to edit by hand |
+
+Exporting and importing an export gives back the same export. Songs without an album have no place
+in `albums.yaml`, so exports leave them out (with a warning).
 
 ## 🎸 Lyrics and tabs
 
@@ -89,9 +125,9 @@ info/
 Lyrics files are named after the song, with `/` turned into `_` and the characters Windows refuses
 in file names (`<>:"\|?*`) left out, so `S/C/A/R/E/C/R/O/W` is `S_C_A_R_E_C_R_O_W.txt`.
 
-- 📄 **Every song has a lyrics file**: the import, the Add song forms and the API create an empty
-  one when it is missing (also for artists that are not in `bands.yaml`), and renaming a song
-  renames its file.
+- 📄 **Every song has a lyrics file** in `local/bands/<artist>/songs/`: the import, the Add song
+  forms and the API create an empty one when it is missing, renaming a song renames its file, and
+  renaming an artist moves their folder.
 - 🔄 **Song pages** read the file again on every visit, with buttons to open it in your default
   text editor (under WSL, the Windows one) and to reload it.
 - 🔍 **Missing lyrics are easy to find**: album pages mark those songs, album lists show the share
@@ -118,7 +154,7 @@ a timestamp per line, which Live Play follows:
 
 ### 🎼 Guitar tabs
 
-A song can have a Guitar Pro file in `bands/<artist name>/tabs/`, named like the lyrics file but
+A song can have a Guitar Pro file in `local/bands/<artist name>/tabs/`, named like the lyrics file but
 ending in `.gp5` (or `.gp`, `.gpx`, `.gp4`, `.gp3`).
 
 > [!TIP]
@@ -145,9 +181,7 @@ file in TuxGuitar and to reload it after saving.
   matched the original's cover file), and the Albums page can show only those.
 - 🖼️ **Uploading a cover**: *Set cover* (or *Change cover*) under an album page's cover uploads an
   image right away (AVIF, JPEG, PNG or WebP; not GIF), and the *Add album* form takes one too.
-  Handy for albums added in the app, which are not in `albums.yaml`, so the import never looks for
-  their cover. An album that *is* in `albums.yaml` gets its matching `covers/` file back on the
-  next import.
+  An import only changes an album's cover when its inbox brings a file for it.
 
 ## 🛒 Budget
 
@@ -174,7 +208,7 @@ Prices show with a generic `$`, whatever currency the shops charge in. The API h
 
 ## 🎟️ Concerts
 
-The page lists the concerts in `info/concerts.csv`, **read again on every visit** (no restart
+The page lists the concerts in `local/concerts.csv`, **read again on every visit** (no restart
 needed): upcoming ones first, soonest at the top, then past ones. The file is optional, and its
 first line names the columns, separated by `;`:
 
@@ -192,7 +226,7 @@ date;band;tour;country;city;Want to go;Going
 - ➕ **Add concert** adds one concert to the file, creating it if missing. The tour may be left
   empty in the file, but the form asks for it. A column it needs that the file lacks, such as
   `tour`, is added after `band`.
-- 🚌 **Add tour** takes a band and a tour's name and keeps them in `info/tours.csv` (columns
+- 🚌 **Add tour** takes a band and a tour's name and keeps them in `local/tours.csv` (columns
   `band;tour`), so Add concert suggests that band's tours, along with those its concerts already
   name.
 - 📋 **The copy button** at the end of a row fills Add concert with that concert, to change what
@@ -274,7 +308,8 @@ make import-data FILE=my-data.json
 
 - 🏷️ **Records go by name**, not by database id: artists by name, albums by artist and title,
   songs by artist, album and title, compared like the import does (ignoring case and kinds of
-  dash). So import `info/` first, then your data.
+  dash), so the library needs the records first (an export's `userdata.json` comes after its
+  YAML, so importing an export just works).
 - 🔁 **Each record in the file is the full picture** of it: its marks, rating, notes, ownership,
   music video, featured artists and videos become the file's. Plays are **added** (never twice
   at the same moment), and playlists are created, or have their songs replaced, by name.
@@ -317,7 +352,10 @@ file under the same name replaces the old one, and *Forget* removes it.
 | --- | --- |
 | `src/implicated/models.py` | Dataclass models (`Artist`, `Member`, `Album`, `Song`, `SongVideo`, `Play`, `Playlist`, and their `*In` inputs) |
 | `src/implicated/library.py` | SQLite storage and stats |
-| `src/implicated/importer.py` | YAML importer for artists, members, albums, songs, covers and lyrics |
+| `src/implicated/importer.py` | Inbox importer (with preview) for artists, members, albums, songs, covers, lyrics, tabs and CSVs |
+| `src/implicated/inbox.py` | The inbox: uploads, archives of accepted imports |
+| `src/implicated/backup.py` | Backup and restore of `local/`, and exports in the inbox format |
+| `src/implicated/migrate.py` | One-time move of an older `info/`'s lyrics, tabs and concerts into `local/` |
 | `src/implicated/concerts.py` | Reads and updates `concerts.csv` for the Concerts page |
 | `src/implicated/userdata.py` | Exports your own data to a JSON file and imports it back |
 | `src/implicated/duo.py` | Keeps friends' data files and compares them with yours for the Duo page |

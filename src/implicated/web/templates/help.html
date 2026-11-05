@@ -27,6 +27,7 @@
           <li><a href="#concerts">Concerts</a></li>
           <li><a href="#live-play">Live Play</a></li>
           <li><a href="#duo">Duo</a></li>
+          <li><a href="#import">Import</a></li>
           <li><a href="#exit">Exit</a></li>
         </ul>
       </li>
@@ -42,6 +43,7 @@
         </ul>
       </li>
       <li><a href="#importing">Importing from files</a></li>
+      <li><a href="#backups">Backups and exports</a></li>
       <li><a href="#api">API</a></li>
       <li><a href="#license">Source &amp; license</a></li>
     </ol>
@@ -79,8 +81,7 @@
       album its cover with <em>Set cover</em> under the cover on its page (or <em>Change
       cover</em> to replace it), or pick an image right away in the <em>Add album</em> form
       (AVIF, JPEG, PNG or WebP; covers cannot be GIFs).
-      An imported album whose file in <code>covers/</code> matches it gets that one back on
-      the next import. An album page can also add all its songs to a playlist, or <em>Copy</em> the album under a new
+      An import only changes a cover when its inbox has a file for that album. An album page can also add all its songs to a playlist, or <em>Copy</em> the album under a new
       name (a deluxe edition, say) with its cover, songs, lyrics and song videos; the copy
       opens right away. The ‹ and › arrows step through the artist's albums, from the oldest
       to the newest, like the ones on a song page step through its album.</dd>
@@ -128,7 +129,7 @@
       to drop them from those budgets; any budget that leaves empty is deleted. Prices show
       with a generic <code>$</code>, whatever currency the shops use.</dd>
       <dt id="concerts">🎟️ <a href="/concerts">Concerts</a></dt>
-      <dd>The concerts listed in <code>info/concerts.csv</code> (columns
+      <dd>The concerts listed in <code>local/concerts.csv</code>, next to the library (columns
       <code>date;band;tour;country;city;Want to go;Going</code>),
       upcoming ones first, with the band's picture. Set each one to <em>Want to go</em> or
       <em>Going</em>, and once it is over tick its <em>Went</em> box; that is saved in the file.
@@ -157,10 +158,16 @@
       owns and the other wants. Sections with songs can become a playlist with one click.
       Loving means a favorite or 4 stars or more.<br>
       The same page imports <strong>your own</strong> file back, say on another computer.
-      Artists, albums and songs are matched by name, so import <code>info/</code> first:
-      whatever the library does not have is skipped and listed. The records in the file take
+      Artists, albums and songs are matched by name: whatever the library does not have is
+      skipped and listed. The records in the file take
       its marks and values, plays are added (never twice) and playlists are created or replaced
       by name.</dd>
+      <dt id="import">📥 <a href="/import">Import</a></dt>
+      <dd>Bring in a batch of files from the inbox (<code>info/</code>): see what they would
+      change first, then <em>Accept</em>. Accepted files move to an <strong>archive</strong>, so
+      the inbox is empty again; delete archives there once you no longer need them (you are asked
+      first). The page also downloads a backup or an export of your library (see
+      <a href="#backups">Backups and exports</a>).</dd>
       <dt id="exit">🚪 Exit</dt>
       <dd>The door at the top right closes implicated: confirm, and the window closes (if the
       browser lets it) and the server stops. Everything is saved as you go.</dd>
@@ -199,19 +206,47 @@
 
   <section class="card" id="importing">
     <h2>📥 Importing from files</h2>
-    <p>Put a <code>bands.yaml</code> in the <code>info/</code> folder (artists, origin,
-    genres, languages, a description, a Wikipedia link and members), plus
+    <p>🗄️ <strong>The library is the one source of truth.</strong> Small edits (a year, a rating,
+    a new song) belong in the app. For bigger batches, like an artist's whole discography or a
+    list of concerts, prepare files in the <strong>inbox</strong>, <code>info/</code>, and import
+    them from the <a href="/import">Import</a> page (or <code>make import</code>). Nothing is
+    imported on its own, not even when the server starts, so what you edit in the app always
+    stays.</p>
+    <p>The inbox can hold a <code>bands.yaml</code> (artists, origin, genres, languages, a
+    description, a Wikipedia link and members), plus
     <code>bands/&lt;artist&gt;/albums.yaml</code> (albums and their songs),
-    <code>bands/&lt;artist&gt;/band.jpg</code> (a picture of the artist) and <code>bands/&lt;artist&gt;/covers/</code> (cover images, matched to albums by file
-    name) and <code>bands/&lt;artist&gt;/songs/&lt;song title&gt;.txt</code> (lyrics; a
-    <code>/</code> in the title becomes <code>_</code>, and <code>&lt;&gt;:"\|?*</code> are left
-    out). Every song gets one: songs you add without a file get an empty one. An optional
-    <code>&lt;song title&gt;.lrc</code> next to it holds timed lyrics for Live Play, with a
-    timestamp per line like <code>[01:23.40]Words</code>; an empty <code>.txt</code> takes its words from it.</p>
-    <p>🔄 The server imports the folder <strong>every time it starts</strong>, so restart it
-    after editing the files. Importing again updates what changed and keeps your ratings, notes,
-    favorites, CD and vinyl ownership, music videos, featured artists, song videos, listen later
-    marks, playlists and plays. Problems are listed in the server log.</p>
+    <code>bands/&lt;artist&gt;/band.jpg</code> (a picture of the artist),
+    <code>bands/&lt;artist&gt;/covers/</code> (cover images, matched to albums by file name),
+    <code>bands/&lt;artist&gt;/songs/&lt;song title&gt;.txt</code> (lyrics; a <code>/</code> in
+    the title becomes <code>_</code>, and <code>&lt;&gt;:"\|?*</code> are left out), optional
+    <code>&lt;song title&gt;.lrc</code> timed lyrics (a timestamp per line, like
+    <code>[01:23.40]Words</code>) and <code>bands/&lt;artist&gt;/tabs/</code> Guitar Pro files.
+    A <code>concerts.csv</code> and <code>tours.csv</code> are added to yours, and a
+    <em>Download my data</em> file named <code>userdata.json</code> brings back your marks.</p>
+    <p>🧩 Records are matched by their <code>uid</code> (exports carry one, so renamed records are
+    still found) or else by name. <strong>A key in a file wins; a key left out keeps what you
+    have</strong>, so a file only needs what it changes. Ratings, notes, favorites, CD and vinyl
+    ownership, videos, listen later marks, playlists and plays are never touched by the YAML.
+    Lyrics, timed lyrics and tabs are copied into the library's own folder
+    (<code>local/bands/</code>), where the song page's buttons open them; an empty lyrics file in
+    the inbox changes nothing. A broken file stops the whole import, and nothing changes.</p>
+    <p class="help-back"><a href="#index">↑ Back to the index</a></p>
+  </section>
+
+  <section class="card" id="backups">
+    <h2>📦 Backups and exports</h2>
+    <p>Everything the app keeps lives in one folder, <code>local/</code>: the database, covers,
+    artist pictures, lyrics, tabs, concerts and friends' files.</p>
+    <ul>
+      <li><strong>Backup</strong> (<a href="/import/backup">download</a> or <code>make backup</code>):
+      that folder, exactly, as a zip. <code>make restore FILE=…</code>, with the app stopped,
+      puts it back, after zipping what was there.</li>
+      <li><strong>Export</strong> (<a href="/import/export">download</a> or <code>make export</code>):
+      your library written out as an inbox, in YAML with a <code>uid</code> on every record, plus
+      the files and your data. Upload it on the Import page (here or in a fresh library) to
+      rebuild the library from it, or unzip it to edit the files by hand. Songs without an album
+      cannot be written to <code>albums.yaml</code> and are left out.</li>
+    </ul>
     <p class="help-back"><a href="#index">↑ Back to the index</a></p>
   </section>
 

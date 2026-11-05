@@ -10,12 +10,22 @@ install: ## Install dependencies
 	$(PYTHON) -m pip install -e ".[dev]"
 build: ## Build the library version
 	$(PYTHON) -m build
-serve: ## Run the web app on http://127.0.0.1:8000
+serve: ## Run the web app on http://127.0.0.1:8000 (never imports on its own)
 	$(PYTHON) -m implicated.web --reload
 seed: ## Fill the local library with demo data
 	$(PYTHON) -m implicated.seed
-import: ## Import artists, albums, songs and covers from info/
+import: ## Preview the info/ inbox, then import and archive it if you say yes
 	$(PYTHON) -m implicated.importer info
+import-preview: ## Only show what importing the info/ inbox would change
+	$(PYTHON) -m implicated.importer info --preview
+migrate-info: ## Once: move an older info/'s lyrics, tabs and concerts into local/
+	$(PYTHON) -m implicated.migrate info
+backup: ## Zip the whole library folder: make backup [FILE=...]
+	$(PYTHON) -m implicated.backup backup $(FILE)
+restore: ## Put a backup back, with the app stopped: make restore FILE=...
+	$(PYTHON) -m implicated.backup restore "$(FILE)"
+export: ## Zip the library as an inbox to import elsewhere: make export [FILE=...] [OWNER=...]
+	$(PYTHON) -m implicated.backup export $(FILE) $(if $(OWNER),--owner "$(OWNER)")
 export-data: ## Download your own data to a JSON file (OWNER=name to add yours)
 	$(PYTHON) -m implicated.userdata export $(if $(OWNER),--owner "$(OWNER)")
 import-data: ## Import your own data from a JSON file: make import-data FILE=...
