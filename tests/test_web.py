@@ -1278,7 +1278,7 @@ def test_add_songs_to_a_playlist(client: TestClient, client_lib: Library, web_sa
 
 
 def test_concerts_page(client: TestClient, client_lib: Library, web_sample: Sample, image):
-    concerts = client_lib.info_dir / "concerts.csv"
+    concerts = client_lib.media_dir / "concerts.csv"
     empty = client.get("/concerts").text
     assert 'href="/concerts" aria-current="page">Concerts</a>' in empty
     assert "No concerts yet" in empty and str(concerts) in empty
@@ -1493,8 +1493,8 @@ def test_budget_shipping(client: TestClient, client_lib: Library, web_sample: Sa
 
 
 def test_add_concert_and_tour(client: TestClient, client_lib: Library, web_sample: Sample):
-    concerts = client_lib.info_dir / "concerts.csv"
-    tours = client_lib.info_dir / "tours.csv"
+    concerts = client_lib.media_dir / "concerts.csv"
+    tours = client_lib.media_dir / "tours.csv"
     headers = {"HX-Request": "true"}
     assert client.post("/concerts", data={}).status_code == 403
     assert client.post("/concerts/tours", data={}).status_code == 403
@@ -1550,10 +1550,10 @@ def test_add_concert_and_tour(client: TestClient, client_lib: Library, web_sampl
 
 
 def test_add_concert_offers_the_bands_tours(client: TestClient, client_lib: Library):
-    (client_lib.info_dir / "tours.csv").write_text(
+    (client_lib.media_dir / "tours.csv").write_text(
         "band;tour\nAir;Moon\nAir;Talkie\nBlur;Parklife\n"
     )
-    (client_lib.info_dir / "concerts.csv").write_text(
+    (client_lib.media_dir / "concerts.csv").write_text(
         "date;band;tour\n2026-12-09;Air;Virgin Suicides\n2026-12-10;air;moon\n"
     )
     offered = client.get("/fragments/concerts/tours", params={"band": " AIR "}).text
@@ -1564,7 +1564,7 @@ def test_add_concert_offers_the_bands_tours(client: TestClient, client_lib: Libr
 
 
 def test_copying_a_concert_fills_add_concert(client: TestClient, client_lib: Library):
-    (client_lib.info_dir / "concerts.csv").write_text(
+    (client_lib.media_dir / "concerts.csv").write_text(
         "date;band;tour;country;city;Want to go;Going\n"
         f'{date.today() + timedelta(days=5)};A & B;It\'s "Live";France;Paris;true;true\n'
         f"{date.today() - timedelta(days=5)};Air;;;;false;false\n"
@@ -1581,7 +1581,7 @@ def test_copying_a_concert_fills_add_concert(client: TestClient, client_lib: Lib
 
 
 def test_concert_setlists(client: TestClient, client_lib: Library, web_sample: Sample):
-    concerts = client_lib.info_dir / "concerts.csv"
+    concerts = client_lib.media_dir / "concerts.csv"
     soon, gone = date.today() + timedelta(days=5), date.today() - timedelta(days=5)
     concerts.write_text(
         "date;band;tour;country;city;Want to go;Going\n"

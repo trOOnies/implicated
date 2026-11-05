@@ -865,12 +865,12 @@ def test_old_databases_get_new_columns(tmp_path):
 
 @pytest.fixture
 def files_lib(tmp_path) -> Library:
-    return Library(tmp_path / "local" / "implicated.db", tmp_path / "info")
+    return Library(tmp_path / "local" / "implicated.db", tmp_path / "local")
 
 
 def test_songs_get_a_lyrics_file(files_lib: Library, tmp_path):
     sample = add_sample(files_lib)
-    folder = tmp_path / "info" / "bands" / "Portishead" / "songs"
+    folder = tmp_path / "local" / "bands" / "Portishead" / "songs"
     assert sorted(p.name for p in folder.iterdir()) == ["Mysterons.txt", "Sour Times.txt"]
     assert files_lib.lyrics_path(sample.song_ids[0]) == folder / "Mysterons.txt"
     assert (folder / "Mysterons.txt").read_text() == ""
@@ -887,7 +887,7 @@ def test_songs_get_a_lyrics_file(files_lib: Library, tmp_path):
 
 def test_renaming_a_song_moves_its_file(files_lib: Library, tmp_path):
     sample = add_sample(files_lib)
-    folder = tmp_path / "info" / "bands" / "Portishead" / "songs"
+    folder = tmp_path / "local" / "bands" / "Portishead" / "songs"
     (folder / "Sour Times.txt").write_text("Nobody loves me\n")
     song = files_lib.get_song(sample.song_ids[1])
     files_lib.update_song(song.id, replace(song, title="Sour Times?"))  # same file name
@@ -906,7 +906,7 @@ def test_renaming_a_song_moves_its_file(files_lib: Library, tmp_path):
 
 def test_deleting_a_song_removes_only_an_empty_file(files_lib: Library, tmp_path):
     sample = add_sample(files_lib)
-    folder = tmp_path / "info" / "bands" / "Portishead" / "songs"
+    folder = tmp_path / "local" / "bands" / "Portishead" / "songs"
     (folder / "Sour Times.txt").write_text("Nobody loves me\n")
     twin = files_lib.create_song(SongIn(sample.artist_id, "mysterons"))
     files_lib.delete_song(twin.id)
@@ -983,7 +983,7 @@ def test_renamed_songs_take_their_timed_lyrics(files_lib: Library):
 
 def test_tab_path(files_lib: Library, lib: Library, sample: Sample, tmp_path):
     song_id = add_sample(files_lib).song_ids[0]
-    folder = tmp_path / "info" / "bands" / "Portishead" / "tabs"
+    folder = tmp_path / "local" / "bands" / "Portishead" / "tabs"
     assert files_lib.tab_path(song_id) is None  # no tabs folder yet
     assert files_lib.new_tab_path(song_id) == folder / "Mysterons.gp5"
 
@@ -1003,7 +1003,7 @@ def test_tab_path(files_lib: Library, lib: Library, sample: Sample, tmp_path):
 
 def test_renaming_a_song_moves_its_tab(files_lib: Library, tmp_path):
     sample = add_sample(files_lib)
-    folder = tmp_path / "info" / "bands" / "Portishead" / "tabs"
+    folder = tmp_path / "local" / "bands" / "Portishead" / "tabs"
     folder.mkdir()
     (folder / "Sour Times.gp").write_bytes(b"tab")
     song = files_lib.get_song(sample.song_ids[1])

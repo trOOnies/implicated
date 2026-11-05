@@ -70,6 +70,8 @@ class ArtistIn:
 class Artist(ArtistIn):
     id: int = 0
     created_at: str = ""
+    # Stable id that survives renames, used by exports and inbox files (``uid:``).
+    uid: str | None = None
     # File name inside the library's artist images directory; set with ``Library.set_image``.
     image: str | None = None
 
@@ -95,6 +97,7 @@ class AlbumIn:
 class Album(AlbumIn):
     id: int = 0
     created_at: str = ""
+    uid: str | None = None
     # File name inside the library's covers directory; set with ``Library.set_cover``.
     cover: str | None = None
 
@@ -139,6 +142,7 @@ class SongIn:
 class Song(SongIn):
     id: int = 0
     created_at: str = ""
+    uid: str | None = None
     # Song text; set with ``Library.set_lyrics``. ``None`` means it is still missing.
     lyrics: str | None = None
 
@@ -177,6 +181,7 @@ class PlaylistIn:
 class Playlist(PlaylistIn):
     id: int = 0
     created_at: str = ""
+    uid: str | None = None
     # One of ``SPECIAL_PLAYLISTS`` for the built-in playlists, which cannot be renamed or
     # deleted; ``None`` for your own.
     kind: str | None = None

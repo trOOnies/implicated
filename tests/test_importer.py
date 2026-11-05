@@ -7,8 +7,7 @@ from fastapi.testclient import TestClient
 
 from implicated import importer
 from implicated.importer import (
-    BANDS_TEMPLATE,
-    MissingInfoError,
+    accept,
     import_dir,
     lyrics_file_name,
     match_cover,
@@ -16,7 +15,7 @@ from implicated.importer import (
 )
 from implicated.library import Library
 from implicated.models import SongVideoIn
-from implicated.web import create_app, sync_info
+from implicated.web import create_app
 
 BANDS = """\
 bands:
@@ -125,23 +124,38 @@ def test_match_cover():
     assert match_cover("The Cover", [Path("the_cover.jpg")]) is None  # only filler words
 
 
-def test_import(lib: Library, info: Path):
+@pytest.fixture
+def media_lib(tmp_path: Path) -> Library:
+    """A library that keeps lyrics and tabs in its own folder, like the app's."""
+    return Library(tmp_path / "local" / "implicated.db", tmp_path / "local")
+
+
+def test_import(media_lib: Library, info: Path):
+    lib = media_lib
+    inbox_before = sorted(p for p in info.rglob("*"))
     report = import_dir(lib, info)
 
     assert report.created == {"artists": 2, "albums": 3, "songs": 5}
     assert report.covers == 2
     assert report.images == 1
     assert report.lyrics == 1
-    assert report.lyrics_files == 3  # Romance, Look Alive, Sunshine and 22 had no file
-    assert (info / "bands" / "Taylor Swift" / "songs" / "22.txt").read_text() == ""
-    mcr_songs = info / "bands" / "My Chemical Romance" / "songs"
+    assert report.lyrics_files == 1  # Sing.txt has words; the empty one changes nothing
+    assert sorted(p for p in info.rglob("*")) == inbox_before  # the inbox is only read
+    # Every song has a lyrics file in the library's own folder.
+    assert (lib.media_dir / "bands" / "Taylor Swift" / "songs" / "22.txt").read_text() == ""
+    mcr_songs = lib.media_dir / "bands" / "My Chemical Romance" / "songs"
     assert sorted(p.name for p in mcr_songs.iterdir()) == [
         "Look Alive, Sunshine.txt",
+        "Our Lady of Sorrows.txt",
         "Romance (instrumental).txt",
         "Sing.txt",
-        "Unreleased.txt",
-        "our lady of sorrows.txt",
     ]
+    assert (mcr_songs / "Sing.txt").read_text().startswith("Sing it out")
+    assert [c.name for c in report.new][:2] == [
+        "My Chemical Romance",
+        "My Chemical Romance / I Brought You My Bullets, You Brought Me Your Love",
+    ]
+    assert report.updates == []
     assert any("unrelated.png" in w for w in report.warnings)
     assert any("lyrics 'Unreleased.txt' matched no song" in w for w in report.warnings)
     assert any("Taylor Swift: ignored wiki" in w for w in report.warnings)
@@ -514,81 +528,188 @@ def test_bad_files_fail_and_roll_back(lib: Library, tmp_path: Path, bands, album
 def test_report_summary():
     report = importer.Report(warnings=["careful"])
     report.count("songs", created=True)
+    report.changes.append(importer.Change("song", "A / B / C"))
+    report.changes.append(importer.Change("album", "A / B", "year", None, 2001))
     assert report.summary() == (
         "created 0 artists, 0 albums, 1 songs; updated 0 artists, 0 albums, 0 songs; 0 covers, "
-        "0 band images, 0 lyrics, 0 new lyrics files"
+        "0 band images, 0 lyrics, 0 lyrics files, 0 tabs, 0 concerts, 0 tours"
+        "\nnew song: A / B / C"
+        "\nA / B: year (none) -> 2001"
         "\nwarning: careful"
     )
 
 
-def test_cli(tmp_path: Path, info: Path, capsys: pytest.CaptureFixture):
-    db = tmp_path / "cli.db"
+def test_cli(tmp_path: Path, info: Path, capsys: pytest.CaptureFixture, monkeypatch):
+    db = tmp_path / "cli" / "implicated.db"
+    importer.main([str(info), "--db", str(db), "--preview"])
+    out = capsys.readouterr().out
+    assert "would do this" in out and "new artist: Taylor Swift" in out
+    assert Library(db).list_artists() == []  # only a preview
+
+    monkeypatch.setattr("builtins.input", lambda prompt: "n")
+    importer.main([str(info), "--db", str(db)])
+    assert Library(db).list_artists() == []
+
+    monkeypatch.setattr("builtins.input", lambda prompt: "y")
     importer.main([str(info), "--db", str(db)])
     out = capsys.readouterr().out
     assert f"Imported {info} into {db}" in out
     assert "created 2 artists" in out
+    assert "The inbox's files are now in" in out
     assert Library(db).find_artist("Taylor Swift")
+    assert not (info / "bands.yaml").exists()  # archived
+    assert (db.parent / "bands" / "My Chemical Romance" / "songs" / "Sing.txt").is_file()
 
-    with pytest.raises(SystemExit, match="import failed"):
-        importer.main([str(tmp_path / "nowhere"), "--db", str(db)])
+    importer.main([str(info), "--db", str(db), "--yes"])
+    assert "is empty: nothing to import" in capsys.readouterr().out
 
-
-def test_app_imports_info_on_startup(tmp_path: Path, info: Path, monkeypatch):
-    monkeypatch.setenv("IMPLICATED_INFO", str(info))
-    app = create_app(tmp_path / "app.db")
-    assert app.state.library.find_artist("My Chemical Romance")
-
-    # An explicit folder wins over the environment.
-    other = create_app(tmp_path / "other.db", info_dir=tmp_path / "app-info")
-    assert other.state.library.list_artists() == []
-
-
-@pytest.mark.parametrize("existing", [[], ["bands.yaml"], ["bands/"]])
-def test_startup_creates_missing_info_and_stops(tmp_path: Path, existing: list[str]):
-    info = tmp_path / "fresh"
-    info.mkdir()
-    if "bands.yaml" in existing:
-        (info / "bands.yaml").write_text("bands: []\n")
-    if "bands/" in existing:
-        (info / "bands").mkdir()
-
-    with pytest.raises(MissingInfoError) as caught:
-        create_app(tmp_path / "app.db", info_dir=info)
-    missing = [name for name in ("bands.yaml", "bands/") if name not in existing]
-    assert caught.value.created == missing
-    for name in missing:
-        assert str(info / name) in str(caught.value)
-    assert "start again" in str(caught.value)
-    assert (info / "bands").is_dir()
-    if "bands.yaml" in missing:
-        assert (info / "bands.yaml").read_text() == BANDS_TEMPLATE
-
-    # Once everything is there, even as created, the app starts with an empty library.
-    app = create_app(tmp_path / "app.db", info_dir=info)
-    assert app.state.library.list_artists() == []
-
-
-def test_startup_creates_a_missing_info_folder(tmp_path: Path):
-    with pytest.raises(MissingInfoError):
-        create_app(tmp_path / "app.db", info_dir=tmp_path / "nowhere" / "info")
-    assert (tmp_path / "nowhere" / "info" / "bands.yaml").is_file()
-    assert (tmp_path / "nowhere" / "info" / "bands").is_dir()
-
-
-def test_broken_info_does_not_stop_the_app(
-    lib: Library, tmp_path: Path, caplog: pytest.LogCaptureFixture
-):
     write(tmp_path / "broken" / "bands.yaml", "bands: [\n")
-    sync_info(lib, tmp_path / "broken")
-    assert "Could not import" in caplog.text
-    assert lib.list_artists() == []
+    with pytest.raises(SystemExit, match="import failed"):
+        importer.main([str(tmp_path / "broken"), "--db", str(db), "--yes"])
+    assert (tmp_path / "broken" / "bands.yaml").is_file()  # a failed import archives nothing
 
 
-def test_startup_logs_import_warnings(lib: Library, info: Path, caplog: pytest.LogCaptureFixture):
-    caplog.set_level("INFO", logger="uvicorn.error")
-    sync_info(lib, info)
-    assert "created 2 artists" in caplog.text
-    assert "unrelated.png" in caplog.text
+def test_preview_changes_nothing(media_lib: Library, info: Path):
+    lib = media_lib
+    import_dir(lib, info)
+    mcr = lib.find_artist("My Chemical Romance")
+    lib.update_artist(mcr.id, replace(mcr, formed_year=2000))
+    files_before = {p: p.read_bytes() for p in lib.media_dir.rglob("*") if p.is_file()}
+    write(info / "bands" / "My Chemical Romance" / "songs" / "Sing.txt", "Changed words")
+    write(info / "bands" / "New" / "albums.yaml", "First:\n  songs:\n  - name: One\n")
+    (info / "bands.yaml").write_text(BANDS + "- name: New\n")
+
+    report = import_dir(lib, info, dry_run=True)
+
+    assert report.created == {"artists": 1, "albums": 1, "songs": 1}
+    assert [c.name for c in report.new] == ["New", "New / First", "New / First / One"]
+    changes = {(c.name, c.field): (c.old, c.new) for c in report.updates}
+    assert changes[("My Chemical Romance", "formed_year")] == (2000, 2001)
+    assert ("My Chemical Romance / Danger Days / Sing", "lyrics") in changes
+    assert lib.find_artist("New") is None
+    assert lib.get_artist(mcr.id).formed_year == 2000
+    files_after = {p: p.read_bytes() for p in lib.media_dir.rglob("*") if p.is_file()}
+    assert files_after == files_before
+
+
+def test_keys_left_out_keep_the_apps_edits(lib: Library, info: Path):
+    import_dir(lib, info)
+    mcr = lib.find_artist("My Chemical Romance")
+    danger = lib.find_album(mcr.id, "Danger Days")
+    lib.update_artist(mcr.id, replace(mcr, genres=["Emo"], bio="Edited in the app"))
+    lib.update_album(danger.id, replace(danger, year=2011))
+    (info / "bands.yaml").write_text("bands:\n- name: My Chemical Romance\n  genres: [Rock]\n")
+    (info / "bands" / "My Chemical Romance" / "albums.yaml").write_text("Danger Days: {}\n")
+
+    report = import_dir(lib, info)
+
+    kept = lib.get_artist(mcr.id)
+    assert kept.genres == ["Rock"]  # in the file: the file wins
+    assert kept.bio == "Edited in the app"  # left out: the app's stays
+    assert kept.formed_year == 2001 and kept.wiki
+    assert lib.get_album(danger.id).year == 2011
+    assert [(c.field, c.old, c.new) for c in report.updates] == [("genres", ["Emo"], ["Rock"])]
+
+
+def test_uids_follow_renames(lib: Library, info: Path):
+    import_dir(lib, info)
+    mcr = lib.find_artist("My Chemical Romance")
+    danger = lib.find_album(mcr.id, "Danger Days")
+    sing = lib.find_song(mcr.id, danger.id, "Sing")
+    lib.update_artist(mcr.id, replace(mcr, name="MCR"))  # renamed in the app
+    (info / "bands.yaml").write_text(
+        f"bands:\n- name: My Chemical Romance\n  uid: {mcr.uid}\n  creation_year: 2001\n"
+    )
+    (info / "bands" / "My Chemical Romance" / "albums.yaml").write_text(
+        f"Danger Days!:\n  uid: {danger.uid}\n  songs:\n  - name: Sing it\n    uid: {sing.uid}\n"
+    )
+
+    report = import_dir(lib, info)
+
+    assert report.created == {"artists": 0, "albums": 0, "songs": 0}
+    assert lib.get_artist(mcr.id).name == "My Chemical Romance"
+    assert lib.get_album(danger.id).title == "Danger Days!"
+    assert lib.get_song(sing.id).title == "Sing it"
+    assert len(lib.list_albums(mcr.id)) == 2
+
+    # A uid nobody has yet is kept by the new record, as an Export restores it.
+    (info / "bands.yaml").write_text("bands:\n- name: Elsewhere\n  uid: 1234-abcd\n")
+    import_dir(lib, info)
+    assert lib.find_artist("Elsewhere").uid == "1234-abcd"
+
+
+def test_lyrics_and_tabs_go_into_the_library(media_lib: Library, info: Path):
+    lib = media_lib
+    import_dir(lib, info)
+    mcr = lib.find_artist("My Chemical Romance")
+    sing = lib.find_song(mcr.id, lib.find_album(mcr.id, "Danger Days").id, "Sing")
+    own = lib.lyrics_path(sing.id)
+    own.write_text("Edited in my editor")
+    songs = info / "bands" / "My Chemical Romance" / "songs"
+    (songs / "Sing.txt").write_text("")  # empty: changes nothing
+    write(songs / "Sing.lrc", "[00:01.00]Timed")
+    tabs = info / "bands" / "My Chemical Romance" / "tabs"
+    tabs.mkdir()
+    (tabs / "sing.gp5").write_bytes(b"tab")
+    (tabs / "Nobody.gp5").write_bytes(b"tab")
+
+    report = import_dir(lib, info)
+
+    assert own.read_text() == "Edited in my editor"
+    assert lib.get_song(sing.id).lyrics == "Edited in my editor"
+    assert lib.lrc_path(sing.id).read_text() == "[00:01.00]Timed"
+    assert lib.tab_path(sing.id).read_bytes() == b"tab"
+    assert (report.lyrics_files, report.tabs) == (1, 1)
+    assert any("tab 'Nobody.gp5' matched no song" in w for w in report.warnings)
+
+    (songs / "Sing.txt").write_text("New words from the inbox")
+    import_dir(lib, info)
+    assert own.read_text() == "New words from the inbox"  # words in the inbox win
+
+
+def test_accept_archives_the_inbox(media_lib: Library, info: Path):
+    report, archive = accept(media_lib, info)
+    assert report.created["artists"] == 2
+    assert archive.parent == info / "archive"
+    assert (archive / "bands.yaml").read_text() == BANDS
+    assert (archive / "bands" / "My Chemical Romance" / "covers" / "bullets.jpg").is_file()
+    assert sorted(p.name for p in info.iterdir()) == ["archive"]
+    # The library has what it needs: the covers and pictures were copied in.
+    mcr = media_lib.find_artist("My Chemical Romance")
+    assert media_lib.image_path(mcr.id).read_bytes() == b"band"
+
+
+def test_inbox_csvs_and_userdata(media_lib: Library, tmp_path: Path):
+    lib = media_lib
+    root = tmp_path / "csvs"
+    (lib.media_dir / "concerts.csv").write_text(
+        "date;band;tour;country;city;Want to go;Going\n2026-12-09;A;T;AR;Rosario;true;false\n"
+    )
+    write(
+        root / "concerts.csv",
+        "date;band;city;Going\n2026-12-09;A;Rosario;true\n2027-01-02;B;Lima;true\n",
+    )
+    write(root / "tours.csv", "band;tour\nA;T\nB;New Tour\n")
+
+    preview = import_dir(lib, root, dry_run=True)
+    assert (preview.concerts, preview.tours) == (1, 2)
+    assert "Lima" not in (lib.media_dir / "concerts.csv").read_text()
+
+    report = import_dir(lib, root)
+    assert (report.concerts, report.tours) == (1, 2)
+    text = (lib.media_dir / "concerts.csv").read_text()
+    assert text.count("Rosario") == 1 and "2027-01-02;B;;;Lima;false;true" in text
+    assert "B;New Tour" in (lib.media_dir / "tours.csv").read_text()
+
+    artist = lib.create_artist(importer.ArtistIn("Solo"))
+    write(
+        root / "userdata.json",
+        '{"format": "implicated-user-data", "version": 1,'
+        ' "artists": [{"name": "Solo", "favorite": true}]}',
+    )
+    report = import_dir(lib, root)
+    assert lib.get_artist(artist.id).favorite
+    assert "your data:" in report.totals()
 
 
 def test_future_creation_year_is_ignored(lib: Library, tmp_path: Path):
@@ -598,3 +719,16 @@ def test_future_creation_year_is_ignored(lib: Library, tmp_path: Path):
     report = import_dir(lib, root)
     assert f"Soon: ignored creation_year {next_year}, it is in the future" in report.warnings
     assert lib.find_artist("Soon").formed_year is None
+
+
+def test_the_same_title_twice_in_an_album_warns(lib: Library, tmp_path: Path):
+    root = tmp_path / "twice"
+    write(root / "bands.yaml", "bands:\n- name: Band\n")
+    write(
+        root / "bands" / "Band" / "albums.yaml",
+        "A:\n  songs:\n  - name: Song\n  - name: Other\n  - name: song\n",
+    )
+    report = import_dir(lib, root)
+    assert "Band / A / song: listed as tracks 1 and 3, which are one song" in "\n".join(
+        report.warnings
+    )

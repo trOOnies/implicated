@@ -87,7 +87,7 @@
     {% if upcoming %}
     {{ concert_table(upcoming, True) }}
     {% elif not found_file %}
-    <p class="empty">No concerts yet. Add them here, or list them in {% if path %}<code>{{ path }}</code>{% else %}<code>concerts.csv</code> in the info folder{% endif %}, one per line, under the header <code>date;band;tour;country;city;Want to go;Going</code>.</p>
+    <p class="empty">No concerts yet. Add them here, or list them in {% if path %}<code>{{ path }}</code>{% else %}<code>concerts.csv</code> in the library folder{% endif %}, one per line, under the header <code>date;band;tour;country;city;Want to go;Going</code>.</p>
     {% else %}
     <p class="empty">No upcoming concerts. Add them here, or to <code>{{ path }}</code>.</p>
     {% endif %}

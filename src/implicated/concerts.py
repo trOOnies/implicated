@@ -1,4 +1,4 @@
-"""Read the concerts listed in ``concerts.csv``, in the info folder, and keep track there of
+"""Read the concerts listed in ``concerts.csv``, in the library folder, and keep track there of
 which ones you want to go to and went to.
 
 The file is read again on every visit to the Concerts page, so edits show straight away. Its
@@ -237,7 +237,8 @@ def _for_adding(path: Path, header: tuple[str, ...]) -> tuple[list[str], str, st
 
 
 def add_concerts(path: str | Path, concerts: list[Concert]) -> None:
-    """Add the concerts at the end of the file, without any status, creating it when missing.
+    """Add the concerts at the end of the file, with their Want to go and Going marks, creating
+    it when missing.
     The columns they need and the file lacks are added after the band (the Setlist one at the
     end)."""
     path = Path(path)
@@ -259,8 +260,8 @@ def add_concerts(path: str | Path, concerts: list[Concert]) -> None:
             "tour": concert.tour,
             "country": concert.country,
             "city": concert.city,
-            "want_to_go": "false",
-            "going": "false",
+            "want_to_go": "true" if concert.want_to_go else "false",
+            "going": "true" if concert.going else "false",
             "setlist": concert.setlist,
         }
         # Lines are read one by one, so a line break in a value would split the row.
@@ -300,3 +301,36 @@ def _with_column(lines: list[str], delimiter: str, width: int, index: int, name:
         cells.insert(index, "" if number else name)
         out.append(_line(cells, delimiter, line[len(line.rstrip("\r\n")) :]))
     return out
+
+
+def _concert_key(concert: Concert) -> tuple[str, str, str]:
+    return (concert.date.isoformat(), concert.band.casefold(), (concert.city or "").casefold())
+
+
+def merge_concerts(
+    target: str | Path, source: str | Path, dry: bool = False
+) -> tuple[int, list[str]]:
+    """Add the concerts of ``source`` that ``target`` lacks (same date, band and city) to it,
+    with their marks and setlists, creating it when missing; with ``dry``, only count them. The
+    number added, and the warnings reading ``source`` gave."""
+    concerts, warnings = read_concerts(source)
+    have = {_concert_key(c) for c in read_concerts(target)[0]} if Path(target).is_file() else set()
+    # In the order of the file, not the page's.
+    new = sorted((c for c in concerts if _concert_key(c) not in have), key=lambda c: c.line)
+    if new and not dry:
+        add_concerts(target, new)
+    return len(new), warnings
+
+
+def merge_tours(target: str | Path, source: str | Path, dry: bool = False) -> int:
+    """Add the tours of ``source`` that ``target`` lacks (ignoring case), or with ``dry`` only
+    count them; the number added."""
+    have = {(b.casefold(), t.casefold()) for b, t in read_tours(target)}
+    added = 0
+    for band, tour in read_tours(source):
+        if (band.casefold(), tour.casefold()) not in have:
+            if not dry:
+                save_tour(target, band, tour)
+            have.add((band.casefold(), tour.casefold()))
+            added += 1
+    return added

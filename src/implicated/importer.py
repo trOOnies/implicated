@@ -1,10 +1,15 @@
-"""Import artists, albums, songs, covers and lyrics from YAML and text files.
+"""Import artists, albums, songs, covers, lyrics and tabs from the inbox: YAML, text and CSV files.
 
-``python -m implicated.importer [info_dir] [--db path]``
+``python -m implicated.importer [info_dir] [--db path] [--preview | --yes]``
 
-The directory holds a ``bands.yaml`` listing the artists, and one folder per artist (named
-exactly like the artist) with an ``albums.yaml``, a picture of the artist, the album covers
-and the song lyrics::
+The library (the database, and the lyrics, tabs and concerts next to it) is the one source of
+truth: small edits happen in the app. The inbox (``info/``) is where bigger batches are prepared
+by hand and then imported **on purpose**, from the app's Import page or this command, never on
+startup. A preview (``dry_run``) shows what would change first; accepting it imports everything
+together, then moves the inbox's files to ``info/archive/<when>/`` (see ``implicated.inbox``),
+so the inbox is empty again and the same files are never imported twice.
+
+The inbox may hold any of::
 
     info/
       bands.yaml
@@ -14,11 +19,14 @@ and the song lyrics::
       bands/<artist name>/songs/<song title>.txt
       bands/<artist name>/songs/<song title>.lrc  # optional; timed lyrics
       bands/<artist name>/tabs/<song title>.gp5   # optional; any of ``TAB_TYPES``
+      concerts.csv, tours.csv               # merged into the library's (see ``concerts``)
+      userdata.json                         # an Export file (see ``userdata``), applied last
 
 ``bands.yaml``::
 
     bands:
     - name: My Chemical Romance
+      uid: 0b6f...                # optional; set by Export, matches the artist even renamed
       origin: American            # where the artist comes from
       creation_year: 2001
       languages: English          # a single value or a list
@@ -33,37 +41,43 @@ and the song lyrics::
 ``albums.yaml`` maps album titles to their data::
 
     The Black Parade:
+      uid: 5d1c...                # optional, like the artist's
       release_year: 2006
       kind: album                 # optional, see ``ALBUM_KINDS``
       unreleased: true            # optional; scrapped or leaked, release_year is when it was made
-      cover: the_black_parade.jpg # optional; otherwise guessed from the file names
+      cover: the_black_parade.jpg # optional; otherwise guessed from the file names (null: none)
       songs:
       - name: The End.
+        uid: 9a2e...              # optional, like the artist's
         duration: 1:52
       - name: Intro (instrumental)
         no_lyrics: true           # optional; the song has no words, so no lyrics are missing
       - name: Everything Has Changed
         featuring: Ed Sheeran     # optional; a single name or a list, of artists in bands.yaml
 
+Records are matched by ``uid`` first, then by name (ignoring case and kinds of dash), and a
+record nobody has yet is created. **A key in the file wins; a key left out keeps what the
+library has**, so a file only needs what it means to change. Ratings, notes, favorites, CD and
+vinyl ownership, music videos, song videos, listen later marks, playlists and plays are never
+touched (``userdata.json`` is the way to bring those).
+
 Lyrics files are named after the song (see ``lyrics_file_name``): ``/`` becomes ``_`` and the
 characters Windows does not allow in file names (``<>:"\\|?*``) are left out, so "S/C/A/R/E/C/R/O/W"
-is ``S_C_A_R_E_C_R_O_W.txt`` and "Question...?" is ``Question....txt``. Case does not matter. An
-empty file means the lyrics are still missing; songs without a file get an empty one.
+is ``S_C_A_R_E_C_R_O_W.txt`` and "Question...?" is ``Question....txt``. Case does not matter.
+They are copied into the library's own ``bands/<artist>/songs/``, replacing the file there when
+they have words that differ; an empty one changes nothing.
 
 Timed lyrics are ``.lrc`` files named like the lyrics file (see ``implicated.lrc``), which Live Play
 follows line by line. An empty lyrics file takes its words from the ``.lrc`` file, so the song's
-lyrics are not missing. The lines themselves are read when they are shown, not imported.
+lyrics are not missing. They are copied along like the lyrics files.
 
 Tabs are Guitar Pro files named like the lyrics file (``Sing.gp5``), shown and played on the song
 page. TuxGuitar saves them with File > Save As, choosing Guitar Pro 5 (``.gp5``); its own ``.tg``
-files cannot be read. Songs without a tab simply have none, and the import does not read them.
+files cannot be read. They are copied into the library's ``bands/<artist>/tabs/``.
 
 A song's ``featuring`` replaces the artists it features (``featuring: []`` takes them all away);
 without the key, the ones picked in the app stay. Names that are not an artist of ``bands.yaml``
 (or already in the library) are left out with a warning.
-
-Importing again updates what changed and never touches ratings, notes, favorites, CD and vinyl
-ownership, music videos, song videos, listen later marks, playlists or plays.
 """
 
 from __future__ import annotations
@@ -71,13 +85,16 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 
 import yaml
 
-from implicated.library import COVER_TYPES, IMAGE_TYPES, Library
+from implicated import inbox
+from implicated.concerts import CONCERTS_FILE, TOURS_FILE, merge_concerts, merge_tours
+from implicated.library import COVER_TYPES, IMAGE_TYPES, TAB_TYPES, Library
 from implicated.lrc import plain_lyrics, read_lrc
 from implicated.models import (
     AlbumIn,
@@ -92,12 +109,19 @@ from implicated.models import (
 
 # "country" and "bio" are the older names of "origin" and "description".
 BAND_KEYS = {
-    "name", "creation_year", "origin", "country", "description", "bio", "wiki", "languages",
-    "genres", "members",
+    "name", "uid", "creation_year", "origin", "country", "description", "bio", "wiki",
+    "languages", "genres", "members",
 }  # fmt: skip
 MEMBER_KEYS = {"name", "roles", "from", "to"}
-ALBUM_KEYS = {"release_year", "kind", "unreleased", "cover", "songs"}
-SONG_KEYS = {"name", "duration", "no_lyrics", "featuring"}
+ALBUM_KEYS = {"uid", "release_year", "kind", "unreleased", "cover", "songs"}
+SONG_KEYS = {"name", "uid", "duration", "no_lyrics", "featuring"}
+USERDATA_FILE = "userdata.json"
+
+# The catalog fields the files describe, compared to say what an import changes. Your own data
+# (ratings, notes, marks, ownership) is never among them.
+ARTIST_FIELDS = ("name", "country", "formed_year", "genres", "languages", "bio", "wiki")
+ALBUM_FIELDS = ("title", "year", "kind", "unreleased")
+SONG_FIELDS = ("title", "track_number", "duration_seconds", "no_lyrics")
 
 # Words that say nothing about which album a cover file belongs to.
 COVER_STOPWORDS = {
@@ -110,33 +134,85 @@ FOOTNOTE = re.compile(r"\s*\[[a-z0-9]{1,2}\]$")
 
 
 @dataclass
+class Change:
+    """One thing an import changes: a record it creates (``field`` is empty) or one field of a
+    record it updates, from ``old`` to ``new``."""
+
+    kind: str  # "artist", "album" or "song"
+    name: str  # "Artist", "Artist / Album" or "Artist / Album / Song"
+    field: str = ""
+    old: object = None
+    new: object = None
+
+
+@dataclass
 class Report:
     created: dict[str, int] = field(default_factory=lambda: {"artists": 0, "albums": 0, "songs": 0})
     updated: dict[str, int] = field(default_factory=lambda: {"artists": 0, "albums": 0, "songs": 0})
     covers: int = 0
     images: int = 0
     lyrics: int = 0
+    # Lyrics, timed lyrics and tab files copied into the library's folder.
     lyrics_files: int = 0
+    tabs: int = 0
+    concerts: int = 0
+    tours: int = 0
+    # What ``userdata.json`` did, when the inbox had one (an ``implicated.userdata.ImportReport``).
+    userdata: object = None
+    changes: list[Change] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     # Songs whose ``featuring`` names artists, linked once every band is in: (song id, names,
     # where the song is in the files).
     featuring: list[tuple[int, list[str], str]] = field(default_factory=list, repr=False)
+    # Files to copy into the library once the database work is in: (source, target).
+    copies: list[tuple[Path, Path]] = field(default_factory=list, repr=False)
 
     def count(self, kind: str, created: bool) -> None:
         (self.created if created else self.updated)[kind] += 1
+
+    @property
+    def updates(self) -> list[Change]:
+        return [c for c in self.changes if c.field]
+
+    @property
+    def new(self) -> list[Change]:
+        return [c for c in self.changes if not c.field]
 
     def totals(self) -> str:
         def counts(d: dict[str, int]) -> str:
             return ", ".join(f"{n} {kind}" for kind, n in d.items())
 
-        return (
+        text = (
             f"created {counts(self.created)}; updated {counts(self.updated)}; "
             f"{self.covers} covers, {self.images} band images, {self.lyrics} lyrics, "
-            f"{self.lyrics_files} new lyrics files"
+            f"{self.lyrics_files} lyrics files, {self.tabs} tabs, {self.concerts} concerts, "
+            f"{self.tours} tours"
         )
+        if self.userdata is not None:
+            text += f"; your data: {self.userdata.summary().splitlines()[0]}"
+        return text
 
     def summary(self) -> str:
-        return "\n".join([self.totals(), *(f"warning: {w}" for w in self.warnings)])
+        lines = [self.totals()]
+        lines += [f"new {c.kind}: {c.name}" for c in self.new]
+        lines += [f"{c.name}: {c.field} {_show(c.old)} -> {_show(c.new)}" for c in self.updates]
+        return "\n".join([*lines, *(f"warning: {w}" for w in self.warnings)])
+
+
+def _show(value: object) -> str:
+    if value is None or value == []:
+        return "(none)"
+    if isinstance(value, list):
+        return ", ".join(map(str, value))
+    text = str(value)
+    return text if len(text) <= 60 else text[:57] + "..."
+
+
+def _diff(report: Report, kind: str, name: str, old: object, new: object, names) -> None:
+    for attr in names:
+        before, after = getattr(old, attr), getattr(new, attr)
+        if before != after:
+            report.changes.append(Change(kind, name, attr, before, after))
 
 
 # Parsing
@@ -222,66 +298,6 @@ def match_cover(title: str, files: list[Path]) -> Path | None:
     return best if best_score[0] >= 0.5 else None
 
 
-# The info folder
-
-BANDS_TEMPLATE = """\
-# The artists to import; each one gets a folder in bands/ named exactly like it, holding its
-# albums.yaml, picture, covers/ and songs/. The full format is described in
-# src/implicated/importer.py.
-#
-# bands:
-# - name: My Chemical Romance
-#   origin: American
-#   creation_year: 2001
-#   languages: English
-#   genres: [Alternative Rock, Emo]
-#   description: My Chemical Romance is an American rock band from New Jersey.
-#   wiki: https://en.wikipedia.org/wiki/My_Chemical_Romance
-#   members:
-#   - name: Frank Iero
-#     roles: Rhythm guitar
-#     from: 2002
-bands: []
-"""
-
-# What every info folder needs: file names map to the text a new one starts with, folder names
-# (ending in "/") to None.
-INFO_LAYOUT: dict[str, str | None] = {"bands.yaml": BANDS_TEMPLATE, "bands/": None}
-
-
-class MissingInfoError(RuntimeError):
-    """The info folder lacked files or folders, which were created and now need filling."""
-
-    def __init__(self, info_dir: Path, created: list[str]) -> None:
-        self.info_dir = info_dir
-        self.created = created
-        lines = "\n".join(f"  {info_dir / name}" for name in created)
-        super().__init__(
-            f"{info_dir} was missing some files and folders, so they were created:\n{lines}\n"
-            "Fill them with your artists (bands.yaml has an example, src/implicated/importer.py "
-            "the full format) and start again."
-        )
-
-
-def ensure_info_dir(info_dir: str | Path) -> None:
-    """Create whatever ``INFO_LAYOUT`` names that ``info_dir`` lacks, then raise
-    ``MissingInfoError`` listing it so nothing runs on a folder that was never filled."""
-    info_dir = Path(info_dir)
-    created = []
-    for name, template in INFO_LAYOUT.items():
-        path = info_dir / name
-        if template is None:
-            if not path.is_dir():
-                path.mkdir(parents=True)
-                created.append(name)
-        elif not path.is_file():
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(template, encoding="utf-8")
-            created.append(name)
-    if created:
-        raise MissingInfoError(info_dir, created)
-
-
 # Importing
 
 
@@ -292,14 +308,55 @@ def _load(path: Path) -> object:
         raise ValueError(f"{path} is not valid YAML: {exc}") from None
 
 
-def import_dir(lib: Library, info_dir: str | Path) -> Report:
+def import_dir(lib: Library, info_dir: str | Path, dry_run: bool = False) -> Report:
+    """Import the inbox at ``info_dir`` into the library, all together or (on an error)
+    nothing. With ``dry_run``, only say what it would do: the library and its files stay as
+    they are. The inbox itself is left as it is either way (see ``accept``)."""
     info_dir = Path(info_dir)
     report = Report()
-    raw = _load(info_dir / "bands.yaml")
-    with lib.transaction():
-        _import_bands(lib, info_dir, raw, report)
-        _import_featuring(lib, report)
+    bands_file = info_dir / "bands.yaml"
+    raw = _load(bands_file) if bands_file.is_file() else None
+    userdata_file = info_dir / USERDATA_FILE
+    with lib.dry_run() if dry_run else lib.transaction():
+        if raw is not None:
+            _import_bands(lib, info_dir, raw, report)
+            _import_featuring(lib, report)
+        if userdata_file.is_file():
+            from implicated.userdata import import_data, read_file
+
+            report.userdata = import_data(lib, read_file(userdata_file))
+    if not dry_run:
+        for source, target in report.copies:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+    _import_csvs(lib, info_dir, report, dry_run)
     return report
+
+
+def accept(lib: Library, info_dir: str | Path) -> tuple[Report, Path | None]:
+    """Import the inbox for real, then move its files to an archive (``None`` when it was
+    empty). On an error nothing is imported and the inbox stays."""
+    report = import_dir(lib, info_dir)
+    return report, inbox.archive(info_dir)
+
+
+def _import_csvs(lib: Library, info_dir: Path, report: Report, dry_run: bool) -> None:
+    for name in (CONCERTS_FILE, TOURS_FILE):
+        source = info_dir / name
+        if not source.is_file():
+            continue
+        if lib.media_dir is None:
+            report.warnings.append(f"{name}: skipped, the library has no folder for it")
+            continue
+        target = lib.media_dir / name
+        try:
+            if name == CONCERTS_FILE:
+                report.concerts, warnings = merge_concerts(target, source, dry=dry_run)
+                report.warnings += [f"{name}: {w}" for w in warnings]
+            else:
+                report.tours = merge_tours(target, source, dry=dry_run)
+        except (OSError, ValueError) as exc:
+            report.warnings.append(f"{name}: skipped, {exc}")
 
 
 def _import_featuring(lib: Library, report: Report) -> None:
@@ -316,6 +373,18 @@ def _import_featuring(lib: Library, report: Report) -> None:
                 report.warnings.append(f"{where}: a song cannot feature its own artist")
             else:
                 artist_ids.append(artist.id)
+        before = [a.id for a in lib.list_featuring(song_id)]
+        if before != artist_ids:
+            names_of = {a: lib.get_artist(a).name for a in {*before, *artist_ids}}
+            report.changes.append(
+                Change(
+                    "song",
+                    where,
+                    "featuring",
+                    [names_of[a] for a in before],
+                    [names_of[a] for a in artist_ids],
+                )
+            )
         lib.set_featuring(song_id, artist_ids)
 
 
@@ -341,38 +410,51 @@ def _import_bands(lib: Library, info_dir: Path, raw: object, report: Report) -> 
             report.warnings.append(f"{name}: no {albums_file.relative_to(info_dir)}")
 
 
+def _uid(data: dict) -> str | None:
+    return _text(data.get("uid"))
+
+
 def _import_artist(lib: Library, data: dict, report: Report) -> int:
     name = str(data["name"]).strip()
-    existing = lib.find_artist(name)
-    wiki = str(data["wiki"]).strip() if data.get("wiki") else None
-    try:
-        validate_wiki(wiki)
-    except ValueError:
-        report.warnings.append(f"{name}: ignored wiki {wiki!r}, it is not a Wikipedia article")
-        wiki = None
-    formed_year = _year(data.get("creation_year"), name)
-    try:
-        validate_formed_year(formed_year)
-    except ValueError:
-        report.warnings.append(f"{name}: ignored creation_year {formed_year}, it is in the future")
-        formed_year = None
-    artist_in = ArtistIn(
-        name=name,
-        country=_text(data.get("origin") or data.get("country")) or (existing and existing.country),
-        formed_year=formed_year or (existing and existing.formed_year),
-        genres=_strings(data.get("genres")) or (existing.genres if existing else []),
-        languages=_strings(data.get("languages")) or (existing.languages if existing else []),
-        bio=data.get("description") or data.get("bio") or (existing and existing.bio),
-        wiki=wiki or (existing and existing.wiki),
-        favorite=bool(existing and existing.favorite),
-        notes=existing and existing.notes,
-        listen_later=bool(existing and existing.listen_later),
-        rating=existing and existing.rating,
-    )
+    found = lib.find_uid("artists", _uid(data))
+    existing = lib.get_artist(found) if found else lib.find_artist(name)
+    values: dict = {"name": name}
+    if "wiki" in data:
+        wiki = str(data["wiki"]).strip() if data["wiki"] else None
+        try:
+            validate_wiki(wiki)
+            values["wiki"] = wiki
+        except ValueError:
+            report.warnings.append(f"{name}: ignored wiki {wiki!r}, it is not a Wikipedia article")
+    if "creation_year" in data:
+        formed_year = _year(data["creation_year"], name)
+        try:
+            validate_formed_year(formed_year)
+            values["formed_year"] = formed_year
+        except ValueError:
+            report.warnings.append(
+                f"{name}: ignored creation_year {formed_year}, it is in the future"
+            )
+    for key in ("origin", "country"):
+        if key in data:
+            values["country"] = _text(data[key])
+            break
+    for key in ("description", "bio"):
+        if key in data:
+            values["bio"] = _text(data[key])
+            break
+    for key in ("genres", "languages"):
+        if key in data:
+            values[key] = _strings(data[key])
+
     if existing:
+        current = ArtistIn(**{f.name: getattr(existing, f.name) for f in fields(ArtistIn)})
+        artist_in = replace(current, **values)
+        _diff(report, "artist", existing.name, current, artist_in, ARTIST_FIELDS)
         artist = lib.update_artist(existing.id, artist_in)
     else:
-        artist = lib.create_artist(artist_in)
+        artist = lib.create_artist(ArtistIn(**values), uid=_uid(data))
+        report.changes.append(Change("artist", name))
     report.count("artists", existing is None)
 
     if "members" in data:
@@ -388,7 +470,17 @@ def _import_artist(lib: Library, data: dict, report: Report) -> int:
                     to_year=_year(m.get("to"), where),
                 )
             )
-        lib.set_members(artist.id, members)
+        before = [
+            MemberIn(m.name, m.roles, m.from_year, m.to_year) for m in lib.list_members(artist.id)
+        ]
+        after = [
+            MemberIn(m.name, m.roles, m.from_year, m.to_year)
+            for m in lib.set_members(artist.id, members)
+        ]
+        if existing and before != after:
+            report.changes.append(
+                Change("artist", name, "members", [m.name for m in before], [m.name for m in after])
+            )
     return artist.id
 
 
@@ -400,8 +492,20 @@ def _import_image(lib: Library, artist_id: int, band_dir: Path, report: Report) 
         names = ", ".join(p.name for p in images)
         report.warnings.append(f"{band_dir.name}: several band images ({names}), using the first")
     if images:
-        lib.set_image(artist_id, images[0])
+        before = lib.get_artist(artist_id)
+        after = lib.set_image(artist_id, images[0])
+        if before.image and before.image != after.image:
+            report.changes.append(Change("artist", after.name, "picture", None, images[0].name))
         report.images += 1
+
+
+def _files(folder: Path, suffixes: tuple[str, ...]) -> dict[str, Path]:
+    """The files of ``folder`` with one of ``suffixes``, by their lower-case names."""
+    return {
+        p.name.casefold(): p
+        for p in sorted(folder.glob("*"))
+        if p.is_file() and p.suffix.lower() in suffixes
+    }
 
 
 def _import_albums(
@@ -419,47 +523,38 @@ def _import_albums(
                 f"{artist.name}: cover {path.name!r} skipped, covers cannot be GIFs"
             )
     used_covers: set[Path] = set()
-    lyrics = {
-        p.name.casefold(): p
-        for p in sorted((band_dir / "songs").glob("*"))
-        if p.is_file() and p.suffix.lower() == ".txt"
+    inbox_files = {
+        "lyrics": _files(band_dir / "songs", (".txt",)),
+        "timed": _files(band_dir / "songs", (".lrc",)),
+        "tabs": _files(band_dir / "tabs", TAB_TYPES),
     }
-    used_lyrics: set[Path] = set()
-    timed = {
-        p.name.casefold(): p
-        for p in sorted((band_dir / "songs").glob("*"))
-        if p.is_file() and p.suffix.lower() == ".lrc"
-    }
+    used: set[Path] = set()
     for raw_title, raw in albums.items():
         title = _title(raw_title)
         where = f"{artist.name} / {title}"
         data = _mapping(raw, where, ALBUM_KEYS, report)
 
-        existing = lib.find_album(artist_id, title)
-        # Without the key, a choice made in the app stays.
-        unreleased = bool(existing and existing.unreleased)
+        found = lib.find_uid("albums", _uid(data))
+        existing = lib.get_album(found) if found else lib.find_album(artist_id, title)
+        values: dict = {"artist_id": artist_id, "title": title}
+        if "release_year" in data:
+            values["year"] = _year(data["release_year"], where)
+        if data.get("kind"):
+            values["kind"] = data["kind"]
         if "unreleased" in data:
             if isinstance(data["unreleased"], bool):
-                unreleased = data["unreleased"]
+                values["unreleased"] = data["unreleased"]
             else:
                 report.warnings.append(f"{where}: unreleased must be true or false")
-        album_in = AlbumIn(
-            artist_id=artist_id,
-            title=title,
-            year=_year(data.get("release_year"), where) or (existing and existing.year),
-            kind=data.get("kind") or (existing.kind if existing else "album"),
-            unreleased=unreleased,
-            rating=existing and existing.rating,
-            notes=existing and existing.notes,
-            favorite=bool(existing and existing.favorite),
-            cd=existing and existing.cd,
-            vinyl=existing and existing.vinyl,
-            listen_later=bool(existing and existing.listen_later),
-        )
         if existing:
+            current = AlbumIn(**{f.name: getattr(existing, f.name) for f in fields(AlbumIn)})
+            album_in = replace(current, **values)
+            _diff(report, "album", f"{artist.name} / {existing.title}", current, album_in,
+                  ALBUM_FIELDS)  # fmt: skip
             album = lib.update_album(existing.id, album_in)
         else:
-            album = lib.create_album(album_in)
+            album = lib.create_album(AlbumIn(**values), uid=_uid(data))
+            report.changes.append(Change("album", where))
         report.count("albums", existing is None)
 
         if data.get("cover"):
@@ -473,55 +568,110 @@ def _import_albums(
                     f"it is not one of {', '.join(COVER_TYPES)}"
                 )
                 cover = None
+        elif "cover" in data:
+            cover = None  # ``cover: null``: no cover file, so none is guessed
         else:
             cover = match_cover(title, covers)
             if cover is None and covers:
                 report.warnings.append(f"{where}: no cover file matches the title")
         if cover is not None:
-            lib.set_cover(album.id, cover)
+            after = lib.set_cover(album.id, cover)
+            if existing and existing.cover != after.cover:
+                report.changes.append(Change("album", where, "cover", None, cover.name))
             used_covers.add(cover)
             report.covers += 1
 
+        seen: dict[int, int] = {}
         for number, song in enumerate(data.get("songs") or [], start=1):
             imported = _import_song(lib, artist_id, album.id, number, song, where, report)
+            if imported is not None and imported.id in seen:
+                report.warnings.append(
+                    f"{where} / {imported.title}: listed as tracks {seen[imported.id]} and "
+                    f"{number}, which are one song in the library; give them different names"
+                )
             if imported is not None:
-                name = lyrics_file_name(imported.title)
-                path = lyrics.get(name.casefold())
-                if path is None:
-                    # The library may have just made it, when its ``info_dir`` is this folder.
-                    path = lyrics[name.casefold()] = band_dir / "songs" / name
-                    report.lyrics_files += 1
-                if not path.exists():
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text("", encoding="utf-8")
-                lrc = timed.get(f"{name.removesuffix('.txt')}.lrc".casefold())
-                _import_lyrics(lib, imported.id, path, lrc, report)
-                used_lyrics.update(p for p in (path, lrc) if p)
+                seen.setdefault(imported.id, number)
+                used.update(
+                    _import_song_files(
+                        lib, imported, inbox_files, f"{where} / {imported.title}", report
+                    )
+                )
 
     for path in covers:
         if path not in used_covers:
             report.warnings.append(f"{artist.name}: cover {path.name!r} matched no album")
-    for path in [*lyrics.values(), *timed.values()]:
-        if path not in used_lyrics:
-            report.warnings.append(f"{artist.name}: lyrics {path.name!r} matched no song")
+    for kind in ("lyrics", "timed"):
+        for path in inbox_files[kind].values():
+            if path not in used:
+                report.warnings.append(f"{artist.name}: lyrics {path.name!r} matched no song")
+    for path in inbox_files["tabs"].values():
+        if path not in used:
+            report.warnings.append(f"{artist.name}: tab {path.name!r} matched no song")
 
 
-def _import_lyrics(
-    lib: Library, song_id: int, path: Path, lrc: Path | None, report: Report
-) -> None:
+def _read_text(path: Path, report: Report) -> str | None:
+    """The text of a lyrics file; ``None`` (and a warning) when it is not UTF-8."""
     try:
-        text = path.read_text(encoding="utf-8")
+        return path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         report.warnings.append(f"{path.parent.parent.name}: lyrics {path.name!r} is not UTF-8")
-        return
+        return None
+
+
+def _copy(source: Path, target: Path | None, report: Report) -> bool:
+    """Plan copying ``source`` over ``target`` (in the library) when they differ."""
+    if target is None:
+        return False
+    if target.is_file() and target.read_bytes() == source.read_bytes():
+        return False
+    report.copies.append((source, target))
+    return True
+
+
+def _import_song_files(
+    lib: Library, song: Song, files: dict[str, dict[str, Path]], where: str, report: Report
+) -> set[Path]:
+    """Bring the song's lyrics, timed lyrics and tab from the inbox into the library, and set
+    the lyrics it shows. Returns the inbox files used."""
+    stem = lyrics_file_name(song.title).removesuffix(".txt")
+    source = files["lyrics"].get(f"{stem}.txt".casefold())
+    timed = files["timed"].get(f"{stem}.lrc".casefold())
+    tab = next(
+        (files["tabs"][k] for t in TAB_TYPES if (k := f"{stem}{t}".casefold()) in files["tabs"]),
+        None,
+    )
+    target = lib.lyrics_path(song.id)  # ``None`` when the library keeps no files
+
+    text = _read_text(source, report) if source else None
+    if text is not None and text.strip():
+        if _copy(source, target, report):
+            report.lyrics_files += 1
+    elif target is not None and target.is_file():
+        text = _read_text(target, report)  # no words in the inbox: keep the library's
     words = ""
+    lrc = timed or lib.lrc_path(song.id)
     if lrc is not None:
         try:
             words = plain_lyrics(read_lrc(lrc))
         except ValueError:
             report.warnings.append(f"{lrc.parent.parent.name}: lyrics {lrc.name!r} is not UTF-8")
-    if lib.set_lyrics(song_id, text.strip() or words).lyrics:
-        report.lyrics += 1
+    if timed is not None and target is not None:
+        if _copy(timed, lib.lrc_path(song.id) or target.with_suffix(".lrc"), report):
+            report.lyrics_files += 1
+    if tab is not None:
+        current = lib.tab_path(song.id)
+        if current is not None and current.suffix.lower() != tab.suffix.lower():
+            current = None  # a new kind of file; the first of ``TAB_TYPES`` found wins
+        if _copy(tab, current or lib.new_tab_path(song.id, tab.suffix.lower()), report):
+            report.tabs += 1
+    if source is not None or timed is not None:
+        before = song.lyrics
+        after = lib.set_lyrics(song.id, (text or "").strip() or words).lyrics
+        if after:
+            report.lyrics += 1
+        if before != after and before is not None:
+            report.changes.append(Change("song", where, "lyrics", before, after))
+    return {p for p in (source, timed, tab) if p}
 
 
 def _import_song(
@@ -538,39 +688,34 @@ def _import_song(
     if not title:
         report.warnings.append(f"{where} track {number}: skipped, it has no name")
         return None
-    try:
-        seconds = parse_duration(data.get("duration"))
-    except ValueError as exc:
-        report.warnings.append(f"{where} / {title}: {exc}")
-        seconds = None
-    if seconds is None:
+    found = lib.find_uid("songs", _uid(data))
+    existing = lib.get_song(found) if found else lib.find_song(artist_id, album_id, title)
+    values: dict = {
+        "artist_id": artist_id,
+        "album_id": album_id,
+        "title": title,
+        "track_number": number,
+    }
+    if "duration" in data:
+        try:
+            values["duration_seconds"] = parse_duration(data["duration"])
+        except ValueError as exc:
+            report.warnings.append(f"{where} / {title}: {exc}")
+    if values.get("duration_seconds") is None and not (existing and existing.duration_seconds):
         report.warnings.append(f"{where} / {title}: no duration")
-
-    existing = lib.find_song(artist_id, album_id, title)
-    # Without the key, a choice made in the app stays.
-    no_lyrics = bool(existing and existing.no_lyrics)
     if "no_lyrics" in data:
         if isinstance(data["no_lyrics"], bool):
-            no_lyrics = data["no_lyrics"]
+            values["no_lyrics"] = data["no_lyrics"]
         else:
             report.warnings.append(f"{where} / {title}: no_lyrics must be true or false")
-    song_in = SongIn(
-        artist_id=artist_id,
-        title=title,
-        album_id=album_id,
-        track_number=number,
-        duration_seconds=seconds or (existing and existing.duration_seconds),
-        rating=existing and existing.rating,
-        notes=existing and existing.notes,
-        favorite=bool(existing and existing.favorite),
-        no_lyrics=no_lyrics,
-        mv=existing and existing.mv,
-        listen_later=bool(existing and existing.listen_later),
-    )
     if existing:
+        current = SongIn(**{f.name: getattr(existing, f.name) for f in fields(SongIn)})
+        song_in = replace(current, **values)
+        _diff(report, "song", f"{where} / {existing.title}", current, song_in, SONG_FIELDS)
         song = lib.update_song(existing.id, song_in)
     else:
-        song = lib.create_song(song_in)
+        song = lib.create_song(SongIn(**values), uid=_uid(data))
+        report.changes.append(Change("song", f"{where} / {title}"))
     report.count("songs", existing is None)
     if "featuring" in data:
         report.featuring.append((song.id, _strings(data["featuring"]), f"{where} / {title}"))
@@ -579,15 +724,30 @@ def _import_song(
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m implicated.importer")
-    parser.add_argument("info_dir", nargs="?", default="info")
+    parser.add_argument("info_dir", nargs="?", default=os.environ.get("IMPLICATED_INFO", "info"))
     parser.add_argument("--db", default=os.environ.get("IMPLICATED_DB", "local/implicated.db"))
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--preview", action="store_true", help="only show what would change")
+    group.add_argument("--yes", action="store_true", help="import without asking first")
     args = parser.parse_args(argv)
+    db = Path(args.db)
+    lib = Library(db, db.parent)
+    if not inbox.list_files(args.info_dir):
+        print(f"{args.info_dir} is empty: nothing to import")
+        return
     try:
-        report = import_dir(Library(args.db), args.info_dir)
+        if not args.yes:
+            print(f"Importing {args.info_dir} into {db} would do this:")
+            print(import_dir(lib, args.info_dir, dry_run=True).summary())
+            if args.preview or input("Import it? [y/N] ").strip().lower() not in ("y", "yes"):
+                return
+        report, archive = accept(lib, args.info_dir)
     except (OSError, ValueError) as exc:
         sys.exit(f"import failed: {exc}")
-    print(f"Imported {args.info_dir} into {args.db}")
+    print(f"Imported {args.info_dir} into {db}")
     print(report.summary())
+    if archive:
+        print(f"The inbox's files are now in {archive}")
 
 
 if __name__ == "__main__":

@@ -1531,10 +1531,10 @@ async def update_playlist(request: Request, lib: Lib, playlist_id: int):
 def _rename_setlists(lib: Library, old: str, new: str) -> None:
     """Keep concerts.csv's setlists on a renamed playlist, unless another playlist still has
     its old name (and so is now the setlist)."""
-    if lib.info_dir is None or old.casefold() in _setlist_playlists(lib):
+    if lib.media_dir is None or old.casefold() in _setlist_playlists(lib):
         return
     try:
-        rename_setlist(lib.info_dir / CONCERTS_FILE, old, new)
+        rename_setlist(lib.media_dir / CONCERTS_FILE, old, new)
     except (OSError, UnicodeDecodeError) as exc:
         logger.warning("could not rename the setlist %r in %s: %s", old, CONCERTS_FILE, exc)
 
@@ -2080,8 +2080,8 @@ def _concert_setlist(lib: Library, form: FormData) -> str | None:
 
 
 def _concerts_context(lib: Library, **extra) -> dict:
-    """The concerts in the info folder's ``concerts.csv``, read again every time."""
-    path = lib.info_dir / CONCERTS_FILE if lib.info_dir else None
+    """The concerts in the library folder's ``concerts.csv``, read again every time."""
+    path = lib.media_dir / CONCERTS_FILE if lib.media_dir else None
     concerts, warnings, added_tours = [], [], []
     if path:
         try:
@@ -2121,9 +2121,9 @@ def _concerts_file(request: Request, lib: Library) -> Path:
     # Only the page's own forms may write the file: other sites cannot send this header.
     if "hx-request" not in request.headers:
         raise HTTPException(403, "change concerts from the Concerts page")
-    if lib.info_dir is None:
-        raise HTTPException(404, "the library has no info folder")
-    return lib.info_dir / CONCERTS_FILE
+    if lib.media_dir is None:
+        raise HTTPException(404, "the library has no media folder")
+    return lib.media_dir / CONCERTS_FILE
 
 
 def _band(form: FormData) -> str:
@@ -2231,10 +2231,10 @@ async def set_concert_setlist(request: Request, lib: Lib, line: int):
 
 def _setlist_of(lib: Library, playlist: Playlist) -> list[Concert]:
     """The concerts whose setlist is ``playlist``, by date."""
-    if lib.info_dir is None or playlist.kind:
+    if lib.media_dir is None or playlist.kind:
         return []
     try:
-        concerts, _warnings = read_concerts(lib.info_dir / CONCERTS_FILE)
+        concerts, _warnings = read_concerts(lib.media_dir / CONCERTS_FILE)
     except (OSError, UnicodeDecodeError):
         return []
     setlists = _setlist_playlists(lib)

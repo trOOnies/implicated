@@ -2,12 +2,9 @@
 
 import argparse
 import os
-import sys
 
 import uvicorn
 
-from implicated.importer import MissingInfoError, ensure_info_dir
-from implicated.web import DEFAULT_INFO
 from implicated.web.shutdown import SERVER_PID
 
 
@@ -17,12 +14,6 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--reload", action="store_true")
     args = parser.parse_args()
-    # Checked here too, before uvicorn starts: with --reload its reloader would otherwise keep
-    # running after the app failed to load.
-    try:
-        ensure_info_dir(os.environ.get("IMPLICATED_INFO", DEFAULT_INFO))
-    except MissingInfoError as exc:
-        sys.exit(f"error: {exc}")
     # The exit button stops this process, which (with --reload) then stops the app's worker.
     os.environ[SERVER_PID] = str(os.getpid())
     try:

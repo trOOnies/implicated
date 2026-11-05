@@ -5,8 +5,10 @@ import sys
 import pytest
 
 from implicated.library import Library
+from implicated.models import AlbumIn, ArtistIn
 from implicated.seed import seed
 from implicated.web import __main__ as web_main
+from implicated.web import create_app
 from implicated.web.shutdown import SERVER_PID
 
 
@@ -48,12 +50,27 @@ def test_serve_cli_exits_quietly_once_stopped(monkeypatch: pytest.MonkeyPatch):
     web_main.main()
 
 
-def test_serve_cli_stops_on_missing_info(tmp_path, monkeypatch: pytest.MonkeyPatch):
-    calls = []
-    monkeypatch.setattr(web_main.uvicorn, "run", lambda *args, **kwargs: calls.append(kwargs))
-    monkeypatch.setenv("IMPLICATED_INFO", str(tmp_path / "fresh"))
-    monkeypatch.setattr(sys, "argv", ["implicated.web", "--reload"])
-    with pytest.raises(SystemExit, match="bands.yaml"):
-        web_main.main()
-    assert calls == []  # uvicorn, and its reloader, never start
-    assert (tmp_path / "fresh" / "bands.yaml").is_file()
+def test_app_creates_an_empty_inbox_and_imports_nothing(tmp_path, monkeypatch):
+    info = tmp_path / "fresh"
+    monkeypatch.setenv("IMPLICATED_INFO", str(info))
+    app = create_app(tmp_path / "local" / "implicated.db")
+    assert info.is_dir() and not any(info.iterdir())
+    assert app.state.info_dir == info
+    assert app.state.library.media_dir == tmp_path / "local"
+
+
+def test_app_edits_survive_a_restart(tmp_path, monkeypatch):
+    """The inbox is never imported on startup, so what the app changed stays."""
+    info = tmp_path / "info"
+    (info / "bands" / "Portishead").mkdir(parents=True)
+    (info / "bands.yaml").write_text("bands:\n- name: Portishead\n  creation_year: 1991\n")
+    (info / "bands" / "Portishead" / "albums.yaml").write_text("Dummy:\n  release_year: 1994\n")
+    monkeypatch.setenv("IMPLICATED_INFO", str(info))
+    db = tmp_path / "local" / "implicated.db"
+    lib = create_app(db).state.library
+    assert lib.stats().artists == 0  # nothing imported
+    artist = lib.create_artist(ArtistIn("Portishead", formed_year=1990))
+    lib.create_album(AlbumIn(artist.id, "Dummy (Remastered)", 1995))
+    lib = create_app(db).state.library
+    assert lib.get_artist(artist.id).formed_year == 1990
+    assert [a.album.title for a in lib.list_albums(artist.id)] == ["Dummy (Remastered)"]

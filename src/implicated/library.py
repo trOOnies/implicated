@@ -6,6 +6,7 @@ import hashlib
 import json
 import sqlite3
 import threading
+import uuid
 from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -218,7 +219,20 @@ MIGRATIONS = [
     ("budgets", "shipping_cents", "INTEGER NOT NULL DEFAULT 0"),
     ("cart", "discount_cents", "INTEGER NOT NULL DEFAULT 0"),
     ("budgets", "discount_cents", "INTEGER NOT NULL DEFAULT 0"),
+    ("artists", "uid", "TEXT"),
+    ("albums", "uid", "TEXT"),
+    ("songs", "uid", "TEXT"),
+    ("playlists", "uid", "TEXT"),
 ]
+# Tables whose records have a ``uid``: a stable id that survives renames, which exports and
+# inbox files use to point at a record (integer ids stay internal to one database).
+UID_TABLES = ("artists", "albums", "songs", "playlists")
+
+
+def new_uid() -> str:
+    return str(uuid.uuid4())
+
+
 # Columns that changed names: (table, old name, new name), renamed before ``MIGRATIONS`` run.
 RENAMES = [("songs", "youtube", "mv")]
 
@@ -454,14 +468,16 @@ def _split(row: sqlite3.Row, prefix: str) -> tuple[dict, dict]:
 
 
 class Library:
-    def __init__(self, path: str | Path, info_dir: str | Path | None = None) -> None:
+    def __init__(self, path: str | Path, media_dir: str | Path | None = None) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.covers_dir = self.path.parent / "covers"
         self.images_dir = self.path.parent / "artists"
-        # The folder ``implicated.importer`` reads. When set, every song has a lyrics file in
-        # ``bands/<artist>/songs/``: one is created (empty) along with the song if missing.
-        self.info_dir = Path(info_dir) if info_dir is not None else None
+        # Where the library keeps the files you edit by hand: lyrics, timed lyrics and tabs in
+        # ``bands/<artist>/songs|tabs/``, and the concerts and tours CSVs. Usually the folder
+        # the database is in. When set, every song has a lyrics file: one is created (empty)
+        # along with the song if missing. Without it, the library keeps no such files.
+        self.media_dir = Path(media_dir) if media_dir is not None else None
         self._local = threading.local()
         with self.connect() as conn:
             conn.executescript(SCHEMA)
@@ -473,12 +489,19 @@ class Library:
                 columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
                 if column not in columns:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+            for table in UID_TABLES:
+                missing = conn.execute(f"SELECT id FROM {table} WHERE uid IS NULL").fetchall()
+                conn.executemany(
+                    f"UPDATE {table} SET uid = ? WHERE id = ?",
+                    [(new_uid(), row["id"]) for row in missing],
+                )
+                conn.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{table}_uid ON {table}(uid)")
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_playlists_kind ON playlists(kind)")
             for kind, (name, _field) in SPECIAL_PLAYLISTS.items():
                 conn.execute(
-                    """INSERT INTO playlists (name, created_at, kind) SELECT ?, ?, ?
+                    """INSERT INTO playlists (name, created_at, kind, uid) SELECT ?, ?, ?, ?
                         WHERE NOT EXISTS (SELECT 1 FROM playlists WHERE kind = ?)""",
-                    (name, _now(), kind, kind),
+                    (name, _now(), kind, new_uid(), kind),
                 )
             conn.execute("INSERT OR IGNORE INTO cart (id) VALUES (1)")
         self._sync_marks()
@@ -490,14 +513,39 @@ class Library:
         if shared is not None:
             yield shared
             return
-        conn = sqlite3.connect(self.path)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON")
+        conn = self._open()
         try:
             yield conn
             conn.commit()
         finally:
             conn.close()
+
+    def _open(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
+
+    @contextmanager
+    def dry_run(self) -> Iterator[None]:
+        """Run library calls that change nothing, to see what they would do: they share one
+        connection whose work is rolled back at the end, and no file is written, moved or
+        removed meanwhile (see ``dry``). Only this thread is affected."""
+        if getattr(self._local, "conn", None) is not None:
+            raise RuntimeError("a dry run cannot start inside a transaction")
+        conn = self._open()
+        self._local.conn, self._local.dry = conn, True
+        try:
+            yield
+        finally:
+            self._local.conn, self._local.dry = None, False
+            conn.rollback()
+            conn.close()
+
+    @property
+    def dry(self) -> bool:
+        """Whether this thread is inside ``dry_run``, so files must stay as they are."""
+        return getattr(self._local, "dry", False)
 
     @contextmanager
     def transaction(self) -> Iterator[None]:
@@ -611,6 +659,16 @@ class Library:
             raise NotFound(f"artist {artist_id} not found")
         return _artist(row)
 
+    def find_uid(self, table: str, uid: str | None) -> int | None:
+        """The id of the record of ``table`` (one of ``UID_TABLES``) with that ``uid``."""
+        if table not in UID_TABLES:
+            raise ValueError(f"{table} records have no uid")
+        if not uid:
+            return None
+        with self.connect() as conn:
+            row = conn.execute(f"SELECT id FROM {table} WHERE uid = ?", (uid,)).fetchone()
+        return row["id"] if row else None
+
     def find_artist(self, name: str) -> Artist | None:
         """Look an artist up by name, ignoring case."""
         with self.connect() as conn:
@@ -619,21 +677,21 @@ class Library:
             ).fetchone()
         return _artist(row) if row else None
 
-    def create_artist(self, data: ArtistIn) -> Artist:
+    def create_artist(self, data: ArtistIn, uid: str | None = None) -> Artist:
         values = self._artist_values(data)
         with self.connect() as conn:
             cur = conn.execute(
                 """INSERT INTO artists (name, country, formed_year, genres, languages, bio,
                                         wiki, favorite, notes, listen_later, rating,
-                                        created_at)
+                                        created_at, uid)
                    VALUES (:name, :country, :formed_year, :genres, :languages, :bio,
-                           :wiki, :favorite, :notes, :listen_later, :rating, :now)""",
-                {**values, "now": _now()},
+                           :wiki, :favorite, :notes, :listen_later, :rating, :now, :uid)""",
+                {**values, "now": _now(), "uid": uid or new_uid()},
             )
         return self.get_artist(cur.lastrowid)
 
     def update_artist(self, artist_id: int, data: ArtistIn) -> Artist:
-        self.get_artist(artist_id)
+        old_name = self.get_artist(artist_id).name
         with self.connect() as conn:
             conn.execute(
                 """UPDATE artists SET name = :name, country = :country,
@@ -644,7 +702,42 @@ class Library:
                    WHERE id = :id""",
                 {**self._artist_values(data), "id": artist_id},
             )
-        return self.get_artist(artist_id)
+            others = conn.execute(
+                "SELECT 1 FROM artists WHERE id != ? AND name = ? COLLATE NOCASE",
+                (artist_id, old_name),
+            ).fetchone()
+        artist = self.get_artist(artist_id)
+        if artist.name != old_name and not self.dry:
+            # A renamed artist takes its lyrics and tabs along (copies, if another artist still
+            # has the old name).
+            self._move_artist_folder(old_name, artist.name, copy=others is not None)
+        return artist
+
+    def artist_folder(self, name: str) -> Path | None:
+        """The artist's folder of hand-edited files in ``media_dir``; ``None`` without it."""
+        if self.media_dir is None:
+            return None
+        bands = self.media_dir / "bands"
+        return _find_file(bands, [name]) or bands / name
+
+    def _move_artist_folder(self, old_name: str, new_name: str, copy: bool) -> None:
+        old, new = self.artist_folder(old_name), self.artist_folder(new_name)
+        if old is None or new is None or not old.is_dir() or old == new:
+            return
+        if not copy and not new.exists():
+            new.parent.mkdir(parents=True, exist_ok=True)
+            old.rename(new)
+            return
+        # Files the new folder already has are kept; the rest move (or are copied) over.
+        for path in sorted(old.rglob("*")):
+            if path.is_file():
+                _move_file(path, new / path.relative_to(old), copy=copy)
+        if not copy:
+            for path in sorted(old.rglob("*"), reverse=True):
+                if path.is_dir() and not any(path.iterdir()):
+                    path.rmdir()
+            if not any(old.iterdir()):
+                old.rmdir()
 
     def delete_artist(self, artist_id: int) -> None:
         image = self.get_artist(artist_id).image
@@ -881,15 +974,15 @@ class Library:
             ).fetchone()
         return _album(row) if row else None
 
-    def create_album(self, data: AlbumIn) -> Album:
+    def create_album(self, data: AlbumIn, uid: str | None = None) -> Album:
         values = self._album_values(data)
         with self.connect() as conn:
             cur = conn.execute(
                 """INSERT INTO albums (artist_id, title, year, kind, unreleased, rating, notes,
-                                       favorite, cd, vinyl, listen_later, created_at)
+                                       favorite, cd, vinyl, listen_later, created_at, uid)
                    VALUES (:artist_id, :title, :year, :kind, :unreleased, :rating, :notes,
-                           :favorite, :cd, :vinyl, :listen_later, :now)""",
-                {**values, "now": _now()},
+                           :favorite, :cd, :vinyl, :listen_later, :now, :uid)""",
+                {**values, "now": _now(), "uid": uid or new_uid()},
             )
         return self.get_album(cur.lastrowid)
 
@@ -969,8 +1062,8 @@ class Library:
             raise NotFound(f"album {album_id} has no cover")
         return path
 
-    @staticmethod
     def _store_image(
+        self,
         directory: Path,
         record_id: int,
         data: bytes,
@@ -986,13 +1079,14 @@ class Library:
         if not data:
             raise ValueError(f"{what} {file_name!r} is empty")
         name = f"{record_id}-{hashlib.sha256(data).hexdigest()[:12]}{suffix}"
-        if name != current:
+        if name != current and not self.dry:
             directory.mkdir(parents=True, exist_ok=True)
             (directory / name).write_bytes(data)
         return name
 
-    @staticmethod
-    def _remove_files(directory: Path, names: list[str | None]) -> None:
+    def _remove_files(self, directory: Path, names: list[str | None]) -> None:
+        if self.dry:
+            return
         for name in names:
             if name:
                 (directory / name).unlink(missing_ok=True)
@@ -1175,17 +1269,17 @@ class Library:
                 return summary
         raise NotFound(f"song {song_id} not found")
 
-    def create_song(self, data: SongIn) -> Song:
+    def create_song(self, data: SongIn, uid: str | None = None) -> Song:
         values = self._song_values(data)
         with self.connect() as conn:
             cur = conn.execute(
                 """INSERT INTO songs (artist_id, album_id, title, track_number,
                                       duration_seconds, rating, notes, favorite, no_lyrics,
-                                      mv, listen_later, created_at)
+                                      mv, listen_later, created_at, uid)
                    VALUES (:artist_id, :album_id, :title, :track_number, :duration_seconds,
                            :rating, :notes, :favorite, :no_lyrics, :mv, :listen_later,
-                           :now)""",
-                {**values, "now": _now()},
+                           :now, :uid)""",
+                {**values, "now": _now(), "uid": uid or new_uid()},
             )
         self._sync_marks(cur.lastrowid)
         song = self.get_song(cur.lastrowid)
@@ -1216,6 +1310,8 @@ class Library:
         # A renamed song takes its lyrics, timed lyrics and tab files along (copies, if another
         # song still uses them).
         new_path = self.lyrics_path(song_id)
+        if self.dry:
+            return self.get_song(song_id)
         if old_path and new_path and old_path.is_file():
             _move_file(old_path, new_path, copy=shared)
         if old_tab and self.tab_path(song_id) is None:
@@ -1230,17 +1326,17 @@ class Library:
         shared = self._shares_lyrics_file(self.get_song(song_id))
         self._delete("songs", song_id)
         # Lyrics someone wrote are kept; an empty file only belonged to this song.
-        if path and not shared and path.is_file() and path.stat().st_size == 0:
+        if path and not self.dry and not shared and path.is_file() and path.stat().st_size == 0:
             path.unlink()
 
     def lyrics_path(self, song_id: int) -> Path | None:
-        """The song's lyrics file, whether it exists or not; ``None`` without ``info_dir``.
+        """The song's lyrics file, whether it exists or not; ``None`` without ``media_dir``.
 
         Names match ignoring case, like the importer does, so an existing
         ``our lady of sorrows.txt`` is the file of "Our Lady of Sorrows".
         """
         song = self.get_song(song_id)
-        if self.info_dir is None:
+        if self.media_dir is None:
             return None
         folder = self._song_folder(song, "songs")
         name = lyrics_file_name(song.title)
@@ -1250,7 +1346,7 @@ class Library:
         """The song's timed lyrics, an ``.lrc`` file next to its lyrics file and named like it
         (ignoring case); ``None`` when it has none."""
         song = self.get_song(song_id)
-        if self.info_dir is None:
+        if self.media_dir is None:
             return None
         stem = lyrics_file_name(song.title).removesuffix(".txt")
         return _find_file(self._song_folder(song, "songs"), [f"{stem}.lrc"])
@@ -1267,22 +1363,23 @@ class Library:
         """The song's tab, a Guitar Pro file in ``bands/<artist>/tabs/`` named like its lyrics
         file (any of ``TAB_TYPES``, ignoring case); ``None`` when it has none."""
         song = self.get_song(song_id)
-        if self.info_dir is None:
+        if self.media_dir is None:
             return None
         stem = lyrics_file_name(song.title).removesuffix(".txt")
         return _find_file(self._song_folder(song, "tabs"), [stem + t for t in TAB_TYPES])
 
     def new_tab_path(self, song_id: int, suffix: str = ".gp5") -> Path | None:
-        """Where a tab for the song goes; ``None`` without ``info_dir``."""
+        """Where a tab for the song goes; ``None`` without ``media_dir``."""
         song = self.get_song(song_id)
-        if self.info_dir is None:
+        if self.media_dir is None:
             return None
         stem = lyrics_file_name(song.title).removesuffix(".txt")
         return self._song_folder(song, "tabs") / f"{stem}{suffix}"
 
     def _song_folder(self, song: Song, kind: str) -> Path:
-        assert self.info_dir is not None
-        return self.info_dir / "bands" / self.get_artist(song.artist_id).name / kind
+        folder = self.artist_folder(self.get_artist(song.artist_id).name)
+        assert folder is not None
+        return folder / kind
 
     def _shares_lyrics_file(self, song: Song) -> bool:
         """Whether another song of the artist (the same song on a deluxe edition, say) has the
@@ -1299,7 +1396,7 @@ class Library:
         """Create the song's lyrics file when it is missing, holding the lyrics the library
         already has (usually none, so the file is empty)."""
         path = self.lyrics_path(song_id)
-        if path is not None and not path.exists():
+        if path is not None and not path.exists() and not self.dry:
             path.parent.mkdir(parents=True, exist_ok=True)
             lyrics = self.get_song(song_id).lyrics
             path.write_text(f"{lyrics}\n" if lyrics else "", encoding="utf-8")
@@ -1785,11 +1882,12 @@ class Library:
         playlist = self.get_playlist(playlist_id)
         return PlaylistDetail(playlist, self.list_songs(playlist_id=playlist_id, order="playlist"))
 
-    def create_playlist(self, data: PlaylistIn) -> Playlist:
+    def create_playlist(self, data: PlaylistIn, uid: str | None = None) -> Playlist:
         name = self._playlist_name(data)
         with self.connect() as conn:
             cur = conn.execute(
-                "INSERT INTO playlists (name, created_at) VALUES (?, ?)", (name, _now())
+                "INSERT INTO playlists (name, created_at, uid) VALUES (?, ?, ?)",
+                (name, _now(), uid or new_uid()),
             )
         return self.get_playlist(cur.lastrowid)
 
