@@ -210,6 +210,17 @@ def test_set_cover_rejects_other_files(lib: Library, sample: Sample, image):
         lib.set_cover(99, image())
 
 
+def test_set_cover_data(lib: Library, sample: Sample):
+    album = lib.set_cover_data(sample.album_id, b"uploaded", "Front.PNG")
+    assert album.cover.endswith(".png")
+    assert lib.cover_path(sample.album_id).read_bytes() == b"uploaded"
+    with pytest.raises(ValueError, match="cover must be one of"):
+        lib.set_cover_data(sample.album_id, b"text", "notes.txt")
+    with pytest.raises(ValueError, match="is empty"):
+        lib.set_cover_data(sample.album_id, b"", "empty.jpg")
+    assert lib.get_album(sample.album_id).cover == album.cover
+
+
 def test_set_cover_accepts_avif(lib: Library, sample: Sample, image):
     assert lib.set_cover(sample.album_id, image("dummy.avif")).cover.endswith(".avif")
 

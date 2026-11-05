@@ -44,7 +44,7 @@ from implicated.concerts import (
     set_setlist,
     set_status,
 )
-from implicated.library import Library, NotFound
+from implicated.library import IMAGE_TYPES, Library, NotFound, check_image_name
 from implicated.models import (
     ALBUM_KINDS,
     CONCERT_STATUSES,
@@ -152,6 +152,8 @@ templates.env.filters.update(
 templates.env.globals.update(
     asset=asset,
     album_kinds=ALBUM_KINDS,
+    # What the cover pickers accept.
+    image_accept=",".join(IMAGE_TYPES),
     ownership=OWNERSHIP,
     format_names=FORMATS,
     # The latest year a band can have formed in.
@@ -714,12 +716,31 @@ def albums_fragment(
     return render(request, "_album_pages.html", **context)
 
 
+async def _cover_upload(form: FormData) -> tuple[bytes, str] | None:
+    """The image picked in the form's ``cover`` field and its file name, or ``None`` when none
+    was; a ``ValueError`` when it is not an image the library takes."""
+    upload = form.get("cover")
+    # Browsers send an empty, nameless file when nothing was picked.
+    if upload is None or isinstance(upload, str) or not upload.filename:
+        return None
+    check_image_name(upload.filename, "cover")
+    data = await upload.read()
+    if not data:
+        raise ValueError(f"cover {upload.filename!r} is empty")
+    return data, upload.filename
+
+
 @router.post("/albums")
 async def create_album(request: Request, lib: Lib):
     form = await request.form()
     artist_id = _int(form, "artist_id")
     try:
-        lib.create_album(album_from_form(form))
+        # Checked first, so a bad cover does not leave an album behind.
+        cover = await _cover_upload(form)
+        with lib.transaction():
+            album = lib.create_album(album_from_form(form))
+            if cover is not None:
+                lib.set_cover_data(album.id, *cover)
     except (ValueError, NotFound) as exc:
         return render(
             request,
@@ -794,6 +815,32 @@ async def update_album(request: Request, lib: Lib, album_id: int):
         found(lib.update_album, album_id, data)
     except ValueError as exc:
         return render(request, "_album_edit.html", status_code=422, error=str(exc), album=album)
+    return render(
+        request,
+        "_album_info.html",
+        trigger=("albums-changed", "library-changed"),
+        **_album_context(lib, album_id),
+    )
+
+
+@router.post("/albums/{album_id}/cover")
+async def set_album_cover(request: Request, lib: Lib, album_id: int):
+    """Upload a cover from the album page: it replaces the album's current one."""
+    form = await request.form()
+    found(lib.get_album, album_id)
+    try:
+        cover = await _cover_upload(form)
+        if cover is None:
+            raise ValueError("Pick an image first.")
+        lib.set_cover_data(album_id, *cover)
+    except ValueError as exc:
+        return render(
+            request,
+            "_album_info.html",
+            status_code=422,
+            cover_error=str(exc),
+            **_album_context(lib, album_id),
+        )
     return render(
         request,
         "_album_info.html",

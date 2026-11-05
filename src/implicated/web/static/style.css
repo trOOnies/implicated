@@ -259,6 +259,23 @@ td .pickers { flex-direction: column; align-items: flex-start; gap: .25rem; marg
 .video iframe { width: 100%; height: 100%; border: 0; border-radius: 6px; }
 .media-head { display: flex; gap: 1.25rem; align-items: flex-start; }
 .media-head > div { flex: 1; min-width: 0; }
+/* The album page's cover, with its Set cover button below. */
+.media-head > .cover-pick { flex: none; display: flex; flex-direction: column; align-items: center; gap: .5rem; max-width: 11rem; }
+.cover-pick form { display: contents; }
+.cover-pick .error { margin: 0; text-align: center; }
+/* A file picker that looks like a secondary button (the input itself stays focusable). */
+label.file-button {
+  display: inline-block;
+  cursor: pointer;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: .3rem .8rem;
+  font-size: .85rem;
+  color: var(--accent);
+  position: relative;
+}
+label.file-button:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+label.file-button input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 @media (max-width: 600px) { .media-head { flex-direction: column; } }
 
 /* Forms */

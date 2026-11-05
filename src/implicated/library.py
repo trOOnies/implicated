@@ -307,6 +307,17 @@ IMAGE_TYPES = {
     ".webp": "image/webp",
     ".gif": "image/gif",
 }
+
+
+def check_image_name(file_name: str, what: str = "image") -> str:
+    """The lowercase suffix of ``file_name``; a ``ValueError`` unless it is one of
+    ``IMAGE_TYPES``."""
+    suffix = Path(file_name).suffix.lower()
+    if suffix not in IMAGE_TYPES:
+        raise ValueError(f"{what} must be one of {', '.join(IMAGE_TYPES)}")
+    return suffix
+
+
 # Guitar Pro files a song's tab can be (TuxGuitar saves ``.gp5``); the first one found wins.
 TAB_TYPES = (".gp5", ".gp", ".gpx", ".gp4", ".gp3")
 
@@ -638,7 +649,11 @@ class Library:
         """Copy ``source`` into the artist images directory as the artist's picture; works
         like ``set_cover``."""
         artist = self.get_artist(artist_id)
-        name = self._store_image(self.images_dir, artist_id, Path(source), artist.image)
+        source = Path(source)
+        check_image_name(source.name)
+        name = self._store_image(
+            self.images_dir, artist_id, source.read_bytes(), source.name, artist.image
+        )
         if name != artist.image:
             with self.connect() as conn:
                 conn.execute("UPDATE artists SET image = ? WHERE id = ?", (name, artist_id))
@@ -922,8 +937,15 @@ class Library:
         Files are named after their content, so setting the same image again is a no-op and a
         changed image gets a new URL (no stale browser caches).
         """
+        source = Path(source)
+        check_image_name(source.name, "cover")
+        return self.set_cover_data(album_id, source.read_bytes(), source.name)
+
+    def set_cover_data(self, album_id: int, data: bytes, file_name: str) -> Album:
+        """Like ``set_cover``, for an image's ``data`` (say, an upload) whose type comes from
+        ``file_name``."""
         album = self.get_album(album_id)
-        name = self._store_image(self.covers_dir, album_id, Path(source), album.cover, "cover")
+        name = self._store_image(self.covers_dir, album_id, data, file_name, album.cover, "cover")
         if name != album.cover:
             with self.connect() as conn:
                 conn.execute("UPDATE albums SET cover = ? WHERE id = ?", (name, album_id))
@@ -939,14 +961,18 @@ class Library:
 
     @staticmethod
     def _store_image(
-        directory: Path, record_id: int, source: Path, current: str | None, what: str = "image"
+        directory: Path,
+        record_id: int,
+        data: bytes,
+        file_name: str,
+        current: str | None,
+        what: str = "image",
     ) -> str:
-        """Copy ``source`` into ``directory`` under a name made from its content, unless it is
-        ``current`` already, and return that name."""
-        suffix = source.suffix.lower()
-        if suffix not in IMAGE_TYPES:
-            raise ValueError(f"{what} must be one of {', '.join(IMAGE_TYPES)}")
-        data = source.read_bytes()
+        """Write ``data`` into ``directory`` under a name made from its content (with the suffix
+        of ``file_name``), unless it is ``current`` already, and return that name."""
+        suffix = check_image_name(file_name, what)
+        if not data:
+            raise ValueError(f"{what} {file_name!r} is empty")
         name = f"{record_id}-{hashlib.sha256(data).hexdigest()[:12]}{suffix}"
         if name != current:
             directory.mkdir(parents=True, exist_ok=True)

@@ -1,5 +1,16 @@
 <section id="album-info" class="card info media-head">
-  {% with size='big' %}{% include "_cover.html" %}{% endwith %}
+  <div class="cover-pick">
+    {% with size='big' %}{% include "_cover.html" %}{% endwith %}
+    {# Picking a file uploads it right away; the new cover replaces the old one. #}
+    <form hx-post="/albums/{{ album.id }}/cover" hx-encoding="multipart/form-data" hx-trigger="change"
+          hx-target="#album-info" hx-swap="outerHTML">
+      <label class="file-button" title="Upload an image as this album's cover">
+        {{ 'Change cover' if album.cover else 'Set cover' }}
+        <input type="file" name="cover" accept="{{ image_accept }}">
+      </label>
+    </form>
+    {% if cover_error %}<p class="error small" role="alert">{{ cover_error }}</p>{% endif %}
+  </div>
   <div>
   <div class="row">
     <h1>{{ album.title }}</h1>

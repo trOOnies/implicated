@@ -143,6 +143,10 @@ file in TuxGuitar and to reload it after saving.
 - 🏷️ **Cover tags**: albums without a cover of their own are tagged *no cover* (the ♪ placeholder
   shows instead) or *shared cover* (the same image as another album, say a deluxe edition that
   matched the original's cover file), and the Albums page can show only those.
+- 🖼️ **Uploading a cover**: *Set cover* (or *Change cover*) under an album page's cover uploads an
+  image right away, and the *Add album* form takes one too. Handy for albums added in the app,
+  which are not in `albums.yaml`, so the import never looks for their cover. An album that *is*
+  in `albums.yaml` gets its matching `covers/` file back on the next import.
 
 ## 🛒 Budget
 

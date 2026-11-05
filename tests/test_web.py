@@ -223,6 +223,51 @@ def test_album_forms(client: TestClient, client_lib: Library, web_sample: Sample
     assert client.post(f"{url}/delete").status_code == 404
 
 
+def test_add_album_with_a_cover(client: TestClient, client_lib: Library, web_sample: Sample):
+    form = client.get(f"/artists/{web_sample.artist_id}").text
+    assert 'hx-encoding="multipart/form-data"' in form and 'name="cover"' in form
+    data = {"artist_id": web_sample.artist_id, "title": "Third"}
+    created = client.post("/albums", data=data, files={"cover": ("third.jpg", b"jpeg")})
+    assert created.status_code == 200
+    third = client_lib.find_album(web_sample.artist_id, "Third")
+    assert client_lib.cover_path(third.id).read_bytes() == b"jpeg"
+
+    # No file picked: browsers still send an empty, nameless part.
+    data["title"] = "Roseland"
+    assert client.post("/albums", data=data, files={"cover": ("", b"")}).status_code == 200
+    assert client_lib.find_album(web_sample.artist_id, "Roseland").cover is None
+
+    # A bad cover adds no album.
+    data["title"] = "Bad"
+    bad = client.post("/albums", data=data, files={"cover": ("notes.txt", b"text")})
+    assert bad.status_code == 422 and "cover must be one of" in bad.text
+    assert 'value="Bad"' in bad.text
+    assert client_lib.find_album(web_sample.artist_id, "Bad") is None
+    empty = client.post("/albums", data=data, files={"cover": ("empty.jpg", b"")})
+    assert empty.status_code == 422 and client_lib.find_album(web_sample.artist_id, "Bad") is None
+
+
+def test_set_cover_on_the_album_page(client: TestClient, client_lib: Library, web_sample: Sample):
+    url = f"/albums/{web_sample.album_id}"
+    assert ">\n        Set cover" in client.get(url).text
+    response = client.post(f"{url}/cover", files={"cover": ("front.webp", b"front")})
+    assert response.status_code == 200 and "albums-changed" in response.headers["hx-trigger"]
+    cover = client_lib.get_album(web_sample.album_id).cover
+    assert cover.endswith(".webp") and f"/cover?v={cover}" in response.text
+    assert "Change cover" in response.text
+
+    replaced = client.post(f"{url}/cover", files={"cover": ("back.jpg", b"back")})
+    assert replaced.status_code == 200
+    assert client_lib.cover_path(web_sample.album_id).read_bytes() == b"back"
+
+    bad = client.post(f"{url}/cover", files={"cover": ("notes.txt", b"text")})
+    assert bad.status_code == 422 and "cover must be one of" in bad.text
+    assert client_lib.cover_path(web_sample.album_id).read_bytes() == b"back"
+    nothing = client.post(f"{url}/cover", files={"cover": ("", b"")})
+    assert nothing.status_code == 422 and "Pick an image first." in nothing.text
+    assert client.post("/albums/99/cover", files={"cover": ("a.jpg", b"a")}).status_code == 404
+
+
 def test_album_pages(client: TestClient, client_lib: Library, web_sample: Sample, image):
     page = client.get(f"/albums/{web_sample.album_id}").text
     assert "Mysterons" in page and "cover big none" in page

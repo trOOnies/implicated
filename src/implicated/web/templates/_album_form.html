@@ -1,4 +1,4 @@
-<form class="stack" hx-post="/albums" hx-swap="outerHTML">
+<form class="stack" hx-post="/albums" hx-encoding="multipart/form-data" hx-swap="outerHTML">
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
   <input type="hidden" name="artist_id" value="{{ artist_id }}">
   <label>Title <input name="title" required value="{{ form.get('title', '') }}"></label>
@@ -18,5 +18,8 @@
     </select>
   </label>
   {% with values=form %}{% include "_ownership.html" %}{% endwith %}
+  <label>Cover <span class="small">(optional)</span>
+    <input type="file" name="cover" accept="{{ image_accept }}">
+  </label>
   <button type="submit">Add album</button>
 </form>
