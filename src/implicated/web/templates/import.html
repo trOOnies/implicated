@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% set active = 'import' %}
+{% block title %}Import{% endblock %}
+{% macro show(value) -%}
+{%- if value is none or value == [] %}<span class="small">(none)</span>
+{%- elif value is sameas true %}yes{% elif value is sameas false %}no
+{%- elif value is string and value | length > 80 %}{{ value[:77] }}…
+{%- elif value is iterable and value is not string %}{{ value | join(', ') }}
+{%- else %}{{ value }}{% endif -%}
+{%- endmacro %}
+{% macro changes(report) %}
+{% set new, updates = report.new, report.updates %}
+<div class="tiles">
+  <div class="tile"><strong>{{ report.created.artists }}/{{ report.created.albums }}/{{ report.created.songs }}</strong> new artists / albums / songs</div>
+  <div class="tile"><strong>{{ updates | length }}</strong> changes to what you have</div>
+  <div class="tile"><strong>{{ report.lyrics_files + report.tabs }}</strong> lyrics and tab files</div>
+  <div class="tile"><strong>{{ report.concerts }}/{{ report.tours }}</strong> concerts / tours</div>
+</div>
+{% if report.userdata %}<p class="small">Your data (<code>userdata.json</code>): {{ report.userdata.summary().splitlines()[0] }}</p>{% endif %}
+{% if updates %}
+<details open>
+  <summary>{{ updates | length }} change{{ 's' if updates | length != 1 }} to records you already have</summary>
+  <table class="import-changes">
+    <thead><tr><th>Record</th><th>Field</th><th>Now</th><th>From the file</th></tr></thead>
+    <tbody>
+      {% for c in updates[:shown] %}
+      <tr><td>{{ c.name }}</td><td>{{ c.field | replace('_', ' ') }}</td><td>{{ show(c.old) }}</td><td>{{ show(c.new) }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if updates | length > shown %}<p class="small">…and {{ updates | length - shown }} more.</p>{% endif %}
+</details>
+{% endif %}
+{% if new %}
+<details{% if not updates %} open{% endif %}>
+  <summary>{{ new | length }} new record{{ 's' if new | length != 1 }}</summary>
+  <ul class="small">
+    {% for c in new[:shown] %}<li>{{ c.kind | capitalize }}: {{ c.name }}</li>{% endfor %}
+    {% if new | length > shown %}<li>…and {{ new | length - shown }} more.</li>{% endif %}
+  </ul>
+</details>
+{% endif %}
+{% if report.warnings %}
+<details>
+  <summary>{{ report.warnings | length }} warning{{ 's' if report.warnings | length != 1 }}</summary>
+  <ul class="small">{% for w in report.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+</details>
+{% endif %}
+{% endmacro %}
+{% block content %}
+<div class="page-head"><h1>Import</h1></div>
+<p>Small edits belong in the app. Bigger batches (an artist's whole discography, a list of
+concerts) are easier to prepare as files: put them in the <strong>inbox</strong>, preview what
+they change, and accept. Nothing is imported on its own, so what you edit in the app always
+stays.</p>
+
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+{% if result %}
+<section class="card" id="import-result">
+  <h2>✅ Imported</h2>
+  <p class="notice" role="status">The inbox is empty again{% if archive %}: its files are in the
+  archive <strong>{{ archive }}</strong>{% endif %}.</p>
+  {{ changes(result) }}
+</section>
+{% endif %}
+
+<section class="card" id="inbox">
+  <h2>📥 Inbox <span class="small">{{ files | length }} file{{ 's' if files | length != 1 }} in <code>{{ info_dir }}</code></span></h2>
+  {% if files %}
+  <details>
+    <summary>What is waiting</summary>
+    <ul class="small">{% for f in files %}<li><code>{{ f }}</code></li>{% endfor %}</ul>
+  </details>
+  {% if preview %}
+  <h3>Importing it would do this</h3>
+  {{ changes(preview) }}
+  <form action="/import/accept" method="post" class="row">
+    <input type="hidden" name="fingerprint" value="{{ fingerprint }}">
+    <button type="submit">Accept and import</button>
+    <a href="/import">Cancel</a>
+    <span class="small">Then the inbox's files move to an archive.</span>
+  </form>
+  {% else %}
+  <form action="/import" method="get"><input type="hidden" name="preview" value="1"><button type="submit">Preview the import</button></form>
+  {% endif %}
+  {% else %}
+  <p class="small">Empty. Copy files into <code>{{ info_dir }}</code> (see <a href="/help#importing">Help</a>
+  for the layout), or upload them here.</p>
+  {% endif %}
+  <form action="/import/upload" method="post" enctype="multipart/form-data" class="row">
+    <label>Add to the inbox
+      <input type="file" name="file" multiple accept=".zip,.yaml,.yml,.csv,.json" required>
+    </label>
+    <button type="submit">Upload and preview</button>
+  </form>
+  <p class="small">A <code>.zip</code> (an export, or a zipped inbox) keeps its folders; on their
+  own, <code>bands.yaml</code>, <code>concerts.csv</code>, <code>tours.csv</code> and a
+  <em>Download my data</em> <code>.json</code> work too.</p>
+</section>
+
+<section class="card" id="archives">
+  <h2>🗃️ Archives <span class="small">past imports</span></h2>
+  {% if archives %}
+  <table>
+    <thead><tr><th>Accepted</th><th>Files</th><th>Size</th><th></th></tr></thead>
+    <tbody>
+      {% for a in archives %}
+      <tr>
+        <td><code>{{ a.name }}</code></td>
+        <td>{{ a.files }}</td>
+        <td>{{ '%.1f' | format(a.size / 1048576) }} MB</td>
+        <td class="actions">
+          <form action="/import/archives/{{ a.name }}/delete" method="post" onsubmit="return confirm(this.dataset.confirm)"
+                data-confirm="Delete the archive {{ a.name }} for good? Its {{ a.files }} files cannot be brought back. Your library keeps what they imported.">
+            <button type="submit" class="link danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if archives | length > 1 %}
+  <form action="/import/archives/delete" method="post" onsubmit="return confirm(this.dataset.confirm)"
+        data-confirm="Delete all {{ archives | length }} archives for good? Your library keeps what they imported.">
+    <button type="submit" class="danger">Delete all archives</button>
+  </form>
+  {% endif %}
+  {% else %}
+  <p class="small">None yet. Each accepted import keeps the files it used in <code>{{ info_dir }}/archive/</code>.</p>
+  {% endif %}
+</section>
+
+<section class="card" id="take-it-with-you">
+  <h2>📦 Take your library with you</h2>
+  <ul>
+    <li><a href="/import/backup" download><strong>Download a backup</strong></a>: the whole library folder
+    (<code>{{ media_dir }}</code>), exactly. Bring it back with <code>make restore FILE=…</code>,
+    with the app stopped.</li>
+    <li><a href="/import/export" download><strong>Download an export</strong></a>: your library as an inbox:
+    YAML, lyrics, tabs, covers, concerts and your data. Upload it here (or to a fresh library) to
+    import it, or unzip it to edit the files by hand.</li>
+  </ul>
+</section>
+{% endblock %}

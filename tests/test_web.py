@@ -3,11 +3,13 @@ import re
 import signal
 from dataclasses import replace
 from datetime import date, timedelta
+from pathlib import Path
 
 import pytest
 from conftest import Sample
 from fastapi.testclient import TestClient
 
+from implicated import inbox
 from implicated.library import Library
 from implicated.models import (
     AlbumIn,
@@ -20,7 +22,16 @@ from implicated.models import (
     SongIn,
 )
 from implicated.web import editor, shutdown
-from implicated.web.views import days_until, duration, money, percent, stars, tenure, when
+from implicated.web.views import (
+    _fingerprint,
+    days_until,
+    duration,
+    money,
+    percent,
+    stars,
+    tenure,
+    when,
+)
 
 # Template helpers
 
@@ -1945,3 +1956,100 @@ def test_no_discount_stays_off_saved_budgets(
     client.post("/budget/items", data=item)
     page = client.post("/budget/cart/save", data={"name": "Trip"}).text
     assert '<th colspan="5">Discount</th>' not in page.split("🧾 Budgets")[1]
+
+
+# Import
+
+
+def _inbox(client: TestClient) -> Path:
+    return Path(client.app.state.info_dir)
+
+
+def _zip(files: dict[str, str]) -> bytes:
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as z:
+        for name, text in files.items():
+            z.writestr(name, text)
+    return buffer.getvalue()
+
+
+def test_import_page_preview_accept_and_archives(client: TestClient, client_lib: Library):
+    page = client.get("/import").text
+    assert "Empty." in page and 'href="/import"' in page and "None yet." in page
+
+    batch = _zip(
+        {
+            "bands.yaml": "bands:\n- name: Portishead\n  creation_year: 1991\n",
+            "bands/Portishead/albums.yaml": (
+                "Dummy:\n  release_year: 1994\n  songs:\n  - name: Roads\n"
+            ),
+            "bands/Portishead/songs/Roads.txt": "Oh, can't anybody see",
+        }
+    )
+    uploaded = client.post("/import/upload", files={"file": ("batch.zip", batch)})
+    assert uploaded.status_code == 200 and uploaded.url.path == "/import"  # redirected to it
+    assert "Importing it would do this" in uploaded.text
+    assert "Song: Portishead / Dummy / Roads" in uploaded.text
+    assert client_lib.list_artists() == []  # only a preview
+
+    # Change something in the app, then preview again: the file's change shows next to it.
+    fingerprint = uploaded.text.split('name="fingerprint" value="')[1].split('"')[0]
+    accepted = client.post("/import/accept", data={"fingerprint": fingerprint})
+    assert accepted.status_code == 200 and "Imported" in accepted.text
+    artist = client_lib.find_artist("Portishead")
+    assert artist.formed_year == 1991
+    assert client_lib.list_songs()[0].song.lyrics == "Oh, can't anybody see"
+    assert inbox_files(client) == []
+    archive = inbox.list_archives(_inbox(client))[0].name
+    assert archive in accepted.text
+
+    client_lib.update_artist(artist.id, replace(artist, formed_year=1990))
+    client.post(
+        "/import/upload",
+        files={"file": ("bands.yaml", b"bands:\n- name: Portishead\n  creation_year: 1991\n")},
+    )
+    preview = client.get("/import?preview=1").text
+    assert "<td>Portishead</td><td>formed year</td><td>1990</td><td>1991</td>" in preview
+    stale = client.post("/import/accept", data={"fingerprint": "old"})
+    assert stale.status_code == 409 and "changed since the preview" in stale.text
+    assert client_lib.get_artist(artist.id).formed_year == 1990
+
+    page = client.get("/import").text
+    assert f'action="/import/archives/{archive}/delete"' in page
+    assert "for good?" in page and 'onsubmit="return confirm(this.dataset.confirm)"' in page
+    assert client.post("/import/archives/../../etc/delete").status_code == 404
+    client.post(f"/import/archives/{archive}/delete")
+    assert inbox.list_archives(_inbox(client)) == []
+
+
+def inbox_files(client: TestClient) -> list[Path]:
+    return inbox.list_files(_inbox(client))
+
+
+def test_import_page_errors(client: TestClient, client_lib: Library):
+    assert client.post("/import/upload", files={"file": ("notes.txt", b"hi")}).status_code == 422
+    client.post("/import/upload", files={"file": ("bands.yaml", b"bands: [\n")})
+    broken = client.get("/import?preview=1")
+    assert broken.status_code == 422 and "not valid YAML" in broken.text
+    assert "Accept and import" not in broken.text
+    fingerprint = _fingerprint(_inbox(client))
+    failed = client.post("/import/accept", data={"fingerprint": fingerprint})
+    assert failed.status_code == 422 and "Nothing was imported" in failed.text
+    assert inbox_files(client) == [Path("bands.yaml")]  # kept, to fix
+
+
+def test_download_backup_and_export(client: TestClient, web_sample):
+    import io
+    import zipfile
+
+    got = client.get("/import/backup")
+    assert got.status_code == 200 and got.headers["content-type"] == "application/zip"
+    assert "implicated-backup-" in got.headers["content-disposition"]
+    assert "implicated.db" in zipfile.ZipFile(io.BytesIO(got.content)).namelist()
+
+    got = client.get("/import/export?owner=Sol")
+    names = zipfile.ZipFile(io.BytesIO(got.content)).namelist()
+    assert {"bands.yaml", "bands/Portishead/albums.yaml", "userdata.json"} <= set(names)

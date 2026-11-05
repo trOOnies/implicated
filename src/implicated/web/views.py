@@ -14,7 +14,10 @@ so they refresh themselves:
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import os
+import tempfile
 from collections.abc import Iterable
 from dataclasses import fields, replace
 from datetime import date, datetime
@@ -25,13 +28,13 @@ from typing import Annotated
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from starlette.background import BackgroundTask
 from starlette.datastructures import FormData, ImmutableMultiDict
 
-from implicated import duo
+from implicated import backup, duo, inbox
 from implicated.api import get_library
 from implicated.concerts import (
     CONCERTS_FILE,
@@ -44,6 +47,7 @@ from implicated.concerts import (
     set_setlist,
     set_status,
 )
+from implicated.importer import accept, import_dir
 from implicated.library import COVER_TYPES, Library, NotFound, check_cover_name
 from implicated.models import (
     ALBUM_KINDS,
@@ -2239,3 +2243,127 @@ def _setlist_of(lib: Library, playlist: Playlist) -> list[Concert]:
         return []
     setlists = _setlist_playlists(lib)
     return [c for c in concerts if c.setlist and setlists.get(c.setlist.casefold()) == playlist]
+
+
+# Import: the inbox, its preview, and taking the library with you
+
+# Changes listed before the rest is folded away.
+IMPORT_SHOWN = 50
+
+
+def _inbox_dir(request: Request) -> Path:
+    return Path(request.app.state.info_dir)
+
+
+def _fingerprint(info_dir: Path) -> str:
+    """What the inbox holds now, so Accept imports what the preview showed, nothing else."""
+    digest = hashlib.sha256()
+    for path in inbox.list_files(info_dir):
+        stat = (info_dir / path).stat()
+        digest.update(f"{path}\0{stat.st_size}\0{stat.st_mtime_ns}\n".encode())
+    return digest.hexdigest()[:16]
+
+
+def _import_page(request: Request, lib: Library, status_code: int = 200, **extra):
+    info_dir = _inbox_dir(request)
+    return render(
+        request,
+        "import.html",
+        status_code=status_code,
+        info_dir=info_dir,
+        media_dir=lib.media_dir,
+        files=inbox.list_files(info_dir),
+        archives=inbox.list_archives(info_dir),
+        fingerprint=_fingerprint(info_dir),
+        shown=IMPORT_SHOWN,
+        **extra,
+    )
+
+
+@router.get("/import")
+def import_page(request: Request, lib: Lib, preview: bool = False):
+    """The inbox, with a preview of what importing it would change when asked for."""
+    if not preview or not inbox.list_files(_inbox_dir(request)):
+        return _import_page(request, lib)
+    try:
+        report = import_dir(lib, _inbox_dir(request), dry_run=True)
+    except (OSError, ValueError) as exc:
+        return _import_page(request, lib, 422, error=f"{exc} Fix the file and preview again.")
+    return _import_page(request, lib, preview=report)
+
+
+@router.post("/import/upload")
+async def upload_to_inbox(request: Request, lib: Lib):
+    """Put uploaded files into the inbox, then preview it."""
+    form = await request.form()
+    uploads = [u for u in form.getlist("file") if not isinstance(u, str) and u.filename]
+    if not uploads:
+        return _import_page(request, lib, 422, error="Pick a file first.")
+    try:
+        for upload in uploads:
+            inbox.add_upload(_inbox_dir(request), upload.filename, await upload.read())
+    except ValueError as exc:
+        return _import_page(request, lib, 422, error=str(exc))
+    return RedirectResponse("/import?preview=1", status_code=303)
+
+
+@router.post("/import/accept")
+async def accept_import(request: Request, lib: Lib):
+    """Import the inbox for real, then archive it."""
+    form = await request.form()
+    info_dir = _inbox_dir(request)
+    if form.get("fingerprint") != _fingerprint(info_dir):
+        return _import_page(
+            request, lib, 409, error="The inbox changed since the preview. Check it again."
+        )
+    try:
+        report, archive = accept(lib, info_dir)
+    except (OSError, ValueError) as exc:
+        return _import_page(request, lib, 422, error=f"{exc} Nothing was imported.")
+    logger.info("Imported %s:\n%s", info_dir, report.summary())
+    return _import_page(request, lib, result=report, archive=archive and archive.name)
+
+
+@router.post("/import/archives/delete")
+def delete_all_archives(request: Request, lib: Lib):
+    inbox.delete_all_archives(_inbox_dir(request))
+    return RedirectResponse("/import", status_code=303)
+
+
+@router.post("/import/archives/{name}/delete")
+def delete_archive(request: Request, lib: Lib, name: str):
+    try:
+        inbox.delete_archive(_inbox_dir(request), name)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return RedirectResponse("/import", status_code=303)
+
+
+def _zip_download(write, kind: str) -> FileResponse:
+    """A zip made by ``write(path)`` in a temporary file, removed once it was sent."""
+    handle, name = tempfile.mkstemp(suffix=".zip")
+    os.close(handle)
+    path = Path(name)
+    try:
+        write(path)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename=backup.file_name(kind),
+        background=BackgroundTask(path.unlink, missing_ok=True),
+    )
+
+
+@router.get("/import/backup")
+def download_backup(lib: Lib):
+    """The whole library folder, exactly, as a zip (see ``implicated.backup``)."""
+    return _zip_download(lambda path: backup.write_backup(lib, path), "backup")
+
+
+@router.get("/import/export")
+def download_export(lib: Lib, owner: str | None = None):
+    """The library as an inbox zip, to import here or into another library."""
+    return _zip_download(lambda path: backup.write_export(lib, path, owner or None), "export")

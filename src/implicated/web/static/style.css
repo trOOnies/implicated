@@ -477,3 +477,7 @@ fieldset.featuring-pick legend { font-size: .85rem; color: var(--muted); padding
 .duo-list li:first-child { border-top: 0; }
 .duo-kind { flex: none; width: 1.4em; text-align: center; }
 .duo .card h2 .small { font-weight: normal; }
+
+/* Import */
+.import-changes td { font-size: .9rem; overflow-wrap: anywhere; }
+#inbox form.row, #archives > form { margin-top: .75rem; flex-wrap: wrap; }
