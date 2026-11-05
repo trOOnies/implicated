@@ -982,7 +982,9 @@ def test_help_index_links_to_every_section(client: TestClient):
     page = client.get("/help").text
     assert 'id="index"' in page
     targets = re.findall(r'href="#([\w-]+)"', page)
-    assert {"pages", "albums", "live-play", "actions", "rating", "importing", "license"} <= set(targets)
+    assert {"pages", "albums", "live-play", "actions", "rating", "importing", "license"} <= set(
+        targets
+    )
     for target in targets:
         assert page.count(f'id="{target}"') == 1, target
 
