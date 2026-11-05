@@ -6,7 +6,7 @@
           hx-target="#album-info" hx-swap="outerHTML">
       <label class="file-button" title="Upload an image as this album's cover">
         {{ 'Change cover' if album.cover else 'Set cover' }}
-        <input type="file" name="cover" accept="{{ image_accept }}">
+        <input type="file" name="cover" accept="{{ cover_accept }}">
       </label>
     </form>
     {% if cover_error %}<p class="error small" role="alert">{{ cover_error }}</p>{% endif %}

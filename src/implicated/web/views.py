@@ -44,7 +44,7 @@ from implicated.concerts import (
     set_setlist,
     set_status,
 )
-from implicated.library import IMAGE_TYPES, Library, NotFound, check_image_name
+from implicated.library import COVER_TYPES, Library, NotFound, check_cover_name
 from implicated.models import (
     ALBUM_KINDS,
     CONCERT_STATUSES,
@@ -153,7 +153,7 @@ templates.env.globals.update(
     asset=asset,
     album_kinds=ALBUM_KINDS,
     # What the cover pickers accept.
-    image_accept=",".join(IMAGE_TYPES),
+    cover_accept=",".join(COVER_TYPES),
     ownership=OWNERSHIP,
     format_names=FORMATS,
     # The latest year a band can have formed in.
@@ -723,7 +723,7 @@ async def _cover_upload(form: FormData) -> tuple[bytes, str] | None:
     # Browsers send an empty, nameless file when nothing was picked.
     if upload is None or isinstance(upload, str) or not upload.filename:
         return None
-    check_image_name(upload.filename, "cover")
+    check_cover_name(upload.filename)
     data = await upload.read()
     if not data:
         raise ValueError(f"cover {upload.filename!r} is empty")

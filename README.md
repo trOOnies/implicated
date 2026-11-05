@@ -65,7 +65,7 @@ info/
                                   #   no_lyrics: true for instrumentals, featuring:
                                   #   other artists of bands.yaml on the song)
   bands/<artist name>/band.jpg    # picture of the artist (.jpg, .png, .webp, .avif, ...)
-  bands/<artist name>/covers/     # cover images, matched to albums by file name
+  bands/<artist name>/covers/     # cover images (no GIFs), matched to albums by file name
   bands/<artist name>/songs/      # lyrics, one <song title>.txt per song (empty = missing),
                                   #   and optional timed lyrics, <song title>.lrc
   bands/<artist name>/tabs/       # optional guitar tabs, <song title>.gp5 (or .gp, .gpx, .gp4, .gp3)
@@ -144,9 +144,10 @@ file in TuxGuitar and to reload it after saving.
   shows instead) or *shared cover* (the same image as another album, say a deluxe edition that
   matched the original's cover file), and the Albums page can show only those.
 - 🖼️ **Uploading a cover**: *Set cover* (or *Change cover*) under an album page's cover uploads an
-  image right away, and the *Add album* form takes one too. Handy for albums added in the app,
-  which are not in `albums.yaml`, so the import never looks for their cover. An album that *is*
-  in `albums.yaml` gets its matching `covers/` file back on the next import.
+  image right away (AVIF, JPEG, PNG or WebP; not GIF), and the *Add album* form takes one too.
+  Handy for albums added in the app, which are not in `albums.yaml`, so the import never looks for
+  their cover. An album that *is* in `albums.yaml` gets its matching `covers/` file back on the
+  next import.
 
 ## 🛒 Budget
 

@@ -298,7 +298,7 @@ FAVORITE_TABLES = {"artist": "artists", "album": "albums", "song": "songs"}
 # Yes/no marks that can be switched with one click.
 FLAGS = ("favorite", "listen_later")
 
-# Album covers and artist images.
+# Album covers and artist images, and the media type each is served as.
 IMAGE_TYPES = {
     ".avif": "image/avif",
     ".jpg": "image/jpeg",
@@ -307,15 +307,23 @@ IMAGE_TYPES = {
     ".webp": "image/webp",
     ".gif": "image/gif",
 }
+# What album covers can be: no GIFs (artist images still can).
+COVER_TYPES = {suffix: kind for suffix, kind in IMAGE_TYPES.items() if suffix != ".gif"}
 
 
-def check_image_name(file_name: str, what: str = "image") -> str:
-    """The lowercase suffix of ``file_name``; a ``ValueError`` unless it is one of
-    ``IMAGE_TYPES``."""
+def check_image_name(
+    file_name: str, what: str = "image", types: dict[str, str] = IMAGE_TYPES
+) -> str:
+    """The lowercase suffix of ``file_name``; a ``ValueError`` unless it is one of ``types``."""
     suffix = Path(file_name).suffix.lower()
-    if suffix not in IMAGE_TYPES:
-        raise ValueError(f"{what} must be one of {', '.join(IMAGE_TYPES)}")
+    if suffix not in types:
+        raise ValueError(f"{what} must be one of {', '.join(types)}")
     return suffix
+
+
+def check_cover_name(file_name: str) -> str:
+    """``check_image_name`` for an album cover, which takes only ``COVER_TYPES``."""
+    return check_image_name(file_name, "cover", COVER_TYPES)
 
 
 # Guitar Pro files a song's tab can be (TuxGuitar saves ``.gp5``); the first one found wins.
@@ -938,14 +946,16 @@ class Library:
         changed image gets a new URL (no stale browser caches).
         """
         source = Path(source)
-        check_image_name(source.name, "cover")
+        check_cover_name(source.name)
         return self.set_cover_data(album_id, source.read_bytes(), source.name)
 
     def set_cover_data(self, album_id: int, data: bytes, file_name: str) -> Album:
         """Like ``set_cover``, for an image's ``data`` (say, an upload) whose type comes from
         ``file_name``."""
         album = self.get_album(album_id)
-        name = self._store_image(self.covers_dir, album_id, data, file_name, album.cover, "cover")
+        name = self._store_image(
+            self.covers_dir, album_id, data, file_name, album.cover, "cover", COVER_TYPES
+        )
         if name != album.cover:
             with self.connect() as conn:
                 conn.execute("UPDATE albums SET cover = ? WHERE id = ?", (name, album_id))
@@ -967,10 +977,12 @@ class Library:
         file_name: str,
         current: str | None,
         what: str = "image",
+        types: dict[str, str] = IMAGE_TYPES,
     ) -> str:
         """Write ``data`` into ``directory`` under a name made from its content (with the suffix
-        of ``file_name``), unless it is ``current`` already, and return that name."""
-        suffix = check_image_name(file_name, what)
+        of ``file_name``, one of ``types``), unless it is ``current`` already, and return that
+        name."""
+        suffix = check_image_name(file_name, what, types)
         if not data:
             raise ValueError(f"{what} {file_name!r} is empty")
         name = f"{record_id}-{hashlib.sha256(data).hexdigest()[:12]}{suffix}"

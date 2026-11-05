@@ -395,6 +395,33 @@ def write(path: Path, text: str) -> Path:
     return path
 
 
+def test_gif_covers_are_skipped(lib: Library, tmp_path: Path):
+    root = tmp_path / "gifs"
+    write(root / "bands.yaml", "bands:\n- name: Band\n")
+    write(
+        root / "bands" / "Band" / "albums.yaml",
+        "Named:\n  cover: named.gif\nGuessed:\n  release_year: 2001\n",
+    )
+    covers = root / "bands" / "Band" / "covers"
+    covers.mkdir()
+    (covers / "named.gif").write_bytes(b"gif")
+    (covers / "guessed.GIF").write_bytes(b"gif")
+    (covers / "band.gif").write_bytes(b"gif")
+    (root / "bands" / "Band" / "band.gif").write_bytes(b"artist gif")
+
+    report = import_dir(lib, root)  # a GIF warns instead of stopping the import
+    warnings = "\n".join(report.warnings)
+
+    assert "Band / Named: cover 'named.gif' skipped, it is not one of .avif" in warnings
+    assert "Band: cover 'guessed.GIF' skipped, covers cannot be GIFs" in warnings
+    assert "Guessed: no cover file matches the title" not in warnings
+    assert "matched no album" not in warnings
+    assert report.covers == 0 and report.created["albums"] == 2
+    band = lib.find_artist("Band")
+    assert all(a.album.cover is None for a in lib.list_albums(band.id))
+    assert lib.image_path(band.id).read_bytes() == b"artist gif"  # artist images still can be
+
+
 def test_messy_files_import_with_warnings(lib: Library, tmp_path: Path):
     root = tmp_path / "messy"
     write(

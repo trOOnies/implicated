@@ -243,6 +243,8 @@ def test_add_album_with_a_cover(client: TestClient, client_lib: Library, web_sam
     assert bad.status_code == 422 and "cover must be one of" in bad.text
     assert 'value="Bad"' in bad.text
     assert client_lib.find_album(web_sample.artist_id, "Bad") is None
+    gif = client.post("/albums", data=data, files={"cover": ("bad.gif", b"gif")})
+    assert gif.status_code == 422 and client_lib.find_album(web_sample.artist_id, "Bad") is None
     empty = client.post("/albums", data=data, files={"cover": ("empty.jpg", b"")})
     assert empty.status_code == 422 and client_lib.find_album(web_sample.artist_id, "Bad") is None
 
@@ -262,6 +264,9 @@ def test_set_cover_on_the_album_page(client: TestClient, client_lib: Library, we
 
     bad = client.post(f"{url}/cover", files={"cover": ("notes.txt", b"text")})
     assert bad.status_code == 422 and "cover must be one of" in bad.text
+    gif = client.post(f"{url}/cover", files={"cover": ("anim.gif", b"gif")})
+    assert gif.status_code == 422 and "cover must be one of" in gif.text
+    assert 'accept=".avif,.jpg,.jpeg,.png,.webp"' in gif.text
     assert client_lib.cover_path(web_sample.album_id).read_bytes() == b"back"
     nothing = client.post(f"{url}/cover", files={"cover": ("", b"")})
     assert nothing.status_code == 422 and "Pick an image first." in nothing.text

@@ -10,7 +10,7 @@ and the song lyrics::
       bands.yaml
       bands/<artist name>/albums.yaml
       bands/<artist name>/band.jpg          # any of ``IMAGE_TYPES``
-      bands/<artist name>/covers/<image>.jpg
+      bands/<artist name>/covers/<image>.jpg  # any of ``COVER_TYPES`` (no GIFs)
       bands/<artist name>/songs/<song title>.txt
       bands/<artist name>/songs/<song title>.lrc  # optional; timed lyrics
       bands/<artist name>/tabs/<song title>.gp5   # optional; any of ``TAB_TYPES``
@@ -77,7 +77,7 @@ from pathlib import Path
 
 import yaml
 
-from implicated.library import IMAGE_TYPES, Library
+from implicated.library import COVER_TYPES, IMAGE_TYPES, Library
 from implicated.lrc import plain_lyrics, read_lrc
 from implicated.models import (
     AlbumIn,
@@ -409,9 +409,15 @@ def _import_albums(
 ) -> None:
     artist = lib.get_artist(artist_id)
     covers_dir = band_dir / "covers"
-    covers = sorted(
+    images = sorted(
         p for p in covers_dir.glob("*") if p.is_file() and p.suffix.lower() in IMAGE_TYPES
     )
+    covers = [p for p in images if p.suffix.lower() in COVER_TYPES]
+    for path in images:
+        if path not in covers:
+            report.warnings.append(
+                f"{artist.name}: cover {path.name!r} skipped, covers cannot be GIFs"
+            )
     used_covers: set[Path] = set()
     lyrics = {
         p.name.casefold(): p
@@ -460,6 +466,12 @@ def _import_albums(
             cover = covers_dir / str(data["cover"])
             if not cover.is_file():
                 report.warnings.append(f"{where}: cover {cover.name!r} not found")
+                cover = None
+            elif cover.suffix.lower() not in COVER_TYPES:
+                report.warnings.append(
+                    f"{where}: cover {cover.name!r} skipped, "
+                    f"it is not one of {', '.join(COVER_TYPES)}"
+                )
                 cover = None
         else:
             cover = match_cover(title, covers)

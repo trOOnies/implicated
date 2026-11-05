@@ -221,6 +221,15 @@ def test_set_cover_data(lib: Library, sample: Sample):
     assert lib.get_album(sample.album_id).cover == album.cover
 
 
+def test_covers_cannot_be_gifs(lib: Library, sample: Sample, image):
+    with pytest.raises(ValueError, match="cover must be one of .avif, .jpg, .jpeg, .png, .webp$"):
+        lib.set_cover(sample.album_id, image("animated.GIF"))
+    with pytest.raises(ValueError, match="cover must be one of"):
+        lib.set_cover_data(sample.album_id, b"gif", "animated.gif")
+    assert lib.get_album(sample.album_id).cover is None
+    assert lib.set_image(sample.artist_id, image("band.gif")).image.endswith(".gif")
+
+
 def test_set_cover_accepts_avif(lib: Library, sample: Sample, image):
     assert lib.set_cover(sample.album_id, image("dummy.avif")).cover.endswith(".avif")
 
