@@ -1,0 +1,12 @@
+{# Thumbnails of `pictures`, each opening its Picture page. #}
+<ul class="picture-grid">
+  {% for p in pictures %}
+  <li>
+    <a href="/pictures/{{ p.id }}">
+      <img class="cover tile" src="/api/pictures/{{ p.id }}/image?v={{ p.file }}" alt="{{ p.name }}" loading="lazy">
+      <strong>{{ p.name }}</strong>
+    </a>
+    {% if p.tags %}<p>{% for t in p.tags %}<span class="tag">{{ t }}</span>{% endfor %}</p>{% endif %}
+  </li>
+  {% endfor %}
+</ul>

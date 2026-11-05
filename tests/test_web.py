@@ -18,6 +18,7 @@ from implicated.models import (
     CartItemIn,
     Member,
     MemberIn,
+    PictureIn,
     PlaylistIn,
     SongIn,
 )
@@ -2053,3 +2054,82 @@ def test_download_backup_and_export(client: TestClient, web_sample):
     got = client.get("/import/export?owner=Sol")
     names = zipfile.ZipFile(io.BytesIO(got.content)).namelist()
     assert {"bands.yaml", "bands/Portishead/albums.yaml", "userdata.json"} <= set(names)
+
+
+# Pictures
+
+
+def test_artist_pictures_pages(client: TestClient, client_lib: Library, web_sample: Sample):
+    artist_url = f"/artists/{web_sample.artist_id}"
+    page = client.get(artist_url).text
+    assert f'href="{artist_url}/pictures">Add pictures' in page
+
+    url = f"{artist_url}/pictures"
+    empty = client.get(url)
+    assert empty.status_code == 200 and "No pictures of Portishead yet" in empty.text
+    assert 'name="picture"' in empty.text and 'hx-encoding="multipart/form-data"' in empty.text
+
+    data = {"name": "", "description": "Live at Roseland", "tags": "live, 1997"}
+    added = client.post(url, data=data, files={"picture": ("roseland.jpg", b"jpeg")})
+    assert added.status_code == 200 and added.headers["hx-trigger"] == "pictures-changed"
+    picture = client_lib.list_pictures(web_sample.artist_id)[0]
+    assert (picture.name, picture.tags) == ("roseland", ["live", "1997"])
+    image = client.get(f"/api/pictures/{picture.id}/image")
+    assert image.status_code == 200 and image.content == b"jpeg"
+
+    for i in range(25):
+        client_lib.add_picture(web_sample.artist_id, PictureIn(f"Shot {i}"), b"%d" % i, "shot.png")
+    page = client.get(artist_url).text
+    assert "See all 26 pictures" in page and page.count("/api/pictures/") == 6
+
+    listing = client.get(url).text
+    assert listing.count('<a href="/pictures/') == 24 and "Page 1 of 2 · 26 pictures" in listing
+    assert '<option value="live" >live (1)</option>' in listing
+    second = client.get(f"/fragments{url}?page=2").text
+    assert second.count('<a href="/pictures/') == 2 and f'href="/pictures/{picture.id}"' in second
+
+    # Searching finds tags, and the tag picker keeps the pictures with that tag.
+    found_live = client.get(f"/fragments{url}?q=199").text
+    assert found_live.count('<a href="/pictures/') == 1 and "roseland" in found_live
+    tagged = client.get(f"{url}?tag=LIVE").text
+    assert tagged.count('<a href="/pictures/') == 1 and 'value="live" selected' in tagged
+    none = client.get(f"/fragments{url}?q=nothing").text
+    assert "No pictures match." in none
+    tags = client.get(f"/fragments{url}/tags?tag=gone").text
+    assert 'value="gone" selected' in tags and "live (1)" in tags
+
+    bad = client.post(url, data={"name": "Notes"}, files={"picture": ("notes.txt", b"text")})
+    assert bad.status_code == 422 and "picture must be one of" in bad.text
+    assert 'value="Notes"' in bad.text
+    nothing = client.post(url, data={"name": "x"}, files={"picture": ("", b"")})
+    assert nothing.status_code == 422 and "Pick an image first." in nothing.text
+    assert client_lib.count_pictures(web_sample.artist_id) == 26
+    assert client.get("/artists/99/pictures").status_code == 404
+
+
+def test_picture_page(client: TestClient, client_lib: Library, web_sample: Sample):
+    picture = client_lib.add_picture(
+        web_sample.artist_id,
+        PictureIn("Roseland", "Live in <NYC>", ["live show"]),
+        b"jpeg",
+        "roseland.jpg",
+    )
+    url = f"/pictures/{picture.id}"
+    page = client.get(url).text
+    assert "<h1>Roseland</h1>" in page and "<code>roseland.jpg</code>" in page
+    assert "Live in &lt;NYC&gt;" in page
+    assert f'href="/artists/{web_sample.artist_id}/pictures?tag=live+show"' in page
+    assert f'href="/artists/{web_sample.artist_id}/pictures">Pictures</a>' in page
+
+    edit = client.get(f"/fragments{url}/edit").text
+    assert 'value="live show"' in edit
+    saved = client.post(url, data={"name": "NYC", "description": "", "tags": "a, b"})
+    assert saved.status_code == 200 and "<h1>NYC</h1>" in saved.text
+    assert client_lib.get_picture(picture.id).tags == ["a", "b"]
+    bad = client.post(url, data={"name": " "})
+    assert bad.status_code == 422 and "name is required" in bad.text
+
+    deleted = client.post(f"{url}/delete")
+    assert deleted.headers["hx-redirect"] == f"/artists/{web_sample.artist_id}/pictures"
+    assert client.get(url).status_code == 404
+    assert client.get(f"/api/pictures/{picture.id}/image").status_code == 404

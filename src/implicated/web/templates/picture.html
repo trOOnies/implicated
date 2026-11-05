@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% set active = 'artists' %}
+{% block title %}{{ picture.name }}{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/artists">Artists</a> / <a href="/artists/{{ artist.id }}">{{ artist.name }}</a> / <a href="/artists/{{ artist.id }}/pictures">Pictures</a> /</p>
+{% include "_picture_info.html" %}
+<figure class="card picture-full">
+  <a href="/api/pictures/{{ picture.id }}/image?v={{ picture.file }}" target="_blank" title="Open the full image">
+    <img src="/api/pictures/{{ picture.id }}/image?v={{ picture.file }}" alt="{{ picture.name }}">
+  </a>
+</figure>
+{% endblock %}

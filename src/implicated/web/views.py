@@ -9,6 +9,7 @@ so they refresh themselves:
 * ``playlists-changed``: a playlist, or the songs in it, changed (also when a song's favorite or
   listen later mark changes, since the built-in playlists follow them)
 * ``videos-changed``: a song's videos changed
+* ``pictures-changed``: an artist's pictures changed
 * ``library-changed``: anything changed; the overview (the page the logo opens) listens to it
 """
 
@@ -48,7 +49,13 @@ from implicated.concerts import (
     set_status,
 )
 from implicated.importer import accept, import_dir
-from implicated.library import COVER_TYPES, Library, NotFound, check_cover_name
+from implicated.library import (
+    COVER_TYPES,
+    IMAGE_TYPES,
+    Library,
+    NotFound,
+    check_cover_name,
+)
 from implicated.models import (
     ALBUM_KINDS,
     CONCERT_STATUSES,
@@ -63,6 +70,7 @@ from implicated.models import (
     CartItemIn,
     Concert,
     Member,
+    PictureIn,
     Playlist,
     PlaylistIn,
     Point,
@@ -158,6 +166,8 @@ templates.env.globals.update(
     album_kinds=ALBUM_KINDS,
     # What the cover pickers accept.
     cover_accept=",".join(COVER_TYPES),
+    # What the picture pickers accept.
+    picture_accept=",".join(IMAGE_TYPES),
     ownership=OWNERSHIP,
     format_names=FORMATS,
     # The latest year a band can have formed in.
@@ -260,6 +270,14 @@ def artist_from_form(form: FormData) -> ArtistIn:
         notes=_text(form, "notes"),
         listen_later="listen_later" in form,
         rating=_int(form, "rating"),
+    )
+
+
+def picture_from_form(form: FormData) -> PictureIn:
+    return PictureIn(
+        name=_text(form, "name") or "",
+        description=_text(form, "description"),
+        tags=_csv(form, "tags"),
     )
 
 
@@ -477,6 +495,9 @@ def exit_app(request: Request):
 
 # How many artists, albums and songs their pages show at a time.
 ARTISTS_PER_PAGE = 24
+PICTURES_PER_PAGE = 24
+# Thumbnails of the newest pictures the artist page shows, next to the link to all of them.
+ARTIST_PAGE_PICTURES = 6
 ALBUMS_PER_PAGE = 48
 SONGS_PER_PAGE = 50
 
@@ -573,6 +594,8 @@ def _artist_context(lib: Library, artist_id: int) -> dict:
         "albums": albums,
         "featured": lib.featured_songs(artist_id),
         "album_plays": [Point(a.album.title, a.play_count) for a in albums if a.play_count],
+        "pictures": lib.list_pictures(artist_id, limit=ARTIST_PAGE_PICTURES),
+        "picture_count": lib.count_pictures(artist_id),
     }
 
 
@@ -625,6 +648,143 @@ async def update_artist(request: Request, lib: Lib, artist_id: int):
 def delete_artist(lib: Lib, artist_id: int):
     found(lib.delete_artist, artist_id)
     return Response(headers={"HX-Redirect": "/artists"})
+
+
+# Pictures
+
+
+def _pictures_context(
+    request: Request, lib: Library, artist_id: int, q: str | None, tag: str | None, page: int
+) -> dict:
+    artist = found(lib.get_artist, artist_id)
+    base = f"/artists/{artist_id}/pictures"
+    pager = _pager(request, base, lib.count_pictures(artist_id, q, tag), page, PICTURES_PER_PAGE)
+    pictures = lib.list_pictures(artist_id, q, tag, PICTURES_PER_PAGE, pager["offset"])
+    return {
+        "artist": artist,
+        "pictures": pictures,
+        "pager": pager,
+        "filtered": bool((q or "").strip() or (tag or "").strip()),
+    }
+
+
+def _tags_context(lib: Library, artist_id: int, tag: str | None) -> dict:
+    tags = lib.picture_tags(artist_id)
+    tag = (tag or "").strip()
+    # A tag no picture has any more stays picked, so the list it filters does not jump.
+    if tag and not any(t.label.casefold() == tag.casefold() for t in tags):
+        tags.append(Point(tag, 0))
+    return {"artist_id": artist_id, "tags": tags, "tag": tag}
+
+
+@router.get("/artists/{artist_id}/pictures")
+def pictures_page(
+    request: Request,
+    lib: Lib,
+    artist_id: int,
+    q: str | None = None,
+    tag: str | None = None,
+    page: int = 1,
+):
+    return render(
+        request,
+        "pictures.html",
+        **_pictures_context(request, lib, artist_id, q, tag, page),
+        **_tags_context(lib, artist_id, tag),
+        q=q or "",
+        form={},
+    )
+
+
+@router.get("/fragments/artists/{artist_id}/pictures")
+def pictures_fragment(
+    request: Request,
+    lib: Lib,
+    artist_id: int,
+    q: str | None = None,
+    tag: str | None = None,
+    page: int = 1,
+):
+    context = _pictures_context(request, lib, artist_id, q, tag, page)
+    return render(request, "_pictures.html", **context)
+
+
+@router.get("/fragments/artists/{artist_id}/pictures/tags")
+def picture_tags(request: Request, lib: Lib, artist_id: int, tag: str | None = None):
+    """The tag picker of the Pictures page, reloaded when tags may have changed."""
+    found(lib.get_artist, artist_id)
+    return render(request, "_picture_tags.html", **_tags_context(lib, artist_id, tag))
+
+
+@router.post("/artists/{artist_id}/pictures")
+async def add_picture(request: Request, lib: Lib, artist_id: int):
+    form = await request.form()
+    found(lib.get_artist, artist_id)
+    upload = form.get("picture")
+    try:
+        # Browsers send an empty, nameless file when nothing was picked.
+        if upload is None or isinstance(upload, str) or not upload.filename:
+            raise ValueError("Pick an image first.")
+        lib.add_picture(artist_id, picture_from_form(form), await upload.read(), upload.filename)
+    except ValueError as exc:
+        return render(
+            request,
+            "_picture_form.html",
+            status_code=422,
+            error=str(exc),
+            form=form,
+            artist_id=artist_id,
+        )
+    return render(
+        request,
+        "_picture_form.html",
+        trigger=("pictures-changed",),
+        form={},
+        artist_id=artist_id,
+    )
+
+
+def _picture_context(lib: Library, picture_id: int) -> dict:
+    picture = found(lib.get_picture, picture_id)
+    return {"picture": picture, "artist": lib.get_artist(picture.artist_id)}
+
+
+@router.get("/pictures/{picture_id}")
+def picture_page(request: Request, lib: Lib, picture_id: int):
+    return render(request, "picture.html", **_picture_context(lib, picture_id))
+
+
+@router.get("/fragments/pictures/{picture_id}/info")
+def picture_info(request: Request, lib: Lib, picture_id: int):
+    return render(request, "_picture_info.html", **_picture_context(lib, picture_id))
+
+
+@router.get("/fragments/pictures/{picture_id}/edit")
+def picture_edit(request: Request, lib: Lib, picture_id: int):
+    return render(request, "_picture_edit.html", **_picture_context(lib, picture_id))
+
+
+@router.post("/pictures/{picture_id}")
+async def update_picture(request: Request, lib: Lib, picture_id: int):
+    form = await request.form()
+    context = _picture_context(lib, picture_id)
+    try:
+        lib.update_picture(picture_id, picture_from_form(form))
+    except ValueError as exc:
+        return render(request, "_picture_edit.html", status_code=422, error=str(exc), **context)
+    return render(
+        request,
+        "_picture_info.html",
+        trigger=("pictures-changed",),
+        **_picture_context(lib, picture_id),
+    )
+
+
+@router.post("/pictures/{picture_id}/delete")
+def delete_picture(lib: Lib, picture_id: int):
+    picture = found(lib.get_picture, picture_id)
+    lib.delete_picture(picture_id)
+    return Response(headers={"HX-Redirect": f"/artists/{picture.artist_id}/pictures"})
 
 
 # Albums

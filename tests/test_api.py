@@ -159,7 +159,7 @@ def test_stats_route_clamps_days(client: TestClient, web_sample: Sample):
 def test_routes_are_grouped_by_tag(client: TestClient):
     schema = client.get("/openapi.json").json()
     assert [t["name"] for t in schema["tags"]] == [
-        "Artists", "Members", "Albums", "Songs", "Song videos", "Playlists", "Plays",
+        "Artists", "Pictures", "Members", "Albums", "Songs", "Song videos", "Playlists", "Plays",
         "Budget", "Stats", "Your data",
     ]  # fmt: skip
     tags = {
@@ -168,6 +168,7 @@ def test_routes_are_grouped_by_tag(client: TestClient):
         for method, op in ops.items()
     }
     assert tags[("get", "/api/artists")] == ["Artists"]
+    assert tags[("post", "/api/artists/{artist_id}/pictures")] == ["Pictures"]
     assert tags[("put", "/api/artists/{artist_id}/members")] == ["Members"]
     assert tags[("get", "/api/albums/{album_id}/cover")] == ["Albums"]
     assert tags[("post", "/api/songs/{song_id}/plays")] == ["Plays"]
@@ -381,3 +382,23 @@ def test_album_plays_and_cart_shipping(client: TestClient, web_sample: Sample):
     assert client.put("/api/budget/cart/shipping", json={"shipping": -1}).status_code == 422
     assert client.put("/api/budget/cart/discount", json={"discount": 1.5}).json()["discount"] == 1.5
     assert client.put("/api/budget/cart/discount", json={"discount": -1}).status_code == 422
+
+
+def test_picture_routes(client: TestClient, web_sample: Sample):
+    base = f"/api/artists/{web_sample.artist_id}/pictures"
+    created = client.post(base, data={"tags": "live, poster"}, files={"file": ("tour.png", b"png")})
+    assert created.status_code == 201
+    picture = created.json()
+    assert picture["name"] == "tour" and picture["tags"] == ["live", "poster"]
+    assert client.get(base, params={"tag": "poster"}).json()[0]["id"] == picture["id"]
+    assert client.get(base, params={"q": "nothing"}).json() == []
+    assert client.get("/api/artists/99/pictures").status_code == 404
+
+    url = f"/api/pictures/{picture['id']}"
+    changed = client.put(url, json={"name": "Tour", "description": "Flyer", "tags": ["a"]})
+    assert changed.json()["description"] == "Flyer"
+    assert client.get(f"{url}/image").content == b"png"
+    bad = client.post(base, files={"file": ("a.txt", b"text")})
+    assert bad.status_code == 422
+    assert client.delete(url).status_code == 204
+    assert client.get(url).status_code == 404

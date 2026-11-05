@@ -14,6 +14,7 @@ from implicated.models import (
     Cart,
     CartItemIn,
     MemberIn,
+    PictureIn,
     PlaylistIn,
     SongIn,
     SongVideoIn,
@@ -1389,3 +1390,63 @@ def test_favorite_songs_first(lib: Library, sample: Sample):
     assert [s.song.title for s in lib.list_songs()] == ["Mysterons", "Sour Times"]
     ordered = lib.list_songs(favorites_first=True)
     assert [s.song.title for s in ordered] == ["Sour Times", "Mysterons"]
+
+
+# Pictures
+
+
+def test_pictures_are_saved_searched_and_deleted(lib: Library, sample: Sample):
+    live = lib.add_picture(
+        sample.artist_id,
+        PictureIn("Roseland", "Live in NYC", ["live", " 1997 ", "Live"]),
+        b"one",
+        "C:\\photos\\roseland.JPG",
+    )
+    assert live.file_name == "roseland.JPG" and live.tags == ["live", "1997"]
+    assert live.file.startswith(f"{live.id}-") and live.file.endswith(".jpg")
+    assert lib.picture_path(live.id).read_bytes() == b"one"
+    poster = lib.add_picture(
+        sample.artist_id, PictureIn("", tags=["Poster", "LIVE"]), b"two", "dummy-tour.gif"
+    )
+    assert poster.name == "dummy-tour" and poster.description is None
+
+    # Newest first; ``q`` finds names, file names, descriptions and tags, ``tag`` a whole tag.
+    assert [p.id for p in lib.list_pictures(sample.artist_id)] == [poster.id, live.id]
+    assert [p.id for p in lib.list_pictures(sample.artist_id, q="nyc")] == [live.id]
+    assert [p.id for p in lib.list_pictures(sample.artist_id, q="tour")] == [poster.id]
+    assert [p.id for p in lib.list_pictures(sample.artist_id, q="post")] == [poster.id]
+    assert [p.id for p in lib.list_pictures(sample.artist_id, tag="live")] == [poster.id, live.id]
+    assert lib.list_pictures(sample.artist_id, tag="liv") == []
+    assert lib.count_pictures(sample.artist_id, q="199") == 1
+    assert [p.id for p in lib.list_pictures(sample.artist_id, limit=1, offset=1)] == [live.id]
+    assert [(t.label, t.value) for t in lib.picture_tags(sample.artist_id)] == [
+        ("live", 2),
+        ("1997", 1),
+        ("Poster", 1),
+    ]
+
+    updated = lib.update_picture(live.id, PictureIn(" Roseland NYC ", "  ", ["b", "a"]))
+    assert (updated.name, updated.description, updated.tags) == ("Roseland NYC", None, ["b", "a"])
+    assert updated.file == live.file and updated.file_name == "roseland.JPG"
+    with pytest.raises(ValueError, match="name is required"):
+        lib.update_picture(live.id, PictureIn(" "))
+
+    lib.delete_picture(live.id)
+    assert not (lib.pictures_dir / live.file).exists()
+    with pytest.raises(NotFound):
+        lib.get_picture(live.id)
+    # Deleting the artist takes the rest along, files included.
+    lib.delete_artist(sample.artist_id)
+    assert not (lib.pictures_dir / poster.file).exists()
+    with pytest.raises(NotFound):
+        lib.get_picture(poster.id)
+
+
+def test_bad_pictures_are_refused(lib: Library, sample: Sample):
+    with pytest.raises(ValueError, match="picture must be one of"):
+        lib.add_picture(sample.artist_id, PictureIn("x"), b"text", "notes.txt")
+    with pytest.raises(ValueError, match="is empty"):
+        lib.add_picture(sample.artist_id, PictureIn("x"), b"", "empty.png")
+    with pytest.raises(NotFound):
+        lib.add_picture(999, PictureIn("x"), b"data", "a.png")
+    assert lib.count_pictures(sample.artist_id) == 0

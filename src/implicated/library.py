@@ -10,7 +10,7 @@ import uuid
 from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import asdict, fields
+from dataclasses import asdict, fields, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -37,6 +37,8 @@ from implicated.models import (
     LibraryStats,
     Member,
     MemberIn,
+    Picture,
+    PictureIn,
     Play,
     Playlist,
     PlaylistDetail,
@@ -185,6 +187,18 @@ CREATE TABLE IF NOT EXISTS budget_items (
     quantity    INTEGER NOT NULL DEFAULT 1,
     link        TEXT
 );
+-- Pictures saved for an artist; the image files are in the library's ``pictures/``.
+CREATE TABLE IF NOT EXISTS pictures (
+    id          INTEGER PRIMARY KEY,
+    artist_id   INTEGER NOT NULL REFERENCES artists(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    description TEXT,
+    tags        TEXT NOT NULL DEFAULT '[]',
+    file_name   TEXT NOT NULL,
+    file        TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pictures_artist ON pictures(artist_id);
 CREATE INDEX IF NOT EXISTS idx_budget_items_budget ON budget_items(budget_id);
 CREATE INDEX IF NOT EXISTS idx_albums_artist ON albums(artist_id);
 CREATE INDEX IF NOT EXISTS idx_members_artist ON members(artist_id);
@@ -266,6 +280,19 @@ SONGS_WHERE = """
      AND (:q IS NULL OR s.title LIKE '%' || :q || '%'
           OR ar.name LIKE '%' || :q || '%'
           OR al.title LIKE '%' || :q || '%')
+"""
+
+# Which of an artist's pictures ``list_pictures`` and ``count_pictures`` look at: ``q`` is found in
+# the name, file name, description or any tag, and ``tag`` is one of the tags, ignoring case.
+PICTURES_WHERE = """
+    FROM pictures p
+   WHERE p.artist_id = :artist_id
+     AND (:tag IS NULL OR EXISTS (SELECT 1 FROM json_each(p.tags)
+                                   WHERE value = :tag COLLATE NOCASE))
+     AND (:q IS NULL OR p.name LIKE '%' || :q || '%'
+          OR p.file_name LIKE '%' || :q || '%'
+          OR p.description LIKE '%' || :q || '%'
+          OR EXISTS (SELECT 1 FROM json_each(p.tags) WHERE value LIKE '%' || :q || '%'))
 """
 
 # Cover file names are ``<album id>-<content hash><suffix>`` (see ``_store_image``), so two albums
@@ -378,6 +405,22 @@ def _clean_list(values: list[str]) -> str:
     return json.dumps([v.strip() for v in values if v.strip()])
 
 
+def _tags(values: list[str]) -> str:
+    """Tags as stored: trimmed, without empty ones or repeats (ignoring case), in their order."""
+    tags: dict[str, str] = {}
+    for value in values:
+        tag = " ".join(value.split())
+        if tag:
+            tags.setdefault(tag.casefold(), tag)
+    return json.dumps(list(tags.values()))
+
+
+def _picture(row: sqlite3.Row) -> Picture:
+    data = dict(row)
+    data["tags"] = json.loads(data["tags"])
+    return Picture(**data)
+
+
 def _album(row: sqlite3.Row) -> Album:
     data = dict(row)
     data["favorite"] = bool(data["favorite"])
@@ -473,6 +516,7 @@ class Library:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.covers_dir = self.path.parent / "covers"
         self.images_dir = self.path.parent / "artists"
+        self.pictures_dir = self.path.parent / "pictures"
         # Where the library keeps the files you edit by hand: lyrics, timed lyrics and tabs in
         # ``bands/<artist>/songs|tabs/``, and the concerts and tours CSVs. Usually the folder
         # the database is in. When set, every song has a lyrics file: one is created (empty)
@@ -742,9 +786,17 @@ class Library:
     def delete_artist(self, artist_id: int) -> None:
         image = self.get_artist(artist_id).image
         covers = [a.album.cover for a in self.list_albums(artist_id)]
+        with self.connect() as conn:
+            pictures = [
+                row["file"]
+                for row in conn.execute(
+                    "SELECT file FROM pictures WHERE artist_id = ?", (artist_id,)
+                )
+            ]
         self._delete("artists", artist_id)
         self._remove_files(self.covers_dir, covers)
         self._remove_files(self.images_dir, [image])
+        self._remove_files(self.pictures_dir, pictures)
 
     def set_image(self, artist_id: int, source: str | Path) -> Artist:
         """Copy ``source`` into the artist images directory as the artist's picture; works
@@ -784,6 +836,126 @@ class Library:
         values["favorite"] = int(data.favorite)
         values["listen_later"] = int(data.listen_later)
         return values
+
+    # Pictures
+
+    def list_pictures(
+        self,
+        artist_id: int,
+        q: str | None = None,
+        tag: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[Picture]:
+        """The artist's pictures, newest first, that match ``q`` and ``tag`` (see
+        ``PICTURES_WHERE``); ``limit`` of them from ``offset`` on, or all of them."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"SELECT p.* {PICTURES_WHERE} ORDER BY p.created_at DESC, p.id DESC"
+                " LIMIT :limit OFFSET :offset",
+                {
+                    **self._picture_filters(artist_id, q, tag),
+                    "limit": -1 if limit is None else limit,
+                    "offset": offset,
+                },
+            ).fetchall()
+        return [_picture(row) for row in rows]
+
+    def count_pictures(self, artist_id: int, q: str | None = None, tag: str | None = None) -> int:
+        with self.connect() as conn:
+            row = conn.execute(
+                f"SELECT COUNT(*) AS n {PICTURES_WHERE}", self._picture_filters(artist_id, q, tag)
+            ).fetchone()
+        return row["n"]
+
+    @staticmethod
+    def _picture_filters(artist_id: int, q: str | None, tag: str | None) -> dict:
+        return {
+            "artist_id": artist_id,
+            "q": (q or "").strip() or None,
+            "tag": (tag or "").strip() or None,
+        }
+
+    def picture_tags(self, artist_id: int) -> list[Point]:
+        """The tags of the artist's pictures and how many have each, most used first. Tags that
+        differ only in case count as one, written as the first picture that has it does."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT value FROM pictures p, json_each(p.tags)
+                    WHERE p.artist_id = ? ORDER BY p.id""",
+                (artist_id,),
+            ).fetchall()
+        counts: Counter[str] = Counter()
+        names: dict[str, str] = {}
+        for row in rows:
+            key = row["value"].casefold()
+            names.setdefault(key, row["value"])
+            counts[key] += 1
+        ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        return [Point(names[key], count) for key, count in ranked]
+
+    def get_picture(self, picture_id: int) -> Picture:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM pictures WHERE id = ?", (picture_id,)).fetchone()
+        if row is None:
+            raise NotFound(f"picture {picture_id} not found")
+        return _picture(row)
+
+    def add_picture(
+        self, artist_id: int, data: PictureIn, content: bytes, file_name: str
+    ) -> Picture:
+        """Save the image ``content``, uploaded as ``file_name`` (one of ``IMAGE_TYPES``), as a
+        picture of the artist. Without a name, it is named after the file."""
+        self.get_artist(artist_id)
+        file_name = Path(file_name.replace("\\", "/")).name.strip()
+        check_image_name(file_name, "picture")
+        if not content:
+            raise ValueError(f"picture {file_name!r} is empty")
+        if not data.name.strip():
+            data = replace(data, name=Path(file_name).stem)
+        values = self._picture_values(data)
+        with self.transaction(), self.connect() as conn:
+            cur = conn.execute(
+                """INSERT INTO pictures (artist_id, name, description, tags, file_name, file,
+                                         created_at)
+                   VALUES (:artist_id, :name, :description, :tags, :file_name, '', :now)""",
+                {**values, "artist_id": artist_id, "file_name": file_name, "now": _now()},
+            )
+            picture_id = cur.lastrowid
+            name = self._store_image(
+                self.pictures_dir, picture_id, content, file_name, None, "picture"
+            )
+            conn.execute("UPDATE pictures SET file = ? WHERE id = ?", (name, picture_id))
+        return self.get_picture(picture_id)
+
+    def update_picture(self, picture_id: int, data: PictureIn) -> Picture:
+        self.get_picture(picture_id)
+        with self.connect() as conn:
+            conn.execute(
+                """UPDATE pictures SET name = :name, description = :description, tags = :tags
+                    WHERE id = :id""",
+                {**self._picture_values(data), "id": picture_id},
+            )
+        return self.get_picture(picture_id)
+
+    def delete_picture(self, picture_id: int) -> None:
+        picture = self.get_picture(picture_id)
+        self._delete("pictures", picture_id)
+        self._remove_files(self.pictures_dir, [picture.file])
+
+    def picture_path(self, picture_id: int) -> Path:
+        path = self.pictures_dir / self.get_picture(picture_id).file
+        if not path.is_file():
+            raise NotFound(f"picture {picture_id} has no image file")
+        return path
+
+    @staticmethod
+    def _picture_values(data: PictureIn) -> dict:
+        name = data.name.strip()
+        if not name:
+            raise ValueError("name is required")
+        description = data.description.strip() if data.description else None
+        return {"name": name, "description": description or None, "tags": _tags(data.tags)}
 
     # Members
 

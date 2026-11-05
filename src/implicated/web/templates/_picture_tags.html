@@ -1,0 +1,8 @@
+{# The tag picker of the Pictures page: its own fragment, so new tags show up once added. #}
+<span id="picture-tags" hx-get="/fragments/artists/{{ artist_id }}/pictures/tags"
+      hx-trigger="pictures-changed from:body" hx-include="#picture-tag" hx-target="this" hx-swap="outerHTML">
+  <select id="picture-tag" name="tag" aria-label="Tag">
+    <option value="">Any tag</option>
+    {% for t in tags %}<option value="{{ t.label }}" {% if t.label | lower == tag | lower %}selected{% endif %}>{{ t.label }} ({{ t.value }})</option>{% endfor %}
+  </select>
+</span>

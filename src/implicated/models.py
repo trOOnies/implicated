@@ -1,7 +1,7 @@
 """Domain models.
 
 Persisted records (``Artist``, ``Member``, ``Album``, ``Song``, ``SongVideo``, ``Play``,
-``Playlist``) carry their database id.
+``Playlist``, ``Picture``) carry their database id.
 The ``*In`` variants are the writable fields, used as API request bodies and for form input.
 """
 
@@ -169,6 +169,27 @@ class SongVideoIn:
 class SongVideo(SongVideoIn):
     id: int = 0
     song_id: int = 0
+    created_at: str = ""
+
+
+@dataclass
+class PictureIn:
+    """What you can change of a picture saved for an artist (a photo, a poster, fan art...)."""
+
+    name: str
+    description: str | None = None
+    # Free words to find the picture by on the artist's Pictures page, such as "live" or "2004".
+    tags: list[str] = field(default_factory=list)
+
+
+@dataclass
+class Picture(PictureIn):
+    id: int = 0
+    artist_id: int = 0
+    # The name of the file it was uploaded as, kept to show it.
+    file_name: str = ""
+    # File name inside the library's pictures directory; see ``Library.add_picture``.
+    file: str = ""
     created_at: str = ""
 
 

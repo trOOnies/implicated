@@ -236,6 +236,18 @@ a.tile:hover { text-decoration: none; border-color: var(--accent); }
 .album-grid a { display: flex; flex-direction: column; gap: .35rem; color: var(--text); }
 .album-grid a:hover strong { text-decoration: underline; }
 .album-grid strong { line-height: 1.25; }
+/* Pictures of an artist: square thumbnails, and the full image on its own page. */
+.picture-grid { list-style: none; padding: 0; margin: 0; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.picture-grid li { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
+.picture-grid li p { margin: 0; }
+.picture-grid a { display: flex; flex-direction: column; gap: .35rem; color: var(--text); }
+.picture-grid a:hover strong { text-decoration: underline; }
+.picture-grid strong { line-height: 1.25; overflow-wrap: anywhere; }
+#artist-pictures .row { align-items: baseline; }
+a.tag { color: inherit; }
+a.tag:hover { text-decoration: none; outline: 1px solid var(--accent); }
+.picture-full { margin: 0; text-align: center; }
+.picture-full img { display: block; margin: 0 auto; max-width: 100%; max-height: 75vh; height: auto; border-radius: 6px; }
 td.cover-cell { width: 3.25rem; padding-right: 0; }
 /* CD and vinyl selectors */
 .pickers { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }

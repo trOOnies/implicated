@@ -52,6 +52,7 @@ prepare by hand, imported when you say so.
 | 🗄️ The library | `local/implicated.db` (SQLite) | `IMPLICATED_DB` |
 | 🖼️ Album covers | `local/covers/`, next to the library | |
 | 🧑‍🎤 Artist pictures | `local/artists/`, next to the library | |
+| 📸 Pictures you saved of artists | `local/pictures/`, next to the library | |
 | 📝 Lyrics, timed lyrics, tabs | `local/bands/<artist>/songs/` and `tabs/` | |
 | 🎟️ Concerts and tours | `local/concerts.csv`, `local/tours.csv` | |
 | 📥 The inbox, and its archives | `info/` and `info/archive/` (git-ignored) | `IMPLICATED_INFO` |
@@ -113,7 +114,7 @@ info/
 | | What's in it | How |
 | --- | --- | --- |
 | 💾 **Backup** | `local/`, exactly: a snapshot of the database, covers, pictures, lyrics, tabs, concerts, friends | *Download a backup* on the Import page, or `make backup [FILE=...]`. `make restore FILE=...` (app stopped) puts it back, after zipping what was there |
-| 📤 **Export** | The library as an **inbox**: YAML with a `uid` on every record, covers, pictures, lyrics, tabs, concerts and `userdata.json` | *Download an export*, or `make export [FILE=...] [OWNER=...]`. Upload it on the Import page, here or in a fresh library, to rebuild it, or unzip it to edit by hand |
+| 📤 **Export** | The library as an **inbox**: YAML with a `uid` on every record, covers, artist pictures (not the saved Pictures: only backups keep those), lyrics, tabs, concerts and `userdata.json` | *Download an export*, or `make export [FILE=...] [OWNER=...]`. Upload it on the Import page, here or in a fresh library, to rebuild it, or unzip it to edit by hand |
 
 Exporting and importing an export gives back the same export. Songs without an album have no place
 in `albums.yaml`, so exports leave them out (with a warning).
@@ -173,6 +174,13 @@ file in TuxGuitar and to reload it after saving.
   and below the list. Filters and order selectors apply to the whole list, while clicking a column
   header sorts the page in view.
 - 🖼️ **Artist cards** show the artist's picture in grey behind the card, when they have one.
+- 📸 **Pictures**: an artist page shows the newest pictures you saved of them and links to their
+  **Pictures** page, 24 thumbnails at a time. Add one there (AVIF, GIF, JPEG, PNG or WebP) with a
+  name (the file's, when left empty), a description and comma-separated tags. Search by name, file
+  name, description or tag, or pick a tag. Clicking a thumbnail opens the **Picture** page: the
+  image, its name, file name, description and tags (each a link to the pictures with it), and
+  buttons to edit or delete it. The API has them under `/api/artists/{id}/pictures` and
+  `/api/pictures/{id}`.
 - ♡ **Favorites come first** on the Artists and Albums pages and in the Songs page's A–Z order.
   Album tiles have a ♡ to mark them. The Albums page can also go *Newest first*.
 - ✏️ **Songs are edited** from album pages, not from the Songs page.
@@ -350,7 +358,7 @@ file under the same name replaces the old one, and *Forget* removes it.
 
 | Path | What's there |
 | --- | --- |
-| `src/implicated/models.py` | Dataclass models (`Artist`, `Member`, `Album`, `Song`, `SongVideo`, `Play`, `Playlist`, and their `*In` inputs) |
+| `src/implicated/models.py` | Dataclass models (`Artist`, `Member`, `Album`, `Song`, `SongVideo`, `Play`, `Playlist`, `Picture`, and their `*In` inputs) |
 | `src/implicated/library.py` | SQLite storage and stats |
 | `src/implicated/importer.py` | Inbox importer (with preview) for artists, members, albums, songs, covers, lyrics, tabs and CSVs |
 | `src/implicated/inbox.py` | The inbox: uploads, archives of accepted imports |

@@ -1,0 +1,14 @@
+<form class="stack" hx-post="/artists/{{ artist_id }}/pictures" hx-encoding="multipart/form-data" hx-swap="outerHTML">
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <label>Image <input type="file" name="picture" accept="{{ picture_accept }}" required></label>
+  <label>Name <span class="small">(the file's, when empty)</span>
+    <input name="name" value="{{ form.get('name', '') }}">
+  </label>
+  <label>Description <span class="small">(optional)</span>
+    <textarea name="description" rows="3">{{ form.get('description', '') }}</textarea>
+  </label>
+  <label>Tags <span class="small">(separated by commas)</span>
+    <input name="tags" placeholder="live, 2004, poster" value="{{ form.get('tags', '') }}">
+  </label>
+  <button type="submit">Add picture</button>
+</form>

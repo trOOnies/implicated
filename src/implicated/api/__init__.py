@@ -14,6 +14,7 @@ from implicated.api import (
     budget,
     data,
     members,
+    pictures,
     playlists,
     plays,
     songs,
@@ -26,6 +27,10 @@ __all__ = ["TAGS", "get_library", "router"]
 
 TAGS = [
     {"name": "Artists", "description": "Bands and solo artists, with their picture."},
+    {
+        "name": "Pictures",
+        "description": "Pictures saved for an artist, with a name, a description and tags.",
+    },
     {"name": "Members", "description": "The line-up of an artist, current and former."},
     {"name": "Albums", "description": "Albums, EPs, singles and more, with their cover."},
     {"name": "Songs", "description": "Songs, on an album or as singles, and their lyrics."},
@@ -56,5 +61,17 @@ TAGS = [
 ]
 
 router = APIRouter(prefix="/api")
-for module in (artists, members, albums, songs, videos, playlists, plays, budget, stats, data):
+for module in (
+    artists,
+    pictures,
+    members,
+    albums,
+    songs,
+    videos,
+    playlists,
+    plays,
+    budget,
+    stats,
+    data,
+):
     router.include_router(module.router)

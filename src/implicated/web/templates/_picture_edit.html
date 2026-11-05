@@ -1,0 +1,16 @@
+<section id="picture-info" class="card info">
+  <form class="stack" hx-post="/pictures/{{ picture.id }}" hx-target="#picture-info" hx-swap="outerHTML">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <label>Name <input name="name" required value="{{ picture.name }}"></label>
+    <p class="muted small">File: <code>{{ picture.file_name }}</code></p>
+    <label>Description <textarea name="description" rows="4">{{ picture.description or '' }}</textarea></label>
+    <label>Tags <span class="small">(separated by commas)</span>
+      <input name="tags" value="{{ picture.tags | join(', ') }}">
+    </label>
+    <div class="row">
+      <button type="submit">Save</button>
+      <button type="button" class="secondary" hx-get="/fragments/pictures/{{ picture.id }}/info"
+              hx-target="#picture-info" hx-swap="outerHTML">Cancel</button>
+    </div>
+  </form>
+</section>

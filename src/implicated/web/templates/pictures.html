@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% set active = 'artists' %}
+{% block title %}Pictures of {{ artist.name }}{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/artists">Artists</a> / <a href="/artists/{{ artist.id }}">{{ artist.name }}</a> /</p>
+<div class="page-head">
+  <h1>Pictures</h1>
+  <form id="picture-filters" class="filters" hx-get="/fragments/artists/{{ artist.id }}/pictures"
+        hx-target="#pictures" hx-swap="innerHTML" hx-trigger="input changed delay:300ms, change, search">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search names, descriptions and tags…"
+           aria-label="Search pictures">
+    {% include "_picture_tags.html" %}
+  </form>
+</div>
+<div class="layout">
+  <section id="pictures" hx-get="/fragments/artists/{{ artist.id }}/pictures"
+           hx-trigger="pictures-changed from:body" hx-include="#picture-filters, #pictures-page"
+           hx-disinherit="hx-include" hx-swap="innerHTML">
+    {% include "_pictures.html" %}
+  </section>
+  <aside class="card">
+    <h2>Add picture</h2>
+    {% with artist_id=artist.id %}{% include "_picture_form.html" %}{% endwith %}
+  </aside>
+</div>
+{% endblock %}

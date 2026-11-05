@@ -64,7 +64,12 @@
       new artist as a favorite or to listen later and rate it right away; the year it formed
       cannot be in the future. Open one to see its line-up and
       discography, edit it (also to write your own notes, which imports leave alone), or add
-      albums.</dd>
+      albums. Its <strong>Pictures</strong> section shows the newest pictures you saved of the
+      artist and leads to all of them, a page of thumbnails at a time: add one (any image, GIFs
+      too) with a name, a description and tags, all optional, search them by name, file name,
+      description or tag, or pick a tag to see only those. Open one to see it big, with its name,
+      the file it came from, its description and tags (click a tag for the other pictures with
+      it), and to edit or delete it.</dd>
       <dt id="albums">💿 <a href="/albums">Albums</a></dt>
       <dd>All albums with their covers and how many of their songs have lyrics, a page at a time,
       your favorites first (or <em>Newest first</em>); the ♡ on a cover marks one. Open one for its tracklist, rating and notes; songs without lyrics are marked
@@ -236,7 +241,7 @@
   <section class="card" id="backups">
     <h2>📦 Backups and exports</h2>
     <p>Everything the app keeps lives in one folder, <code>local/</code>: the database, covers,
-    artist pictures, lyrics, tabs, concerts and friends' files.</p>
+    artist pictures, the pictures you saved of them, lyrics, tabs, concerts and friends' files.</p>
     <ul>
       <li><strong>Backup</strong> (<a href="/import/backup">download</a> or <code>make backup</code>):
       that folder, exactly, as a zip. <code>make restore FILE=…</code>, with the app stopped,
@@ -245,7 +250,8 @@
       your library written out as an inbox, in YAML with a <code>uid</code> on every record, plus
       the files and your data. Upload it on the Import page (here or in a fresh library) to
       rebuild the library from it, or unzip it to edit the files by hand. Songs without an album
-      cannot be written to <code>albums.yaml</code> and are left out.</li>
+      cannot be written to <code>albums.yaml</code> and are left out, and so are the pictures you
+      saved of artists: only a backup keeps those.</li>
     </ul>
     <p class="help-back"><a href="#index">↑ Back to the index</a></p>
   </section>

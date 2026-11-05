@@ -1,0 +1,9 @@
+{% with noun='pictures', target='pictures', place='top' %}{% include "_pager.html" %}{% endwith %}
+{% if pictures %}
+{% include "_picture_grid.html" %}
+{% elif filtered %}
+<p class="empty">No pictures match.</p>
+{% else %}
+<p class="empty">No pictures of {{ artist.name }} yet. Add your first one.</p>
+{% endif %}
+{% with noun='pictures', target='pictures', place='bottom' %}{% include "_pager.html" %}{% endwith %}
