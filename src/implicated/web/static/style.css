@@ -161,6 +161,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 2rem; }
 }
 
 /* Tabs, drawn by alphaTab in black, so on white in either theme */
+.tab-tracks > label.check { flex: none; }
 .tab-score { background: #fff; color: #000; border-radius: var(--radius); overflow-x: auto; }
 .tab-score:empty { display: none; }
 .tab-score .at-cursor-bar { background: rgba(255, 242, 0, .25); }

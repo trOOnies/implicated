@@ -4,8 +4,8 @@
     <h2>Tab</h2>
     <span class="spacer"></span>
     {% if tab_path %}
-    <button type="button" data-tab-play disabled>Play</button>
-    <button type="button" class="secondary" data-tab-stop disabled>Stop</button>
+    <button type="button" data-tab-play disabled title="Play or pause (Space)">Play</button>
+    <button type="button" class="secondary" data-tab-stop disabled title="Stop (Esc)">Stop</button>
     <button type="button" class="secondary" hx-post="/songs/{{ song_id }}/tab/open"
             hx-target="#tab" hx-swap="outerHTML" title="Open {{ tab_path.name }} in TuxGuitar (or the app that opens it)">Open tab file</button>
     {% endif %}
@@ -17,7 +17,9 @@
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
   {% if opened %}<p class="muted">Opened <code>{{ tab_path.name }}</code>. Save it, then press Reload tab.</p>{% endif %}
   {% if tab_path %}
-  <p class="row tab-tracks" hidden><label>Track <select data-tab-tracks></select></label></p>
+  <p class="row wrap tab-tracks" hidden><label>Track <select data-tab-tracks></select></label>
+    <label class="check"><input type="checkbox" data-tab-only> Play only this track</label></p>
+  <p class="muted" data-tab-tuning hidden></p>
   <p class="muted" data-tab-status>Loading the tab…</p>
   <div class="tab-score" data-file="/api/songs/{{ song_id }}/tab?v={{ tab_version }}"
        data-fonts="{{ url_for('static', path='alphatab/font/') }}"

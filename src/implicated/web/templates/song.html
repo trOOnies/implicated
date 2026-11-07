@@ -16,9 +16,10 @@
 <div class="layout">
   <div>
     {% with song_id=s.song.id, error=None, form={} %}{% include "_videos.html" %}{% endwith %}
-    {% include "_lyrics.html" %}
-    {% include "_tab.html" %}
   </div>
   <aside>{% with error=None %}{% include "_playlist_add.html" %}{% endwith %}</aside>
 </div>
+{# Full width, so the tab fits more bars on a line. #}
+{% include "_lyrics.html" %}
+{% include "_tab.html" %}
 {% endblock %}
