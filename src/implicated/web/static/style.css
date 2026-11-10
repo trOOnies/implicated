@@ -698,6 +698,9 @@ button.icon:hover:not(:disabled) { background: var(--accent); color: var(--surfa
 button.icon.primary { background: var(--accent); color: var(--surface); }
 button.icon.danger { border-color: var(--danger); color: var(--danger); }
 button.icon.danger:hover { background: var(--danger); color: var(--surface); }
+/* The Help icon (help_link in _icons.html): a quiet "?" that lights up when pointed at */
+a.help-link { display: inline-flex; align-items: center; color: var(--muted); border-radius: 50%; }
+a.help-link:hover, a.help-link:focus-visible { color: var(--accent); text-decoration: none; }
 .versions form.version-actions select { flex: 1; min-width: 0; padding: .2rem .3rem; }
 
 /* An artist page's Discography heading, with its filters beside it */

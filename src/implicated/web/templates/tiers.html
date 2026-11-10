@@ -4,17 +4,18 @@
 {% block title %}Tier list of {{ tier_list.name }}{% endblock %}
 {% block scripts %}<script src="{{ asset('tiers.js') }}" defer></script>{% endblock %}
 {% block content %}
+{% from "_icons.html" import help_link %}
 <p class="crumbs">{% for href, text in crumbs %}<a href="{{ href }}">{{ text }}</a> / {% endfor %}</p>
 <section class="card info">
   <div class="row">
     <h1>Tier list</h1>
+    {{ help_link('pages', 'tier-lists', 'tier lists') }}
     <span class="spacer"></span>
     {% if tier_list.tiers %}
     <button type="button" class="danger" hx-post="{{ owner_url }}/tiers/delete"
             hx-confirm="Delete the tier list of {{ tier_list.name }}? Its songs stay as they are.">Delete tier list</button>
     {% endif %}
   </div>
-  <p class="small"><a href="/help/pages#tier-lists">How tier lists work</a></p>
   {% if not tier_list.tiers %}
   <p class="small">{{ tier_list.name }} has no tier list yet.</p>
   <div class="row">

@@ -374,6 +374,19 @@ HELP_SECTIONS = tuple(
 )
 
 
+def help_url(section: str, anchor: str | None = None) -> str:
+    """The address of Help's ``section`` page (one of the slugs of ``HELP_SECTIONS``; "" for the
+    first one), at the entry with id ``anchor`` when given. For the Help icon (``help_link`` in
+    _icons.html); a section that does not exist is a mistake, so it raises."""
+    for each in HELP_SECTIONS:
+        if each["slug"] == section:
+            return f"{each['url']}#{anchor}" if anchor else each["url"]
+    raise ValueError(f"no Help section {section!r}")
+
+
+templates.env.globals["help_url"] = help_url
+
+
 def _help_page(request: Request, i: int) -> HTMLResponse:
     return render(
         request,

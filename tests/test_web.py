@@ -24,11 +24,12 @@ from implicated.models import (
     PlaylistIn,
     SongIn,
 )
-from implicated.web import editor, shutdown
+from implicated.web import editor, shutdown, views
 from implicated.web.views import (
     _fingerprint,
     days_until,
     duration,
+    help_url,
     money,
     percent,
     stars,
@@ -884,8 +885,9 @@ def test_tier_list_pages(client: TestClient, client_lib: Library, web_sample: Sa
 
     page = client.get(f"/playlists/{pid}/tiers").text
     assert "has no tier list yet" in page and "Make a tier list" in page
-    # How it works is in Help, which the page only links to.
-    assert 'href="/help/pages#tier-lists"' in page and "Drag the songs" not in page
+    # How it works is in Help, which the page only links to, with the Help icon.
+    assert 'class="help-link" href="/help/pages#tier-lists"' in page
+    assert 'aria-label="Help: tier lists"' in page and "Drag the songs" not in page
     help_page = client.get("/help/pages").text
     assert 'id="tier-lists"' in help_page and "Fast assign" in help_page
     assert client.get(f"/fragments/playlists/{pid}/tiers").status_code == 404
@@ -1234,6 +1236,27 @@ def test_help_index_links_to_every_section(client: TestClient):
         if anchor:
             assert section.text.count(f'id="{anchor}"') == 1, (path, anchor)
     assert client.get("/help/nope").status_code == 404
+
+
+def test_help_icons_lead_to_help_entries_that_exist(client: TestClient):
+    """Every Help icon (``help_link`` in the templates) names a Help page and an entry on it."""
+    templates = Path(views.__file__).parent / "templates"
+    calls = [
+        re.match(r"""'([\w-]*)'(?:,\s*'([\w-]+)')?""", call).groups()
+        for path in templates.rglob("*.html")
+        if path.name != "_icons.html"
+        for call in re.findall(r"help_link\((.*?)\)", path.read_text())
+    ]
+    assert ("pages", "tier-lists") in calls
+    for section, anchor in calls:
+        url = help_url(section, anchor)
+        page = client.get(url.split("#")[0])
+        assert page.status_code == 200, url
+        if anchor:
+            assert f'id="{anchor}"' in page.text, url
+    assert help_url("") == "/help" and help_url("api") == "/help/api"
+    with pytest.raises(ValueError, match="no Help section 'nope'"):
+        help_url("nope")
 
 
 def test_help_sections_link_to_their_neighbors(client: TestClient):

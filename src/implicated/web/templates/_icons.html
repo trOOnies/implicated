@@ -8,5 +8,15 @@
 {%- elif name == 'lock' %}<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>
 {%- elif name == 'unlock' %}<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.75-1.4"/>
 {%- elif name == 'delete' %}<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>
+{%- elif name == 'help' %}<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r=".6" fill="currentColor"/>
 {%- endif %}</svg>
+{%- endmacro %}
+
+{# The Help icon: a "?" linking to where Help explains this page or part of it, on Help's
+   `section` page (a slug of ``HELP_SECTIONS``, so "pages" for /help/pages) at the entry with id
+   `anchor`, named `topic` in its tooltip. Use it anywhere, say beside a heading:
+   `{% from "_icons.html" import help_link %}`, then `{{ help_link('pages', 'tier-lists', 'Tier List') }}`. #}
+{% macro help_link(section, anchor=None, topic=None) -%}
+<a class="help-link" href="{{ help_url(section, anchor) }}" title="{{ 'How ' ~ topic ~ ' works, in Help' if topic else 'Help' }}"
+   aria-label="{{ 'Help: ' ~ topic if topic else 'Help' }}">{{ icon('help') }}</a>
 {%- endmacro %}
