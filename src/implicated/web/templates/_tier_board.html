@@ -15,6 +15,18 @@
     <button type="button" id="tier-autoadd" class="secondary" hx-post="{{ owner_url }}/tiers/auto" hx-target="#tier-board" hx-swap="outerHTML"
             hx-confirm="Autoadd? This empties the levels, then puts the {{ songs(auto_counts[0]) }} marked favorite in {{ names[0] }}, the {{ songs(auto_counts[1]) }} on favorite albums in {{ names[1] }}, and the {{ songs(auto_counts[2]) }} played at least once in {{ names[2] }}, each level's by plays, most first. The rest stay unassigned.{% if tier_list.locking and locked_count %} The {{ songs(locked_count) }} locked stay where they are.{% endif %}"
             {% if not auto_total %}disabled title="No song is a favorite, on a favorite album, or played yet"{% else %}title="Favorites, then songs on favorite albums, then played songs, each by plays"{% endif %}>Autoadd</button>
+    {# A playlist of the songs ranked from the top level down to the one picked, that one included. #}
+    {% set ranked = namespace(n=0) %}
+    <form class="row tier-make-playlist" hx-post="{{ owner_url }}/tiers/playlist" hx-target="#tier-playlist" hx-swap="innerHTML">
+      <button type="submit" class="secondary" title="A playlist of the songs in the levels from {{ tier_list.tiers[0].tier.name }} down to the one picked, in order">Make playlist</button>
+      <label class="small">down to
+        <select name="last" aria-label="The last level to take, included">
+          {% for row in tier_list.tiers %}
+          {% set ranked.n = ranked.n + (row.songs | length) %}
+          <option value="{{ loop.index0 }}"{% if loop.last %} selected{% endif %}>{{ row.tier.name }} ({{ songs(ranked.n) }})</option>
+          {% endfor %}
+        </select></label>
+    </form>
     {# Filled in by tiers.js while songs are selected. #}
     <span class="tier-selection small" aria-live="polite" hidden><span data-selection-count></span>
       {% if tier_list.locking %}<button type="button" class="link" data-lock-selection title="Lock the selected songs where they are">Lock</button>{% endif %}

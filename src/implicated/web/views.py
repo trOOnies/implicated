@@ -81,6 +81,7 @@ from implicated.models import (
     Song,
     SongIn,
     SongVideoIn,
+    TierList,
 )
 from implicated.userdata import ImportReport, export_data, import_data, read_file
 from implicated.web import editor, shutdown
@@ -2119,6 +2120,47 @@ async def tier_lock(request: Request, lib: Lib, owners: str, owner_id: int):
     if form.get("quiet"):
         return Response(status_code=204)
     return _tier_board(request, lib, kind, owner_id)
+
+
+def _tier_playlist_name(tier_list: TierList, last: int) -> str:
+    """The name of the playlist of a tier list's levels from the top one to ``last``."""
+    top, bottom = tier_list.tiers[0].tier.name, tier_list.tiers[last].tier.name
+    levels = top if last == 0 else f"{top} to {bottom}"
+    return f"{tier_list.name} tier list: {levels}"
+
+
+@router.post("/{owners}/{owner_id}/tiers/playlist")
+async def tier_playlist(request: Request, lib: Lib, owners: str, owner_id: int):
+    """Make (or refill) a playlist of the tier list's songs, in order, from the top level down
+    to the level at position ``last``, that one included."""
+    kind = _tier_owner(owners)
+    tier_list = found(lib.get_tier_list, kind, owner_id)
+    last = _id(await request.form(), "last")
+    if last is None or not 0 <= last < len(tier_list.tiers):
+        raise HTTPException(422, "pick the last level to take")
+    song_ids = [s.song.id for row in tier_list.tiers[: last + 1] for s in row.songs]
+    if not song_ids:
+        return render(
+            request,
+            "_tier_playlist.html",
+            status_code=422,
+            error="Those levels have no songs yet: put some in them first.",
+        )
+    name = _tier_playlist_name(tier_list, last)
+    existing = next(
+        (p.playlist for p in lib.list_playlists()
+         if not p.playlist.kind and p.playlist.name.casefold() == name.casefold()),
+        None,
+    )  # fmt: skip
+    playlist = existing or lib.create_playlist(PlaylistIn(name))
+    lib.set_playlist_songs(playlist.id, song_ids)
+    return render(
+        request,
+        "_tier_playlist.html",
+        playlist=playlist,
+        count=len(song_ids),
+        refilled=existing is not None,
+    )
 
 
 @router.post("/{owners}/{owner_id}/tiers/auto")

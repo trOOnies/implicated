@@ -1,0 +1,4 @@
+{# After making a playlist of a tier list's top levels (or failing to). #}
+{% if error %}<p class="error" role="alert">{{ error }}</p>
+{% else %}<p class="notice" role="status">{{ 'Refilled' if refilled else 'Made' }}
+<a href="/playlists/{{ playlist.id }}">{{ playlist.name }}</a> with {{ count }} song{{ 's' if count != 1 }}.</p>{% endif %}

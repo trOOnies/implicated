@@ -524,6 +524,9 @@ fieldset.featuring-pick legend { font-size: .85rem; color: var(--muted); padding
   --tier-ink: #1f1d1a;
 }
 .row.wrap.tier-tools { margin-bottom: .75rem; align-items: center; }
+.tier-make-playlist { margin: 0; gap: .35rem; }
+.tier-make-playlist label { flex: none; flex-direction: row; align-items: center; gap: .35rem; margin: 0; }
+#tier-playlist:empty { display: none; }
 .tiers { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .tier { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) auto; min-height: calc(var(--tier-song) + .5rem); }
 .tier + .tier { border-top: 1px solid var(--border); }
@@ -678,7 +681,9 @@ button.icon.danger:hover { background: var(--danger); color: var(--surface); }
 .tier-song.locked .tier-lock .when-locked { display: grid; }
 .tier-song:hover .tier-lock, .tier-song:focus-within .tier-lock, .tier-lock:focus-visible { opacity: 1; }
 .tier-song.locked { cursor: default; box-shadow: inset 0 -3px 0 var(--accent); }
-.tier-song.locked .tier-lock { opacity: 1; background: var(--accent); color: var(--surface); }
+.tier-song.locked .tier-lock { opacity: 1; background: var(--muted); color: var(--surface); }
+/* A locked song's cover goes grey too: decided, out of the way */
+.tier-song.locked img { filter: grayscale(1); }
 /* A selection of locked songs is grey: it can be unlocked, not moved */
 .tier-song.locked.selected { outline-color: var(--muted); }
 .tier-song.locked.selected::after { background: var(--muted); }

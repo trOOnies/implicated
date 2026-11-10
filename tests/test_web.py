@@ -1214,7 +1214,7 @@ def test_help_sections_link_to_their_neighbors(client: TestClient):
     assert "<title>Everyday actions · Help · implicated</title>" in page
     assert 'href="/help/pages" rel="prev"><span>← Previous</span>Pages</a>' in page
     assert 'href="/help/importing" rel="next"><span>Next →</span>Importing from files</a>' in page
-    assert '↑ Index' not in page
+    assert "↑ Index" not in page
     first = client.get("/help/pages").text
     assert 'href="/help" rel="prev"><span>← Previous</span>What is implicated?</a>' in first
     assert 'href="/help/backups"' in first
@@ -2305,6 +2305,60 @@ def test_picture_page(client: TestClient, client_lib: Library, web_sample: Sampl
     assert deleted.headers["hx-redirect"] == f"/artists/{web_sample.artist_id}/pictures"
     assert client.get(url).status_code == 404
     assert client.get(f"/api/pictures/{picture.id}/image").status_code == 404
+
+
+def test_tier_list_makes_a_playlist_of_its_top_levels(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    first, second = web_sample.song_ids
+    album = web_sample.album_id
+    client.post(f"/albums/{album}/tiers")
+    tier_list = client_lib.get_tier_list("album", album)
+    s_level, a_level = (row.tier.id for row in tier_list.tiers[:2])
+    url = f"/albums/{album}/tiers/playlist"
+
+    page = client.get(f"/albums/{album}/tiers").text
+    assert 'id="tier-playlist"' in page and f'hx-post="{url}"' in page
+    assert '<option value="0">S (0 songs)</option>' in page
+    assert '<option value="4" selected>D (0 songs)</option>' in page
+    empty = client.post(url, data={"last": "1"})
+    assert empty.status_code == 422 and "have no songs yet" in empty.text
+    assert client.post(url, data={"last": "5"}).status_code == 422
+    assert client.post(url, data={}).status_code == 422
+    assert client.post("/albums/999/tiers/playlist", data={"last": "0"}).status_code == 404
+
+    client_lib.place_song("album", album, second, s_level)
+    client_lib.place_song("album", album, first, a_level)
+    page = client.get(f"/albums/{album}/tiers").text
+    assert '<option value="0">S (1 song)</option>' in page
+    assert '<option value="1">A (2 songs)</option>' in page
+
+    # Only the top level: S.
+    made = client.post(url, data={"last": "0"}).text
+    name = f"{tier_list.name} tier list: S"
+    assert "Made" in made and name in made and "with 1 song." in made
+    top = next(p.playlist for p in client_lib.list_playlists() if p.playlist.name == name)
+    assert client_lib.playlist_song_ids(top.id) == [second]
+
+    # From S down to B, B included: the songs in level order, top first.
+    made = client.post(url, data={"last": "2"}).text
+    name = f"{tier_list.name} tier list: S to B"
+    assert "Made" in made and "with 2 songs." in made
+    playlist = next(p.playlist for p in client_lib.list_playlists() if p.playlist.name == name)
+    assert client_lib.playlist_song_ids(playlist.id) == [second, first]
+
+    # Making it again refills the same playlist with the levels as they are now.
+    client_lib.place_song("album", album, first, None)
+    again = client.post(url, data={"last": "2"}).text
+    assert "Refilled" in again and "with 1 song." in again
+    assert client_lib.playlist_song_ids(playlist.id) == [second]
+    assert sum(p.playlist.name == name for p in client_lib.list_playlists()) == 1
+
+
+def test_locked_songs_look_decided(client: TestClient):
+    css = client.get("/static/style.css").text
+    assert ".tier-song.locked img { filter: grayscale(1); }" in css
+    assert ".tier-song.locked .tier-lock { opacity: 1; background: var(--muted);" in css
 
 
 def test_tier_list_locks_on_the_board(client: TestClient, client_lib: Library, web_sample: Sample):
