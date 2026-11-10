@@ -1602,12 +1602,17 @@ def song_info(request: Request, lib: Lib, song_id: int):
 
 
 def _song_details_context(lib: Library, song: Song, form, featuring: list[int]) -> dict:
-    """The details form; it offers every other artist to feature, the ``featuring`` ones
-    ticked (and listed first, in their order)."""
+    """The details form; its search offers every other artist to feature, and the
+    ``featuring`` ones show as tags, in their order."""
     others = [a.artist for a in lib.list_artists() if a.artist.id != song.artist_id]
-    rank = {artist_id: i for i, artist_id in enumerate(featuring)}
-    others.sort(key=lambda artist: rank.get(artist.id, len(rank)))
-    return {"song": song, "form": form, "artists": others, "featuring": set(featuring)}
+    by_id = {artist.id: artist for artist in others}
+    chosen = [by_id[artist_id] for artist_id in dict.fromkeys(featuring) if artist_id in by_id]
+    return {
+        "song": song,
+        "form": form,
+        "artists": [{"id": artist.id, "name": artist.name} for artist in others],
+        "featuring": chosen,
+    }
 
 
 def _featuring_ids(form: FormData) -> list[int]:

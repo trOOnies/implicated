@@ -296,8 +296,8 @@ Besides what the import brings, the app keeps:
   (CD), Owned (CD), Wanted (Vinyl) and Owned (Vinyl).
 - 📺 **YouTube videos**: one music video per song, plus any number of other videos (lessons, covers,
   live takes), each with a title and a start time, in your own order. Song pages embed them.
-- 🤝 **Featured artists** of songs ("feat."), picked with Edit details on the song page from the
-  other artists in the library, or listed under a song's `featuring` in `albums.yaml`. The song page credits them, and each of them lists the song in a
+- 🤝 **Featured artists** of songs ("feat."), picked with Edit details on the song page by
+  searching the other artists in the library (each pick becomes a tag; ✕ removes it), or listed under a song's `featuring` in `albums.yaml`. The song page credits them, and each of them lists the song in a
   Songs featured section on their own page.
 - 📜 **Playlists** of songs, in your own order. Add songs one by one from their page, several at
   once with the Add songs form at the bottom of the playlist, or a whole album at a time from the

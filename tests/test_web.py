@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import signal
@@ -647,11 +648,16 @@ def test_song_featuring(client: TestClient, client_lib: Library, web_sample: Sam
     assert "feat." not in client.get(f"/songs/{song_id}").text
     assert "Songs featured" not in client.get(f"/artists/{tricky.id}").text
 
-    # The form offers every other artist, not the song's own.
+    # The search offers every other artist, not the song's own, and nobody is a tag yet.
     edit = client.get(f"/fragments/songs/{song_id}/details").text
-    assert f'name="featuring" value="{tricky.id}"' in edit
-    assert f'name="featuring" value="{massive.id}"' in edit
-    assert f'value="{web_sample.artist_id}"' not in edit
+    assert 'class="feat-input"' in edit and 'name="featuring"' not in edit
+    offered = re.search(
+        r'<script type="application/json" class="feat-artists">(.*?)</script>', edit
+    )
+    assert json.loads(offered.group(1)) == [
+        {"id": massive.id, "name": "Massive Attack"},
+        {"id": tricky.id, "name": "Tricky"},
+    ]
 
     form = {"notes": "Duet", "mv": "", "featuring": [str(massive.id), str(tricky.id)]}
     info = client.post(f"/songs/{song_id}/details", data=form)
@@ -664,10 +670,13 @@ def test_song_featuring(client: TestClient, client_lib: Library, web_sample: Sam
     assert [a.id for a in client_lib.list_featuring(song_id)] == [massive.id, tricky.id]
     assert client_lib.get_song(song_id).notes == "Duet"
 
-    # Ticked, and listed first in their order, when editing again.
+    # Tags, in their order, when editing again.
     edit = client.get(f"/fragments/songs/{song_id}/details").text
-    assert f'value="{massive.id}" checked' in edit and f'value="{tricky.id}" checked' in edit
-    assert edit.index("Massive Attack") < edit.index("Tricky")
+    tags = edit[edit.index('class="feat-tags"') : edit.index('class="feat-search"')]
+    assert tags.index(f'name="featuring" value="{massive.id}"') < tags.index(
+        f'name="featuring" value="{tricky.id}"'
+    )
+    assert 'aria-label="Remove Tricky"' in tags
 
     # The featured artist's page lists the song, by its own artist, without editing it.
     page = client.get(f"/artists/{tricky.id}").text

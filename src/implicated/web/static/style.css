@@ -513,8 +513,23 @@ details.budget > .row { margin-top: .5rem; }
 .featuring { margin-left: .2rem; }
 fieldset.featuring-pick { border: 1px solid var(--border); border-radius: 6px; padding: .4rem .7rem .6rem; margin: 0; }
 fieldset.featuring-pick legend { font-size: .85rem; color: var(--muted); padding: 0 .3rem; }
-.pick-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: .2rem .8rem; max-height: 12rem; overflow-y: auto; }
-.pick-list label.check { color: var(--text); }
+/* The song details' Featuring picker: tags for the chosen artists, then a search box whose
+   matches drop down below it (featuring.js). */
+.feat-tags { list-style: none; display: flex; flex-wrap: wrap; padding: 0; margin: 0 0 .3rem; }
+.feat-tags:not(:has(li)) { display: none; }
+.feat-tag { display: inline-flex; align-items: center; gap: .3rem; font-size: .85rem; padding: .1rem .3rem .1rem .6rem; }
+button.feat-remove { padding: 0 .2rem; font-size: .75rem; line-height: 1; color: var(--muted); }
+button.feat-remove:hover { color: var(--danger); }
+.feat-search { position: relative; }
+.feat-input { width: 100%; }
+.feat-options {
+  position: absolute; z-index: 10; left: 0; right: 0; top: 100%; margin: .15rem 0 0; padding: .2rem 0;
+  list-style: none; background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / .15); max-height: 14rem; overflow-y: auto;
+}
+.feat-options li { padding: .3rem .7rem; cursor: pointer; }
+.feat-options li[aria-selected="true"] { background: var(--accent-soft); }
+.feat-options li.feat-none { color: var(--muted); font-style: italic; cursor: default; }
 
 /* Duo */
 .duo-friends { display: flex; flex-wrap: wrap; gap: 1rem 2rem; align-items: end; }
