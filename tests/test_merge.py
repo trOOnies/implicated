@@ -346,6 +346,8 @@ def test_album_merges_round_trip_and_the_overview(client, client_lib: Library, w
 def test_album_page_buttons_and_editions_card(client, client_lib: Library, web_sample):
     album, (d_first, _d_second, bonus) = deluxe(client_lib, web_sample)
     page = client.get(f"/albums/{album}").text
+    for label in ("Played", "Edit", "Copy", "Delete"):
+        assert f'aria-label="{label}"><svg' in page
     assert "Editions" in page and f'<option value="{web_sample.album_id}">Dummy (1994)' in page
 
     merged = client.post(

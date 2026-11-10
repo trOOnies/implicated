@@ -614,6 +614,25 @@ button.tier-label:hover { filter: brightness(.93); }
 .versions .version-actions .tag { margin: 0; }
 .versions .version-actions button.link { padding: 0; }
 
+/* Icon buttons, like the previous and next arrows beside them */
+button.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+button.icon:hover:not(:disabled) { background: var(--accent); color: var(--surface); }
+button.icon.primary { background: var(--accent); color: var(--surface); }
+button.icon.danger { border-color: var(--danger); color: var(--danger); }
+button.icon.danger:hover { background: var(--danger); color: var(--surface); }
+.versions form.version-actions select { flex: 1; min-width: 0; padding: .2rem .3rem; }
+
 /* An artist page's Discography heading, with its filters beside it */
 .row.wrap.discography-head { align-items: center; margin-bottom: .5rem; }
 .discography-head h2 { margin: 0; }
