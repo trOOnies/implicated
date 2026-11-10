@@ -22,6 +22,8 @@
             title="Log a listen of every song on the album">▶ Played</button>
     <button type="button" hx-post="/live/album/{{ album.id }}" hx-swap="none"{% if not songs %} disabled{% endif %}
             title="Follow the album song by song">Live Play</button>
+    <button type="button" class="secondary" hx-post="/albums/{{ album.id }}/tiers" hx-swap="none"{% if not songs and not has_tier_list %} disabled{% endif %}
+            title="{% if has_tier_list %}Open the album's tier list{% else %}Rank the album's songs in a tier list{% endif %}">Tier List</button>
     <button type="button" class="secondary" hx-get="/fragments/albums/{{ album.id }}/edit"
             hx-target="#album-info" hx-swap="outerHTML">Edit</button>
     <button type="button" class="secondary" hx-post="/albums/{{ album.id }}/copy"

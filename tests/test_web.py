@@ -843,6 +843,149 @@ def test_playlist_pages(client: TestClient, client_lib: Library, web_sample: Sam
     assert len(client_lib.list_songs()) == 2
 
 
+def test_tier_list_pages(client: TestClient, client_lib: Library, web_sample: Sample):
+    first, second = web_sample.song_ids
+    pid = client_lib.create_playlist(PlaylistIn("Mix")).id
+    empty = client.get(f"/playlists/{pid}").text
+    assert f'hx-post="/playlists/{pid}/tiers" hx-swap="none" disabled' in empty
+    client_lib.add_to_playlist(pid, [first, second])
+    assert (
+        f'hx-post="/playlists/{pid}/tiers" hx-swap="none"\n' in client.get(f"/playlists/{pid}").text
+    )
+
+    page = client.get(f"/playlists/{pid}/tiers").text
+    assert "has no tier list yet" in page and "Make a tier list" in page
+    assert client.get(f"/fragments/playlists/{pid}/tiers").status_code == 404
+    created = client.post(f"/playlists/{pid}/tiers")
+    assert created.headers["hx-redirect"] == f"/playlists/{pid}/tiers"
+    tiers = [row.tier.id for row in client_lib.get_tier_list("playlist", pid).tiers]
+    page = client.get(f"/playlists/{pid}/tiers").text
+    assert "tiers.js" in page and 'id="tier-board"' in page
+    assert '<body class="wide-page">' in page
+    assert '<body class="wide-page">' not in client.get(f"/playlists/{pid}").text
+    assert page.count('class="tier-label"') == 5 and page.count('class="tier-song"') == 2
+    assert "Unassigned <span" in page and "Mysterons" in page
+    assert "data-select-all" in page and "data-clear-selection" in page
+    assert "Autoadd</button>" in page and "No song is a favorite, on a favorite album" in page
+
+    # Levels: add, rename, delete, within 3 to 10.
+    for _ in range(5):
+        board = client.post(f"/playlists/{pid}/tiers/levels")
+    assert board.text.count('class="tier-label"') == 10 and "at most 10 levels" in board.text
+    refused = client.post(f"/playlists/{pid}/tiers/levels")
+    assert refused.status_code == 422 and 'role="alert">a tier list has at most' in refused.text
+    edit = client.get(f"/fragments/playlists/{pid}/tiers", params={"edit": tiers[0]}).text
+    assert f'hx-post="/tiers/{tiers[0]}"' in edit and 'value="S"' in edit
+    bad = client.post(f"/tiers/{tiers[0]}", data={"name": "A"})
+    assert bad.status_code == 422 and "already a level A" in bad.text
+    assert f'hx-post="/tiers/{tiers[0]}"' in bad.text  # the form stays open
+    renamed = client.post(f"/tiers/{tiers[0]}", data={"name": "Best"})
+    assert ">Best</button>" in renamed.text
+    for row in client_lib.get_tier_list("playlist", pid).tiers[3:]:
+        client.post(f"/tiers/{row.tier.id}/delete")
+    last = client.post(f"/tiers/{tiers[1]}/delete")
+    assert last.status_code == 422 and "at least 3 levels" in last.text
+
+    # Placing songs.
+    placed = client.post(
+        f"/playlists/{pid}/tiers/place", data={"song_id": second, "tier_id": tiers[1]}
+    )
+    assert placed.status_code == 200 and 'id="tier-board"' in placed.text
+    client.post(
+        f"/playlists/{pid}/tiers/place",
+        data={"song_id": first, "tier_id": tiers[1], "position": "0"},
+    )
+    assert [s.song.id for s in client_lib.get_tier_list("playlist", pid).tiers[1].songs] == [
+        first,
+        second,
+    ]
+    client.post(f"/playlists/{pid}/tiers/place", data={"song_id": first, "tier_id": ""})
+    assert [s.song.id for s in client_lib.get_tier_list("playlist", pid).unassigned] == [first]
+    assert client.post(f"/playlists/{pid}/tiers/place", data={}).status_code == 422
+    # Many at once, as ids split by commas or given once each.
+    client.post(
+        f"/playlists/{pid}/tiers/place",
+        data={"song_id": f"{second},{first}", "tier_id": tiers[0]},
+    )
+    assert [s.song.id for s in client_lib.get_tier_list("playlist", pid).tiers[0].songs] == [
+        second,
+        first,
+    ]
+    client.post(
+        f"/playlists/{pid}/tiers/place",
+        data={"song_id": [str(first), str(second)], "tier_id": ""},
+    )
+    assert len(client_lib.get_tier_list("playlist", pid).unassigned) == 2
+    bad = client.post(f"/playlists/{pid}/tiers/place", data={"song_id": "1,x", "tier_id": ""})
+    assert bad.status_code == 422
+    client.post(f"/playlists/{pid}/tiers/place", data={"song_id": second, "tier_id": tiers[1]})
+    assert (
+        client.post(
+            f"/playlists/{pid}/tiers/place", data={"song_id": first, "tier_id": 9999}
+        ).status_code
+        == 404
+    )
+    full = client.post(
+        f"/playlists/{pid}/tiers/place", data={"song_id": first, "tier_id": tiers[1]}
+    )
+    assert "Its 2 songs go back to the unassigned ones" in full.text
+
+    # Autoadd: favorites in the first level, the other played songs in the third.
+    client_lib.record_play(first)
+    client_lib.record_play(second)
+    client_lib.record_play(second)
+    client_lib.toggle_favorite("song", first)
+    board = client.get(f"/fragments/playlists/{pid}/tiers").text
+    assert "puts the 1 song marked favorite in Best, the 0 songs on favorite albums in A" in board
+    assert "the 1 song played at least once in B" in board
+    client.post(f"/playlists/{pid}/tiers/auto")
+    assert [
+        [s.song.id for s in row.songs] for row in client_lib.get_tier_list("playlist", pid).tiers
+    ] == [[first], [], [second]]
+
+    gone = client.post(f"/playlists/{pid}/tiers/delete")
+    assert gone.headers["hx-redirect"] == f"/playlists/{pid}"
+    assert not client_lib.has_tier_list("playlist", pid)
+
+
+def test_album_and_artist_tier_lists(client: TestClient, client_lib: Library, web_sample: Sample):
+    first, _second = web_sample.song_ids
+    album, artist = web_sample.album_id, web_sample.artist_id
+    assert f'hx-post="/albums/{album}/tiers"' in client.get(f"/albums/{album}").text
+    assert f'hx-post="/artists/{artist}/tiers"' in client.get(f"/artists/{artist}").text
+    lonely = client_lib.create_artist(ArtistIn("Nobody")).id
+    assert (
+        f'hx-post="/artists/{lonely}/tiers" hx-swap="none" disabled'
+        in client.get(f"/artists/{lonely}").text
+    )
+
+    for owners, owner_id, name in (("albums", album, "Dummy"), ("artists", artist, "Portishead")):
+        made = client.post(f"/{owners}/{owner_id}/tiers")
+        assert made.headers["hx-redirect"] == f"/{owners}/{owner_id}/tiers"
+        page = client.get(f"/{owners}/{owner_id}/tiers").text
+        assert f"<title>Tier list of {name}" in page and 'class="tier-song"' in page
+        assert f'data-place="/{owners}/{owner_id}/tiers/place"' in page
+        assert 'aria-current="page">Artists' in page  # an album's section is its artist's
+        board = client.post(
+            f"/{owners}/{owner_id}/tiers/place",
+            data={"song_id": first, "tier_id": client_lib.get_tier_list(owners[:-1], owner_id)
+                  .tiers[0].tier.id},
+        )  # fmt: skip
+        assert board.status_code == 200
+        assert (
+            client.post(f"/{owners}/{owner_id}/tiers/levels").text.count('class="tier-label"') == 6
+        )
+    album_page = client.get(f"/albums/{album}/tiers").text
+    crumbs = f'<a href="/artists">Artists</a> / <a href="/artists/{artist}">Portishead</a>'
+    assert crumbs in album_page
+    assert client.get("/songs/1/tiers").status_code == 404
+    assert client.post("/concerts/1/tiers").status_code == 404
+    assert client.get(f"/albums/{album + 99}/tiers").status_code == 404
+    gone = client.post(f"/artists/{artist}/tiers/delete")
+    assert gone.headers["hx-redirect"] == f"/artists/{artist}"
+    assert client_lib.has_tier_list("album", album)
+
+
 def test_built_in_playlist_pages(client: TestClient, client_lib: Library, web_sample: Sample):
     first, second = web_sample.song_ids
     favorites = client_lib.special_playlist("favorites").id
@@ -2133,3 +2276,38 @@ def test_picture_page(client: TestClient, client_lib: Library, web_sample: Sampl
     assert deleted.headers["hx-redirect"] == f"/artists/{web_sample.artist_id}/pictures"
     assert client.get(url).status_code == 404
     assert client.get(f"/api/pictures/{picture.id}/image").status_code == 404
+
+
+def test_tier_list_locks_on_the_board(client: TestClient, client_lib: Library, web_sample: Sample):
+    first, second = web_sample.song_ids
+    album = web_sample.album_id
+    client.post(f"/albums/{album}/tiers")
+    top = client_lib.get_tier_list("album", album).tiers[0].tier.id
+    client_lib.place_song("album", album, first, top)
+    page = client.get(f"/albums/{album}/tiers").text
+    assert 'class="tier-board locking"' in page and 'name="on" value="1" checked' in page
+    assert page.count('class="tier-lock"') == 2 and "data-lock-selection" in page
+
+    locked = client.post(f"/albums/{album}/tiers/lock", data={"song_id": f"{first},{second}"})
+    assert locked.text.count('class="tier-song locked"') == 2 and "(2 locked)" in locked.text
+    refused = client.post(f"/albums/{album}/tiers/place", data={"song_id": first, "tier_id": ""})
+    assert refused.status_code == 422 and "is locked" in refused.text
+    client.post(f"/albums/{album}/tiers/lock", data={"song_id": second, "locked": "0"})
+    assert client_lib.get_tier_list("album", album).locked == {first}
+
+    off = client.post(f"/albums/{album}/tiers/locking", data={})
+    assert 'class="tier-board"' in off.text and 'class="tier-lock"' not in off.text
+    assert 'class="tier-song locked"' not in off.text and "data-lock-selection" not in off.text
+    assert client.post(f"/albums/{album}/tiers/lock", data={"song_id": second}).status_code == 422
+    moved = client.post(f"/albums/{album}/tiers/place", data={"song_id": first, "tier_id": ""})
+    assert moved.status_code == 200
+    on = client.post(f"/albums/{album}/tiers/locking", data={"on": "1"})
+    assert on.text.count('class="tier-song locked"') == 1
+    assert client.post(f"/albums/{album}/tiers/lock", data={"song_id": "x"}).status_code == 422
+    # Quietly, from the page that already shows the lock: nothing to swap in.
+    quiet = client.post(f"/albums/{album}/tiers/lock", data={"song_id": second, "quiet": "1"})
+    assert quiet.status_code == 204 and quiet.text == ""
+    assert client_lib.get_tier_list("album", album).locked == {first, second}
+    page = client.get(f"/albums/{album}/tiers").text
+    assert 'data-board="/fragments/albums/' in page and 'id="tier-autoadd"' in page
+    assert "hx-post" not in page.split('class="tier-lock"')[1].split("</button>")[0]

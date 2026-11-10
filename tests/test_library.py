@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from conftest import Sample, add_sample
 
-from implicated.library import Library, NotFound
+from implicated.library import SCHEMA, Library, NotFound
 from implicated.lrc import TimedLine
 from implicated.models import (
     AlbumIn,
@@ -767,6 +767,293 @@ def test_playlists_lose_deleted_songs(lib: Library, sample: Sample):
     assert lib.get_playlist_detail(playlist.id).songs == []
 
 
+# Tier lists
+
+
+def _tier_ids(tier_list) -> list[list[int]]:
+    return [[s.song.id for s in row.songs] for row in tier_list.tiers]
+
+
+def test_tier_list_levels(lib: Library, sample: Sample):
+    playlist = lib.create_playlist(PlaylistIn("Mix"))
+    lib.add_to_playlist(playlist.id, sample.song_ids)
+    assert not lib.has_tier_list("playlist", playlist.id)
+    assert lib.get_tier_list("playlist", playlist.id).tiers == []
+    with pytest.raises(NotFound):
+        lib.add_tier("playlist", playlist.id)
+
+    tier_list = lib.create_tier_list("playlist", playlist.id)
+    assert [row.tier.name for row in tier_list.tiers] == ["S", "A", "B", "C", "D"]
+    assert [s.song.id for s in tier_list.unassigned] == sample.song_ids
+    assert lib.create_tier_list("playlist", playlist.id) == tier_list  # kept as it is
+
+    # Added levels take the next letter no level has, up to 10 levels.
+    s_tier = tier_list.tiers[0].tier
+    lib.rename_tier(tier_list.tiers[2].tier.id, "  Meh  ")
+    assert [lib.add_tier("playlist", playlist.id).name for _ in range(5)] == [
+        "B",
+        "E",
+        "F",
+        "G",
+        "H",
+    ]
+    with pytest.raises(ValueError, match="at most 10"):
+        lib.add_tier("playlist", playlist.id)
+
+    for bad, message in (("  ", "needs a name"), ("a", "already a level"), ("x" * 21, "at most")):
+        with pytest.raises(ValueError, match=message):
+            lib.rename_tier(s_tier.id, bad)
+    assert lib.rename_tier(s_tier.id, "Top   tier").name == "Top tier"
+    assert lib.rename_tier(s_tier.id, "top TIER").name == "top TIER"  # its own name is fine
+
+    # Deleting a level sends its songs back to the unassigned ones; at least 3 levels stay.
+    lib.place_song("playlist", playlist.id, sample.song_ids[0], s_tier.id)
+    lib.delete_tier(s_tier.id)
+    tier_list = lib.get_tier_list("playlist", playlist.id)
+    assert len(tier_list.tiers) == 9 and len(tier_list.unassigned) == 2
+    for row in tier_list.tiers[:-3]:
+        lib.delete_tier(row.tier.id)
+    with pytest.raises(ValueError, match="at least 3"):
+        lib.delete_tier(tier_list.tiers[-1].tier.id)
+
+    lib.delete_tier_list("playlist", playlist.id)
+    assert not lib.has_tier_list("playlist", playlist.id)
+    assert lib.playlist_song_ids(playlist.id) == sample.song_ids
+
+
+def test_place_songs_in_a_tier_list(lib: Library, sample: Sample):
+    first, second = sample.song_ids
+    third = lib.create_song(SongIn(sample.artist_id, "Roads", sample.album_id, 3)).id
+    playlist = lib.create_playlist(PlaylistIn("Mix"))
+    lib.add_to_playlist(playlist.id, [first, second, third])
+    s, a, *_ = [row.tier.id for row in lib.create_tier_list("playlist", playlist.id).tiers]
+
+    lib.place_song("playlist", playlist.id, first, s)
+    lib.place_song("playlist", playlist.id, second, s)
+    tier_list = lib.place_song("playlist", playlist.id, third, s, 0)
+    assert _tier_ids(tier_list)[0] == [third, first, second]
+    assert tier_list.unassigned == []
+    # Moving within a level, to another one, and back to the unassigned songs.
+    assert _tier_ids(lib.place_song("playlist", playlist.id, third, s, 99))[0] == [
+        first,
+        second,
+        third,
+    ]
+    assert _tier_ids(lib.place_song("playlist", playlist.id, first, a))[:2] == [
+        [second, third],
+        [first],
+    ]
+    tier_list = lib.place_song("playlist", playlist.id, second, None)
+    assert _tier_ids(tier_list)[:2] == [[third], [first]]
+    assert [x.song.id for x in tier_list.unassigned] == [second]
+
+    other = lib.create_playlist(PlaylistIn("Other"))
+    other_tier = lib.create_tier_list("playlist", other.id).tiers[0].tier.id
+    with pytest.raises(NotFound):
+        lib.place_song("playlist", playlist.id, first, other_tier)
+    with pytest.raises(NotFound):
+        lib.place_song("playlist", other.id, first, other_tier)  # not in that playlist
+
+    # Songs leaving the playlist leave its tier list; deleting the playlist deletes it.
+    lib.remove_from_playlist(playlist.id, first)
+    lib.set_playlist_songs(playlist.id, [third, first])
+    assert _tier_ids(lib.get_tier_list("playlist", playlist.id))[:2] == [[third], []]
+    lib.delete_playlist(playlist.id)
+    with lib.connect() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM tiers").fetchone()[0] == 5  # Other's
+
+
+def test_place_many_songs_at_once(lib: Library, sample: Sample):
+    first, second = sample.song_ids
+    more = [
+        lib.create_song(SongIn(sample.artist_id, f"Song {n}", sample.album_id, n + 3)).id
+        for n in range(3)
+    ]
+    s, a, *_ = [row.tier.id for row in lib.create_tier_list("album", sample.album_id).tiers]
+    lib.place_songs("album", sample.album_id, [first, second], s)
+    lib.place_songs("album", sample.album_id, [more[0]], a)
+
+    # In the order given, before the song at position among the songs that stay, from any
+    # level or the unassigned ones; duplicates count once.
+    tier_list = lib.place_songs("album", sample.album_id, [more[2], first, more[1], more[2]], s, 1)
+    assert _tier_ids(tier_list)[:2] == [[second, more[2], first, more[1]], [more[0]]]
+    tier_list = lib.place_songs("album", sample.album_id, [second, more[0]], a, 0)
+    assert _tier_ids(tier_list)[:2] == [[more[2], first, more[1]], [second, more[0]]]
+    tier_list = lib.place_songs("album", sample.album_id, [first, more[0]], None)
+    assert _tier_ids(tier_list)[:2] == [[more[2], more[1]], [second]]
+    assert [x.song.id for x in tier_list.unassigned] == [first, more[0]]
+
+    with pytest.raises(ValueError, match="pick a song"):
+        lib.place_songs("album", sample.album_id, [], s)
+    other = lib.create_song(SongIn(sample.artist_id, "Elsewhere")).id
+    with pytest.raises(NotFound):  # nothing moves when one of them cannot
+        lib.place_songs("album", sample.album_id, [second, other], s)
+    assert _tier_ids(lib.get_tier_list("album", sample.album_id))[1] == [second]
+
+
+def test_built_in_tier_lists_follow_the_marks(lib: Library, sample: Sample):
+    first, _second = sample.song_ids
+    favorites = lib.special_playlist("favorites")
+    lib.toggle_favorite("song", first)
+    top = lib.create_tier_list("playlist", favorites.id).tiers[0].tier.id
+    lib.place_song("playlist", favorites.id, first, top)
+    lib.toggle_favorite("song", first)
+    assert _tier_ids(lib.get_tier_list("playlist", favorites.id))[0] == []
+
+
+def test_auto_tier(lib: Library, sample: Sample):
+    first, second = sample.song_ids
+    other = lib.create_album(AlbumIn(sample.artist_id, "Third", 2008)).id
+    more = [
+        lib.create_song(SongIn(sample.artist_id, f"Song {n}", other, n + 1)).id for n in range(5)
+    ]
+    playlist = lib.create_playlist(PlaylistIn("Mix"))
+    lib.add_to_playlist(playlist.id, [first, second, *more])
+    tiers = [row.tier.id for row in lib.create_tier_list("playlist", playlist.id).tiers]
+    # Neither a favorite, on a favorite album, nor played: stays unassigned, and leaves the
+    # level it was in; so do the levels after the third.
+    lib.place_song("playlist", playlist.id, more[4], tiers[0])
+    lib.place_song("playlist", playlist.id, more[3], tiers[4])
+    plays = {first: 1, second: 5, more[0]: 2, more[1]: 9, more[2]: 3, more[3]: 4}
+    for song_id, count in plays.items():
+        for _ in range(count):
+            lib.record_play(song_id)
+    lib.toggle_favorite("song", more[0])
+    lib.toggle_favorite("song", first)
+    lib.toggle("album", sample.album_id, "favorite")
+    levels = lib.auto_tier_levels("playlist", playlist.id)
+    assert [[s.song.id for s in level] for level in levels] == [
+        [more[0], first],
+        [second],
+        [more[1], more[3], more[2]],
+    ]
+
+    assert lib.auto_tier("playlist", playlist.id) == 6
+    tier_list = lib.get_tier_list("playlist", playlist.id)
+    # Favorites, then songs on favorite albums (Sour Times, as Mysterons is a favorite), then
+    # played songs; each level by plays, most first.
+    assert _tier_ids(tier_list) == [[more[0], first], [second], [more[1], more[3], more[2]], [], []]
+    assert [s.song.id for s in tier_list.unassigned] == [more[4]]
+
+    # A tier list of fewer than 3 levels (from before 3 was the least) gets a third one.
+    with lib.connect() as conn:
+        conn.execute("DELETE FROM tiers WHERE id IN (?, ?, ?)", tuple(tiers[2:]))
+    lib.auto_tier("playlist", playlist.id)
+    tier_list = lib.get_tier_list("playlist", playlist.id)
+    assert [row.tier.name for row in tier_list.tiers] == ["S", "A", "B"]
+    assert _tier_ids(tier_list)[2] == [more[1], more[3], more[2]]
+
+
+def test_album_and_artist_tier_lists(lib: Library, sample: Sample):
+    first, second = sample.song_ids
+    single = lib.create_song(SongIn(sample.artist_id, "Single")).id
+    later = lib.create_album(AlbumIn(sample.artist_id, "Third", 2008))
+    roads = lib.create_song(SongIn(sample.artist_id, "Machine Gun", later.id, 1)).id
+    with pytest.raises(NotFound):
+        lib.create_tier_list("album", 9999)
+    with pytest.raises(NotFound):
+        lib.create_tier_list("song", first)
+
+    # An album ranks its songs, in track order; an artist all of theirs, album by album.
+    album = lib.create_tier_list("album", sample.album_id)
+    assert album.name == "Dummy" and len(album.tiers) == 5
+    assert [s.song.id for s in album.unassigned] == [first, second]
+    artist = lib.create_tier_list("artist", sample.artist_id)
+    assert artist.name == "Portishead"
+    assert [s.song.id for s in artist.unassigned] == [first, second, roads, single]
+    with pytest.raises(NotFound):
+        lib.place_song("album", sample.album_id, roads, album.tiers[0].tier.id)
+
+    # Each is its own: the same song has a place in both.
+    lib.place_song("album", sample.album_id, first, album.tiers[0].tier.id)
+    lib.place_song("artist", sample.artist_id, first, artist.tiers[4].tier.id)
+    assert _tier_ids(lib.get_tier_list("album", sample.album_id))[0] == [first]
+    assert _tier_ids(lib.get_tier_list("artist", sample.artist_id))[4] == [first]
+    tier = lib.add_tier("album", sample.album_id)
+    assert tier.owner == ("album", sample.album_id) and tier.name == "E"
+    assert lib.get_tier(artist.tiers[0].tier.id).owner == ("artist", sample.artist_id)
+
+    # A song moved to another album leaves the album's tier list (on the next change to it).
+    song = lib.get_song(first)
+    lib.update_song(first, replace(song, album_id=later.id))
+    assert _tier_ids(lib.get_tier_list("album", sample.album_id))[0] == []
+    assert _tier_ids(lib.get_tier_list("artist", sample.artist_id))[4] == [first]
+
+    lib.record_play(second)
+    assert lib.auto_tier("album", sample.album_id) == 1
+    lib.delete_album(sample.album_id)
+    lib.delete_artist(sample.artist_id)
+    with lib.connect() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM tiers").fetchone()[0] == 0
+
+
+def test_old_tier_lists_are_kept(tmp_path):
+    """Tier lists were first of playlists only, their playlist_id required."""
+    path = tmp_path / "old.db"
+    lib = Library(path)
+    pid = lib.create_playlist(PlaylistIn("Mix")).id
+    song = lib.create_song(SongIn(lib.create_artist(ArtistIn("A")).id, "Song")).id
+    lib.add_to_playlist(pid, [song])
+    with sqlite3.connect(path) as conn:
+        conn.executescript(
+            f"""DROP TABLE tier_songs; DROP TABLE tiers;
+            CREATE TABLE tiers (id INTEGER PRIMARY KEY,
+                playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+                position INTEGER NOT NULL, name TEXT NOT NULL);
+            CREATE TABLE tier_songs (
+                tier_id INTEGER NOT NULL REFERENCES tiers(id) ON DELETE CASCADE,
+                song_id INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+                position INTEGER NOT NULL, PRIMARY KEY (tier_id, song_id));
+            INSERT INTO tiers VALUES (7, {pid}, 0, 'Top'), (8, {pid}, 1, 'Bottom');
+            INSERT INTO tier_songs VALUES (8, {song}, 0);"""
+        )
+    lib = Library(path)
+    tier_list = lib.get_tier_list("playlist", pid)
+    assert [row.tier.name for row in tier_list.tiers] == ["Top", "Bottom"]
+    assert _tier_ids(tier_list) == [[], [song]]
+    lib.create_tier_list("album", lib.create_album(AlbumIn(1, "New")).id)
+    with sqlite3.connect(path) as conn:
+        assert "tiers_new" not in str(conn.execute("SELECT sql FROM sqlite_master").fetchall())
+    lib.delete_playlist(pid)
+    with lib.connect() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM tier_songs").fetchone()[0] == 0
+
+
+def test_tier_songs_pointing_at_a_renamed_table_are_repaired(tmp_path):
+    """A first take on the migration renamed ``tiers`` away, and SQLite pointed
+    ``tier_songs`` at the renamed table, then dropped."""
+    path = tmp_path / "broken.db"
+    lib = Library(path)
+    pid = lib.create_playlist(PlaylistIn("Mix")).id
+    song = lib.create_song(SongIn(lib.create_artist(ArtistIn("A")).id, "Song")).id
+    lib.add_to_playlist(pid, [song])
+    tier = lib.create_tier_list("playlist", pid).tiers[1].tier.id
+    lib.place_song("playlist", pid, song, tier)
+    with sqlite3.connect(path) as conn:
+        conn.execute("PRAGMA legacy_alter_table = OFF")
+        conn.execute("ALTER TABLE tiers RENAME TO tiers_old")
+        create = SCHEMA[SCHEMA.index("CREATE TABLE IF NOT EXISTS tiers (") :].split(";")[0]
+        conn.execute(create)
+        conn.execute("INSERT INTO tiers SELECT * FROM tiers_old")
+        conn.execute("DROP TABLE tiers_old")
+        assert (
+            "tiers_old"
+            in conn.execute("SELECT sql FROM sqlite_master WHERE name = 'tier_songs'").fetchone()[0]
+        )
+    with pytest.raises(sqlite3.OperationalError, match="tiers_old"), sqlite3.connect(path) as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("DELETE FROM tier_songs")
+
+    lib = Library(path)
+    assert _tier_ids(lib.get_tier_list("playlist", pid))[1] == [song]
+    with sqlite3.connect(path) as conn:
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert "tiers_old" not in str(conn.execute("SELECT sql FROM sqlite_master").fetchall())
+    lib.delete_playlist(pid)
+    with lib.connect() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM tier_songs").fetchone()[0] == 0
+
+
 # Stats
 
 
@@ -1450,3 +1737,79 @@ def test_bad_pictures_are_refused(lib: Library, sample: Sample):
     with pytest.raises(NotFound):
         lib.add_picture(999, PictureIn("x"), b"data", "a.png")
     assert lib.count_pictures(sample.artist_id) == 0
+
+
+# Tier list locks
+
+
+def test_tier_list_locks(lib: Library, sample: Sample):
+    first, second = sample.song_ids
+    third = lib.create_song(SongIn(sample.artist_id, "Roads", sample.album_id, 3)).id
+    tier_list = lib.create_tier_list("album", sample.album_id)
+    s, a, b = [row.tier.id for row in tier_list.tiers[:3]]
+    assert tier_list.locking and tier_list.locked == set()  # on, from the start
+
+    lib.place_songs("album", sample.album_id, [first, second], s)
+    tier_list = lib.set_locked("album", sample.album_id, [first, second], True)
+    assert tier_list.locked == {first, second}
+    with pytest.raises(ValueError, match="Mysterons is locked"):
+        lib.place_song("album", sample.album_id, first, a)
+    with pytest.raises(ValueError, match="locked"):
+        lib.place_songs("album", sample.album_id, [third, second], a)
+    # Other songs go anywhere, between locked ones too.
+    tier_list = lib.place_song("album", sample.album_id, third, s, 1)
+    assert _tier_ids(tier_list)[0] == [first, third, second]
+
+    # Locking mode off: every song moves, and the locks are kept for later.
+    tier_list = lib.set_locking("album", sample.album_id, False)
+    assert not tier_list.locking and tier_list.locked == {first, second}
+    with pytest.raises(ValueError, match="locking mode on"):
+        lib.set_locked("album", sample.album_id, [third], True)
+    lib.place_song("album", sample.album_id, first, b)
+    lib.place_song("album", sample.album_id, second, None)
+    # On again: locked again where they are now.
+    tier_list = lib.set_locking("album", sample.album_id, True)
+    assert tier_list.locked == {first, second}
+    assert _tier_ids(tier_list)[2] == [first] and [x.song.id for x in tier_list.unassigned] == [
+        second
+    ]
+    with pytest.raises(ValueError, match="locked"):
+        lib.place_song("album", sample.album_id, second, s)
+
+    # Autoadd leaves locked songs where they are, first in their level.
+    lib.record_play(third)
+    lib.record_play(first)
+    lib.set_locked("album", sample.album_id, [second], False)
+    lib.record_play(second)
+    assert lib.auto_tier("album", sample.album_id) == 2
+    tier_list = lib.get_tier_list("album", sample.album_id)
+    assert _tier_ids(tier_list)[:3] == [[], [], [first, second, third]]
+    lib.set_locking("album", sample.album_id, False)
+    lib.auto_tier("album", sample.album_id)
+    assert _tier_ids(lib.get_tier_list("album", sample.album_id))[2] == [first, second, third]
+
+    # A new tier list starts again in locking mode, with nothing locked.
+    lib.set_locking("album", sample.album_id, True)
+    with pytest.raises(NotFound):
+        lib.set_locked("album", sample.album_id, [9999], True)
+    lib.set_locked("album", sample.album_id, [first], True)
+    lib.delete_tier_list("album", sample.album_id)
+    tier_list = lib.create_tier_list("album", sample.album_id)
+    assert tier_list.locking and tier_list.locked == set()
+
+
+def test_locks_of_songs_that_leave(lib: Library, sample: Sample):
+    first, second = sample.song_ids
+    playlist = lib.create_playlist(PlaylistIn("Mix")).id
+    lib.add_to_playlist(playlist, [first, second])
+    top = lib.create_tier_list("playlist", playlist).tiers[0].tier.id
+    lib.place_song("playlist", playlist, first, top)
+    lib.set_locked("playlist", playlist, [first], True)
+    lib.remove_from_playlist(playlist, first)
+    lib.add_to_playlist(playlist, [first])
+    assert lib.get_tier_list("playlist", playlist).locked == set()
+    # Tier lists from before locks: in locking mode.
+    with lib.connect() as conn:
+        conn.execute("DELETE FROM tier_lists")
+    tier_list = lib.set_locked("playlist", playlist, [second], True)
+    assert tier_list.locking and tier_list.locked == {second}

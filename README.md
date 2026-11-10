@@ -28,7 +28,7 @@ Then open **<http://127.0.0.1:8000>** and enjoy! The JSON API docs are at **`/do
 | 🎤 **Artists** | Browse artist cards and filter them by origin, genre, language, favorites or listen later |
 | 💿 **Albums** | Browse covers, filter by CD or vinyl, and spot missing lyrics or covers |
 | 🎵 **Songs** | Search every song, sort it, and open its lyrics, tab and videos |
-| 📜 **Playlists** | Build your own, next to the built-in **Favorites** and **Listen Later** |
+| 📜 **Playlists** | Build your own, next to the built-in **Favorites** and **Listen Later**, and rank any of them (or an album's or artist's songs) in a **tier list** |
 | 🛒 **Budget** | Fill a cart of CDs and vinyls, see what it costs, and save or buy it |
 | 🎟️ **Concerts** | Track the shows you want to see and the ones you went to |
 | 🔴 **Live Play** | Follow an album or playlist as you listen, lyrics included |

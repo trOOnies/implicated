@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{# The board grows with the window: wide levels hold more songs per line. #}
+{% set wide = True %}
+{% block title %}Tier list of {{ tier_list.name }}{% endblock %}
+{% block scripts %}<script src="{{ asset('tiers.js') }}" defer></script>{% endblock %}
+{% block content %}
+<p class="crumbs">{% for href, text in crumbs %}<a href="{{ href }}">{{ text }}</a> / {% endfor %}</p>
+<section class="card info">
+  <div class="row">
+    <h1>Tier list</h1>
+    <span class="spacer"></span>
+    {% if tier_list.tiers %}
+    <button type="button" class="danger" hx-post="{{ owner_url }}/tiers/delete"
+            hx-confirm="Delete the tier list of {{ tier_list.name }}? Its songs stay as they are.">Delete tier list</button>
+    {% endif %}
+  </div>
+  {% if tier_list.tiers %}
+  <p class="small">Drag the songs of {{ tier_list.name }} into the levels, and between them. To move many at once,
+    select them: click each one (or press Enter on it), Shift+click to select every song between two, or drag a box
+    around them from an empty spot. Then drag one of them, or click a level (or press Enter on it) to put them last
+    there. Escape clears the selection. Click a level's name to rename it.
+    In <strong>locking mode</strong>, the lock on a song (shown when you point at it) locks it where it
+    is, as decided: it can't be moved until unlocked, though other songs can go anywhere around it.
+    A selection is of unlocked songs (gold) or of locked ones (grey), never both: the lock on any
+    of them locks, or unlocks, them all.
+    Turn locking mode off to move every song freely; on again, your locked songs are locked where
+    they are then.</p>
+  {% else %}
+  <p class="small">{{ tier_list.name }} has no tier list yet.</p>
+  <div class="row">
+    <button type="button" hx-post="{{ owner_url }}/tiers" hx-swap="none">Make a tier list</button>
+  </div>
+  {% endif %}
+</section>
+{% if tier_list.tiers %}
+<section class="card">
+  {% include "_tier_board.html" %}
+</section>
+{% endif %}
+{% endblock %}

@@ -8,6 +8,8 @@
     {% with kind='artist', record_id=artist.id, favorite=artist.favorite %}{% include "_fav.html" %}{% endwith %}
     {% with kind='artist', record_id=artist.id, later=artist.listen_later %}{% include "_later.html" %}{% endwith %}
     <span class="spacer"></span>
+    <button type="button" class="secondary" hx-post="/artists/{{ artist.id }}/tiers" hx-swap="none"{% if not has_songs and not has_tier_list %} disabled{% endif %}
+            title="{% if has_tier_list %}Open the artist's tier list{% else %}Rank the artist's songs in a tier list{% endif %}">Tier List</button>
     <button type="button" class="secondary" hx-get="/fragments/artists/{{ artist.id }}/edit"
             hx-target="#artist-info" hx-swap="outerHTML">Edit</button>
     <button type="button" class="danger" hx-post="/artists/{{ artist.id }}/delete"

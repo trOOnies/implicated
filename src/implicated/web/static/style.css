@@ -82,6 +82,9 @@ p { margin: .25rem 0; }
 .goodbye { max-width: 32rem; margin: 4rem auto; text-align: center; }
 
 main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 2rem; }
+/* Pages that use the whole width (the tier list), with a margin growing with the window */
+.wide-page main { max-width: none; padding-inline: clamp(1rem, 3vw, 3rem); }
+.wide-page .card.info p { max-width: 110ch; }  /* text stays readable */
 
 .site-footer {
   padding: 1rem 1rem 2rem;
@@ -494,3 +497,140 @@ fieldset.featuring-pick legend { font-size: .85rem; color: var(--muted); padding
 /* Import */
 .import-changes td { font-size: .9rem; overflow-wrap: anywhere; }
 #inbox form.row, #archives > form { margin-top: .75rem; flex-wrap: wrap; }
+
+/* Tier lists: a colored label per level (red at the top, down the rainbow), its songs as album
+   covers with the title on top, and the unassigned songs below */
+.tier-board {
+  --tier-song: 5.5rem;
+  --tier-0: #ff7f7f; --tier-1: #ffbf7f; --tier-2: #ffdf7f; --tier-3: #ffff7f; --tier-4: #bfff7f;
+  --tier-5: #7fff7f; --tier-6: #7fffff; --tier-7: #7fbfff; --tier-8: #bf9fff; --tier-9: #ff9fdf;
+  --tier-ink: #1f1d1a;
+}
+.row.wrap.tier-tools { margin-bottom: .75rem; align-items: center; }
+.tiers { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.tier { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) auto; min-height: calc(var(--tier-song) + .5rem); }
+.tier + .tier { border-top: 1px solid var(--border); }
+.tier-0 { --tier: var(--tier-0); } .tier-1 { --tier: var(--tier-1); } .tier-2 { --tier: var(--tier-2); }
+.tier-3 { --tier: var(--tier-3); } .tier-4 { --tier: var(--tier-4); } .tier-5 { --tier: var(--tier-5); }
+.tier-6 { --tier: var(--tier-6); } .tier-7 { --tier: var(--tier-7); } .tier-8 { --tier: var(--tier-8); }
+.tier-9 { --tier: var(--tier-9); }
+.tier-label {
+  display: grid;
+  place-items: center;
+  padding: .4rem;
+  border: none;
+  border-radius: 0;
+  background: var(--tier);
+  color: var(--tier-ink);
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+button.tier-label:hover { filter: brightness(.93); }
+.tier-label.editing { gap: .35rem; align-content: center; }
+.tier-label.editing input { width: 100%; font-size: .9rem; padding: .2rem .3rem; }
+.tier-label.editing button { padding: .15rem .5rem; font-size: .8rem; }
+.tier-label.editing button.link { color: var(--tier-ink); }
+.tier-actions { display: flex; flex-direction: column; justify-content: center; gap: .3rem; padding: 0 .4rem; border-left: 1px solid var(--border); }
+.tier-actions button:disabled { opacity: .35; cursor: not-allowed; }
+.tier-drop { display: flex; flex-wrap: wrap; align-content: flex-start; gap: .25rem; padding: .25rem; min-height: calc(var(--tier-song) + .5rem); }
+.tier-drop:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tier-unassigned-title { margin: 1.25rem 0 .5rem; align-items: baseline; }
+.tier-unassigned-title h2 { margin: 0; }
+.tier-unassigned-title .small { font-weight: normal; }
+.tier-selection { font-weight: 600; color: var(--accent); }
+/* The box drawn to select songs */
+.tier-box { position: fixed; z-index: 10; pointer-events: none; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); border-radius: 2px; }
+.tier-board .tier-drop { user-select: none; }
+.tier-drop.unassigned { border: 1px dashed var(--border); border-radius: 6px; }
+.tier-empty { margin: auto; }
+.picking .tier-drop { cursor: copy; }
+.picking .tier-drop:hover { background: var(--accent-soft); }
+.tier-song {
+  position: relative;
+  flex: none;
+  width: var(--tier-song);
+  height: var(--tier-song);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  cursor: grab;
+  user-select: none;
+}
+.tier-song img, .tier-song-none { display: block; width: 100%; height: 100%; object-fit: cover; }
+.tier-song-none { display: grid; place-items: end center; padding-bottom: .3rem; color: var(--muted); font-size: 1.6rem; }
+.tier-song-name {
+  position: absolute;
+  inset: 0 0 auto;
+  padding: .2rem .3rem .6rem;
+  background: linear-gradient(rgb(0 0 0 / .8), rgb(0 0 0 / .55) 65%, transparent);
+  color: #fff;
+  font-size: .72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-shadow: 0 1px 2px rgb(0 0 0 / .7);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: break-word;
+}
+.tier-song:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tier-song.dragging { opacity: .35; }
+.tier-song.dragging-along { opacity: .5; filter: grayscale(.6); }
+.tier-song.selected { outline: 3px solid var(--accent); outline-offset: 1px; }
+.tier-song.selected::after {
+  content: "✓";
+  position: absolute;
+  right: .2rem;
+  bottom: .2rem;
+  display: grid;
+  place-items: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--surface);
+  font-size: .75rem;
+  font-weight: 700;
+}
+@media (max-width: 600px) {
+  .tier-board { --tier-song: 4.75rem; }
+  .tier-song-name { font-size: .62rem; padding: .15rem .2rem .5rem; }
+  .tier { grid-template-columns: 3.75rem minmax(0, 1fr) auto; }
+  .tier-label { font-size: 1.05rem; }
+  .tier-actions { padding: 0 .2rem; }
+}
+
+/* Tier list locks: a locked song wears a closed lock and cannot be grabbed; an unlocked one shows
+   an open lock when hovered or focused, to lock it */
+.tier-locking { margin: 0; font-size: .9rem; white-space: nowrap; }
+.tier-lock {
+  position: absolute;
+  left: .2rem;
+  bottom: .2rem;
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgb(0 0 0 / .6);
+  color: #fff;
+  opacity: 0;
+}
+.tier-lock svg { width: .85rem; height: .85rem; }
+.tier-lock > span { display: grid; }
+.tier-lock .when-locked, .tier-song.locked .tier-lock .when-unlocked { display: none; }
+.tier-song.locked .tier-lock .when-locked { display: grid; }
+.tier-song:hover .tier-lock, .tier-song:focus-within .tier-lock, .tier-lock:focus-visible { opacity: 1; }
+.tier-song.locked { cursor: default; box-shadow: inset 0 -3px 0 var(--accent); }
+.tier-song.locked .tier-lock { opacity: 1; background: var(--accent); color: var(--surface); }
+/* A selection of locked songs is grey: it can be unlocked, not moved */
+.tier-song.locked.selected { outline-color: var(--muted); }
+.tier-song.locked.selected::after { background: var(--muted); }
+.picking-locked .tier-selection { color: var(--muted); }

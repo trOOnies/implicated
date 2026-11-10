@@ -60,7 +60,11 @@ from implicated.models import (
     ALBUM_KINDS,
     CONCERT_STATUSES,
     FORMATS,
+    MAX_TIERS,
+    MIN_TIERS,
     OWNERSHIP,
+    TIER_NAME_LENGTH,
+    TIER_OWNERS,
     Album,
     AlbumIn,
     ArtistIn,
@@ -584,6 +588,8 @@ def _artist_info_context(lib: Library, artist_id: int) -> dict:
     return {
         "artist": found(lib.get_artist, artist_id),
         "members": lib.list_members(artist_id),
+        "has_songs": bool(lib.list_songs(artist_id=artist_id, limit=1)),
+        "has_tier_list": lib.has_tier_list("artist", artist_id),
     }
 
 
@@ -939,12 +945,17 @@ def _album_context(lib: Library, album_id: int) -> dict:
         "play_count": sum(s.play_count for s in songs),
         "lyrics_count": sum(1 for s in songs if s.song.lyrics and not s.song.no_lyrics),
         "no_lyrics_count": sum(1 for s in songs if s.song.no_lyrics),
+        "has_tier_list": lib.has_tier_list("album", album_id),
     }
 
 
 @router.get("/albums/{album_id}")
 def album_page(request: Request, lib: Lib, album_id: int):
-    return render(request, "album.html", **_album_context(lib, album_id))
+    return render(
+        request,
+        "album.html",
+        **_album_context(lib, album_id),
+    )
 
 
 @router.get("/fragments/albums/{album_id}/info")
@@ -1644,6 +1655,7 @@ def _playlist_context(lib: Library, playlist_id: int) -> dict:
         "setlist_of": _setlist_of(lib, detail.playlist),
         "songs": detail.songs,
         "total_seconds": sum(s.song.duration_seconds or 0 for s in detail.songs),
+        "has_tier_list": lib.has_tier_list("playlist", playlist_id),
     }
 
 
@@ -1710,6 +1722,184 @@ def delete_playlist(lib: Lib, playlist_id: int):
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     return Response(headers={"HX-Redirect": "/playlists"})
+
+
+# Tier lists: of a playlist, album or artist, at ``/<owners>/<id>/tiers``.
+
+TIER_PATHS = {f"{kind}s": kind for kind in TIER_OWNERS}
+
+
+def _tier_owner(owners: str) -> str:
+    """The kind of tier list owner of a path's ``playlists``, ``albums`` or ``artists``."""
+    if owners not in TIER_PATHS:
+        raise HTTPException(404)
+    return TIER_PATHS[owners]
+
+
+def _tier_context(lib: Library, kind: str, owner_id: int) -> dict:
+    tier_list = found(lib.get_tier_list, kind, owner_id)
+    return {
+        "tier_list": tier_list,
+        # The owner's page, the tier list's under it.
+        "owner_url": f"/{kind}s/{owner_id}",
+        # How many songs Autoadd would put in each of the first three levels.
+        "auto_counts": [len(level) for level in lib.auto_tier_levels(kind, owner_id)],
+        "min_tiers": MIN_TIERS,
+        "max_tiers": MAX_TIERS,
+        "name_length": TIER_NAME_LENGTH,
+    }
+
+
+def _tier_board(
+    request: Request,
+    lib: Library,
+    kind: str,
+    owner_id: int,
+    *,
+    status_code: int = 200,
+    editing: int | None = None,
+    error: str | None = None,
+) -> HTMLResponse:
+    """A tier list's board, with the level ``editing`` showing its rename form."""
+    context = _tier_context(lib, kind, owner_id)
+    if not context["tier_list"].tiers:
+        raise HTTPException(404, f"{kind} {owner_id} has no tier list")
+    return render(
+        request,
+        "_tier_board.html",
+        status_code=status_code,
+        editing=editing,
+        error=error,
+        **context,
+    )
+
+
+@router.get("/{owners}/{owner_id}/tiers")
+def tier_list_page(request: Request, lib: Lib, owners: str, owner_id: int):
+    """The tier list, or a button to make one when there is none."""
+    kind = _tier_owner(owners)
+    context = _tier_context(lib, kind, owner_id)
+    # The crumbs above the title, as on the owner's page: an album's are its artist's.
+    section = "artists" if kind == "album" else owners
+    crumbs = [(f"/{section}", section.capitalize())]
+    if kind == "album":
+        artist = lib.get_artist(lib.get_album(owner_id).artist_id)
+        crumbs.append((f"/artists/{artist.id}", artist.name))
+    crumbs.append((context["owner_url"], context["tier_list"].name))
+    return render(request, "tiers.html", active=section, crumbs=crumbs, **context)
+
+
+@router.get("/fragments/{owners}/{owner_id}/tiers")
+def tier_board(request: Request, lib: Lib, owners: str, owner_id: int, edit: int | None = None):
+    return _tier_board(request, lib, _tier_owner(owners), owner_id, editing=edit)
+
+
+@router.post("/{owners}/{owner_id}/tiers")
+def create_tier_list(lib: Lib, owners: str, owner_id: int):
+    """Make the tier list (unless there is one) and open it."""
+    found(lib.create_tier_list, _tier_owner(owners), owner_id)
+    return Response(headers={"HX-Redirect": f"/{owners}/{owner_id}/tiers"})
+
+
+@router.post("/{owners}/{owner_id}/tiers/delete")
+def delete_tier_list(lib: Lib, owners: str, owner_id: int):
+    found(lib.delete_tier_list, _tier_owner(owners), owner_id)
+    return Response(headers={"HX-Redirect": f"/{owners}/{owner_id}"})
+
+
+@router.post("/{owners}/{owner_id}/tiers/levels")
+def add_tier(request: Request, lib: Lib, owners: str, owner_id: int):
+    kind = _tier_owner(owners)
+    try:
+        found(lib.add_tier, kind, owner_id)
+    except ValueError as exc:
+        return _tier_board(request, lib, kind, owner_id, status_code=422, error=str(exc))
+    return _tier_board(request, lib, kind, owner_id)
+
+
+@router.post("/tiers/{tier_id}")
+async def rename_tier(request: Request, lib: Lib, tier_id: int):
+    form = await request.form()
+    tier = found(lib.get_tier, tier_id)
+    try:
+        lib.rename_tier(tier_id, _text(form, "name") or "")
+    except ValueError as exc:
+        return _tier_board(
+            request, lib, *tier.owner, status_code=422, editing=tier_id, error=str(exc)
+        )
+    return _tier_board(request, lib, *tier.owner)
+
+
+@router.post("/tiers/{tier_id}/delete")
+def delete_tier(request: Request, lib: Lib, tier_id: int):
+    tier = found(lib.get_tier, tier_id)
+    try:
+        lib.delete_tier(tier_id)
+    except ValueError as exc:
+        return _tier_board(request, lib, *tier.owner, status_code=422, error=str(exc))
+    return _tier_board(request, lib, *tier.owner)
+
+
+@router.post("/{owners}/{owner_id}/tiers/place")
+async def place_in_tier(request: Request, lib: Lib, owners: str, owner_id: int):
+    """Move songs (``song_id``, given once per song or as ids split by commas, in the order
+    to keep) to a level (``tier_id``, none for the unassigned songs), before the song at
+    ``position`` of what is there besides them, or last."""
+    kind = _tier_owner(owners)
+    form = await request.form()
+    song_ids = _song_ids(form)
+    if not song_ids:
+        raise HTTPException(422, "pick a song")
+    try:
+        found(
+            lib.place_songs, kind, owner_id, song_ids, _id(form, "tier_id"), _id(form, "position")
+        )
+    except ValueError as exc:  # a locked song
+        return _tier_board(request, lib, kind, owner_id, status_code=422, error=str(exc))
+    return _tier_board(request, lib, kind, owner_id)
+
+
+def _song_ids(form: FormData) -> list[int]:
+    """The songs of a form's ``song_id``, given once per song or as ids split by commas."""
+    try:
+        return [
+            int(part) for value in form.getlist("song_id")
+            for part in str(value).split(",") if part.strip()
+        ]  # fmt: skip
+    except ValueError:
+        raise HTTPException(422, "song ids must be numbers") from None
+
+
+@router.post("/{owners}/{owner_id}/tiers/locking")
+async def tier_locking(request: Request, lib: Lib, owners: str, owner_id: int):
+    """Turn locking mode on (``on`` given) or off."""
+    kind = _tier_owner(owners)
+    form = await request.form()
+    found(lib.set_locking, kind, owner_id, bool(form.get("on")))
+    return _tier_board(request, lib, kind, owner_id)
+
+
+@router.post("/{owners}/{owner_id}/tiers/lock")
+async def tier_lock(request: Request, lib: Lib, owners: str, owner_id: int):
+    """Lock songs (``song_id``) where they are, or unlock them with ``locked`` 0. With
+    ``quiet``, a success answers with nothing: the page already shows it (see tiers.js)."""
+    kind = _tier_owner(owners)
+    form = await request.form()
+    song_ids = _song_ids(form)
+    try:
+        found(lib.set_locked, kind, owner_id, song_ids, form.get("locked") != "0")
+    except ValueError as exc:
+        return _tier_board(request, lib, kind, owner_id, status_code=422, error=str(exc))
+    if form.get("quiet"):
+        return Response(status_code=204)
+    return _tier_board(request, lib, kind, owner_id)
+
+
+@router.post("/{owners}/{owner_id}/tiers/auto")
+def auto_tier(request: Request, lib: Lib, owners: str, owner_id: int):
+    kind = _tier_owner(owners)
+    found(lib.auto_tier, kind, owner_id)
+    return _tier_board(request, lib, kind, owner_id)
 
 
 # How many songs a search in a playlist's Add songs form shows, and how many characters it needs.

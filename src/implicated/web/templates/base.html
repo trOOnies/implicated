@@ -13,7 +13,8 @@
   <script src="{{ asset('stars.js') }}" defer></script>
   {% block scripts %}{% endblock %}
 </head>
-<body{% if active == 'live' %} class="live-page"{% endif %}>
+{# Pages can set `wide` to use the whole window width (see .wide-page). #}
+<body{% if active == 'live' %} class="live-page"{% elif wide %} class="wide-page"{% endif %}>
   <header class="site-header">
     <a class="brand" href="/" title="Overview"{% if active == 'home' %} aria-current="page"{% endif %}>
       <img src="{{ url_for('static', path='favicon.svg') }}" width="26" height="26" alt="">

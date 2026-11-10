@@ -17,7 +17,13 @@ from pathlib import Path
 from implicated.lrc import TimedLine, plain_lyrics, read_lrc
 from implicated.models import (
     FORMATS,
+    MAX_TIERS,
+    MIN_TIERS,
     SPECIAL_PLAYLISTS,
+    TIER_LETTERS,
+    TIER_NAME_LENGTH,
+    TIER_NAMES,
+    TIER_OWNERS,
     Album,
     AlbumIn,
     AlbumSummary,
@@ -50,6 +56,9 @@ from implicated.models import (
     SongSummary,
     SongVideo,
     SongVideoIn,
+    Tier,
+    TierList,
+    TierRow,
     lyrics_file_name,
     shop_link,
     validate_formed_year,
@@ -154,6 +163,39 @@ CREATE TABLE IF NOT EXISTS playlist_songs (
     position    INTEGER NOT NULL,
     PRIMARY KEY (playlist_id, song_id)
 );
+-- The levels of a tier list, top first, and the songs put in them. A tier list belongs to one
+-- playlist, album or artist (``TIER_OWNERS``): each level has exactly one of the three ids. A
+-- song is in at most one level of a tier list; the owner's other songs are unassigned.
+CREATE TABLE IF NOT EXISTS tiers (
+    id          INTEGER PRIMARY KEY,
+    playlist_id INTEGER REFERENCES playlists(id) ON DELETE CASCADE,
+    album_id    INTEGER REFERENCES albums(id) ON DELETE CASCADE,
+    artist_id   INTEGER REFERENCES artists(id) ON DELETE CASCADE,
+    position    INTEGER NOT NULL,
+    name        TEXT NOT NULL,
+    CHECK ((playlist_id IS NOT NULL) + (album_id IS NOT NULL) + (artist_id IS NOT NULL) = 1)
+);
+-- A tier list's own settings (whether locking mode is on) and its locked songs: a song locked
+-- stays locked wherever it is moved while locking mode is off.
+CREATE TABLE IF NOT EXISTS tier_lists (
+    id          INTEGER PRIMARY KEY,
+    playlist_id INTEGER UNIQUE REFERENCES playlists(id) ON DELETE CASCADE,
+    album_id    INTEGER UNIQUE REFERENCES albums(id) ON DELETE CASCADE,
+    artist_id   INTEGER UNIQUE REFERENCES artists(id) ON DELETE CASCADE,
+    locking     INTEGER NOT NULL DEFAULT 1,
+    CHECK ((playlist_id IS NOT NULL) + (album_id IS NOT NULL) + (artist_id IS NOT NULL) = 1)
+);
+CREATE TABLE IF NOT EXISTS tier_locks (
+    tier_list_id INTEGER NOT NULL REFERENCES tier_lists(id) ON DELETE CASCADE,
+    song_id      INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+    PRIMARY KEY (tier_list_id, song_id)
+);
+CREATE TABLE IF NOT EXISTS tier_songs (
+    tier_id  INTEGER NOT NULL REFERENCES tiers(id) ON DELETE CASCADE,
+    song_id  INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (tier_id, song_id)
+);
 CREATE TABLE IF NOT EXISTS cart_items (
     id          INTEGER PRIMARY KEY,
     album_id    INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
@@ -208,6 +250,10 @@ CREATE INDEX IF NOT EXISTS idx_plays_song ON plays(song_id);
 CREATE INDEX IF NOT EXISTS idx_playlist_songs_song ON playlist_songs(song_id);
 CREATE INDEX IF NOT EXISTS idx_song_videos_song ON song_videos(song_id);
 CREATE INDEX IF NOT EXISTS idx_song_features_artist ON song_features(artist_id);
+CREATE INDEX IF NOT EXISTS idx_tiers_playlist ON tiers(playlist_id);
+CREATE INDEX IF NOT EXISTS idx_tiers_album ON tiers(album_id);
+CREATE INDEX IF NOT EXISTS idx_tiers_artist ON tiers(artist_id);
+CREATE INDEX IF NOT EXISTS idx_tier_songs_song ON tier_songs(song_id);
 """
 
 # Columns added after the first release: (table, column, declaration). Older databases get them
@@ -510,6 +556,17 @@ def _split(row: sqlite3.Row, prefix: str) -> tuple[dict, dict]:
     return own, extra
 
 
+def _rebuild(conn: sqlite3.Connection, table: str, columns: str) -> None:
+    """Make ``table`` again as ``SCHEMA`` has it, keeping ``columns`` of its rows. Made under a
+    new name and renamed last, as renaming the old table instead would point the tables that
+    refer to it at the old one."""
+    create = SCHEMA[SCHEMA.index(f"CREATE TABLE IF NOT EXISTS {table} (") :].split(";")[0]
+    conn.execute(create.replace(f" {table} (", f" {table}_new (", 1))
+    conn.execute(f"INSERT INTO {table}_new ({columns}) SELECT {columns} FROM {table}")
+    conn.execute(f"DROP TABLE {table}")
+    conn.execute(f"ALTER TABLE {table}_new RENAME TO {table}")
+
+
 class Library:
     def __init__(self, path: str | Path, media_dir: str | Path | None = None) -> None:
         self.path = Path(path)
@@ -523,6 +580,7 @@ class Library:
         # along with the song if missing. Without it, the library keeps no such files.
         self.media_dir = Path(media_dir) if media_dir is not None else None
         self._local = threading.local()
+        self._migrate_tiers()
         with self.connect() as conn:
             conn.executescript(SCHEMA)
             for table, old, new in RENAMES:
@@ -549,6 +607,25 @@ class Library:
                 )
             conn.execute("INSERT OR IGNORE INTO cart (id) VALUES (1)")
         self._sync_marks()
+
+    def _migrate_tiers(self) -> None:
+        """Tier lists were first only of playlists: rebuild an old ``tiers`` table (its
+        ``playlist_id`` required, no ``album_id`` or ``artist_id``) as ``SCHEMA`` has it,
+        keeping its levels, and a ``tier_songs`` whose levels are not in ``tiers`` (a table
+        renamed away from under it). Foreign keys stay off meanwhile, so dropping a table does
+        not take the rows pointing at it with it."""
+        conn = sqlite3.connect(self.path)
+        try:
+            with conn:
+                columns = {row[1] for row in conn.execute("PRAGMA table_info(tiers)")}
+                if columns and "album_id" not in columns:
+                    _rebuild(conn, "tiers", "id, playlist_id, position, name")
+                targets = {row[2] for row in conn.execute("PRAGMA foreign_key_list(tier_songs)")}
+                if targets and targets != {"tiers", "songs"}:
+                    _rebuild(conn, "tier_songs", "tier_id, song_id, position")
+                    conn.execute("DROP TABLE IF EXISTS tiers_old")
+        finally:
+            conn.close()
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -1318,6 +1395,8 @@ class Library:
             "plays": "x_plays DESC, s.title COLLATE NOCASE",
             "recent": "x_last_played IS NULL, x_last_played DESC",
             "playlist": "ps.position",
+            "album": "al.id IS NULL, al.year IS NULL, al.year, al.title COLLATE NOCASE, al.id, "
+            "s.track_number IS NULL, s.track_number, s.title COLLATE NOCASE",
         }[order]
         sql = f"""
             SELECT s.*, ar.name AS x_artist, al.title AS x_album, al.cover AS x_album_cover,
@@ -2130,6 +2209,7 @@ class Library:
             )
         if cur.rowcount == 0:
             raise NotFound(f"song {song_id} is not in playlist {playlist_id}")
+        self._prune_tiers("playlist", playlist_id)
         self._marks_from_playlist(playlist_id)
 
     def set_playlist_songs(self, playlist_id: int, song_ids: list[int]) -> PlaylistDetail:
@@ -2159,6 +2239,7 @@ class Library:
                 "INSERT INTO playlist_songs (playlist_id, song_id, position) VALUES (?, ?, ?)",
                 [(playlist_id, song_id, position) for position, song_id in enumerate(song_ids)],
             )
+        self._prune_tiers("playlist", playlist_id)
         self._marks_from_playlist(playlist_id)
 
     def _marks_from_playlist(self, playlist_id: int) -> None:
@@ -2199,6 +2280,347 @@ class Library:
                                              WHERE playlist_id = :playlist_id)""",
                     params,
                 )
+            self._prune_tiers("playlist", params["playlist_id"])
+
+    # Tier lists
+
+    def tier_songs(self, kind: str, owner_id: int) -> list[SongSummary]:
+        """The songs a tier list of ``kind`` (one of ``TIER_OWNERS``) ranks, in the owner's
+        order: a playlist's, an album's in track order, or an artist's own songs album by album
+        (oldest first, then the songs on no album). ``NotFound`` when the owner does not
+        exist."""
+        if kind == "playlist":
+            return self.get_playlist_detail(owner_id).songs
+        if kind == "album":
+            self.get_album(owner_id)
+            return self.list_songs(album_id=owner_id, order="track")
+        if kind == "artist":
+            self.get_artist(owner_id)
+            return self.list_songs(artist_id=owner_id, order="album")
+        raise NotFound(f"no tier lists for {kind!r}")
+
+    def tier_owner_name(self, kind: str, owner_id: int) -> str:
+        """The name of what the tier list ranks: the playlist, album or artist."""
+        if kind == "playlist":
+            return self.get_playlist(owner_id).name
+        if kind == "album":
+            return self.get_album(owner_id).title
+        if kind == "artist":
+            return self.get_artist(owner_id).name
+        raise NotFound(f"no tier lists for {kind!r}")
+
+    def get_tier_list(self, kind: str, owner_id: int) -> TierList:
+        """The tier list of a playlist, album or artist; without one, its songs are all
+        ``unassigned``."""
+        songs = self.tier_songs(kind, owner_id)
+        by_id = {s.song.id: s for s in songs}
+        rows = {tier.id: TierRow(tier) for tier in self._tiers(kind, owner_id)}
+        with self.connect() as conn:
+            placed = conn.execute(
+                f"""SELECT ts.tier_id, ts.song_id FROM tier_songs ts
+                      JOIN tiers t ON t.id = ts.tier_id
+                     WHERE t.{kind}_id = ? ORDER BY ts.tier_id, ts.position""",
+                (owner_id,),
+            ).fetchall()
+        for tier_id, song_id in placed:
+            song = by_id.pop(song_id, None)
+            if song is not None:
+                rows[tier_id].songs.append(song)
+        locking, locked = self._locks(kind, owner_id)
+        return TierList(
+            kind,
+            owner_id,
+            self.tier_owner_name(kind, owner_id),
+            list(rows.values()),
+            list(by_id.values()),
+            locking,
+            locked & {s.song.id for s in songs},
+        )
+
+    def has_tier_list(self, kind: str, owner_id: int) -> bool:
+        return bool(self._tiers(kind, owner_id))
+
+    def create_tier_list(self, kind: str, owner_id: int) -> TierList:
+        """Give a playlist, album or artist a tier list with the ``TIER_NAMES`` levels, every
+        song unassigned; one that has a tier list keeps it as it is."""
+        self.tier_owner_name(kind, owner_id)
+        if not self.has_tier_list(kind, owner_id):
+            with self.connect() as conn:
+                conn.executemany(
+                    f"INSERT INTO tiers ({kind}_id, position, name) VALUES (?, ?, ?)",
+                    [(owner_id, position, name) for position, name in enumerate(TIER_NAMES)],
+                )
+                # A new tier list starts in locking mode, with nothing locked.
+                conn.execute(f"DELETE FROM tier_lists WHERE {kind}_id = ?", (owner_id,))
+                conn.execute(f"INSERT INTO tier_lists ({kind}_id) VALUES (?)", (owner_id,))
+        return self.get_tier_list(kind, owner_id)
+
+    def delete_tier_list(self, kind: str, owner_id: int) -> None:
+        """Take the tier list away; the songs stay as they are."""
+        self.tier_owner_name(kind, owner_id)
+        with self.connect() as conn:
+            conn.execute(f"DELETE FROM tiers WHERE {kind}_id = ?", (owner_id,))
+            conn.execute(f"DELETE FROM tier_lists WHERE {kind}_id = ?", (owner_id,))
+
+    def get_tier(self, tier_id: int) -> Tier:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM tiers WHERE id = ?", (tier_id,)).fetchone()
+        if row is None:
+            raise NotFound(f"tier {tier_id} not found")
+        return Tier(**dict(row))
+
+    def add_tier(self, kind: str, owner_id: int, name: str | None = None) -> Tier:
+        """Add a level at the bottom, named ``name`` or else after the first letter of
+        ``TIER_LETTERS`` no level has."""
+        tiers = self._tier_list_of(kind, owner_id)
+        if len(tiers) >= MAX_TIERS:
+            raise ValueError(f"a tier list has at most {MAX_TIERS} levels")
+        taken = {t.name.casefold() for t in tiers}
+        if name is None:
+            name = next((c for c in TIER_LETTERS if c.casefold() not in taken), str(len(tiers) + 1))
+        name = self._tier_name(name, tiers)
+        with self.connect() as conn:
+            cur = conn.execute(
+                f"INSERT INTO tiers ({kind}_id, position, name) VALUES (?, ?, ?)",
+                (owner_id, max((t.position for t in tiers), default=-1) + 1, name),
+            )
+        return self.get_tier(cur.lastrowid)
+
+    def rename_tier(self, tier_id: int, name: str) -> Tier:
+        tier = self.get_tier(tier_id)
+        others = [t for t in self._tiers(*tier.owner) if t.id != tier_id]
+        name = self._tier_name(name, others)
+        with self.connect() as conn:
+            conn.execute("UPDATE tiers SET name = ? WHERE id = ?", (name, tier_id))
+        return self.get_tier(tier_id)
+
+    def delete_tier(self, tier_id: int) -> None:
+        """Delete a level; its songs go back to the unassigned ones."""
+        tier = self.get_tier(tier_id)
+        if len(self._tiers(*tier.owner)) <= MIN_TIERS:
+            raise ValueError(f"a tier list has at least {MIN_TIERS} levels")
+        self._delete("tiers", tier_id)
+
+    def place_song(
+        self,
+        kind: str,
+        owner_id: int,
+        song_id: int,
+        tier_id: int | None,
+        position: int | None = None,
+    ) -> TierList:
+        """``place_songs`` for one song."""
+        return self.place_songs(kind, owner_id, [song_id], tier_id, position)
+
+    def place_songs(
+        self,
+        kind: str,
+        owner_id: int,
+        song_ids: list[int],
+        tier_id: int | None,
+        position: int | None = None,
+    ) -> TierList:
+        """Put songs of the tier list in the level ``tier_id``, in the order given (taking them
+        out of the levels they were in), before the song at ``position`` of what the level holds
+        besides them, or last; ``tier_id`` ``None`` takes them out of the levels, so they are
+        unassigned again."""
+        tiers = self._tier_list_of(kind, owner_id)
+        song_ids = list(dict.fromkeys(song_ids))
+        if not song_ids:
+            raise ValueError("pick a song")
+        known = {s.song.id for s in self.tier_songs(kind, owner_id)}
+        for song_id in song_ids:
+            if song_id not in known:
+                raise NotFound(f"song {song_id} is not in the tier list of {kind} {owner_id}")
+        if tier_id is not None and tier_id not in {t.id for t in tiers}:
+            raise NotFound(f"tier {tier_id} is not in the tier list of {kind} {owner_id}")
+        locking, locked = self._locks(kind, owner_id)
+        if locking and (stuck := [i for i in song_ids if i in locked]):
+            title = self.get_song(stuck[0]).title
+            raise ValueError(f"{title} is locked: unlock it first, or turn locking mode off")
+        self._prune_tiers(kind, owner_id)
+        with self.connect() as conn:
+            conn.execute(
+                f"""DELETE FROM tier_songs WHERE song_id IN (SELECT value FROM json_each(?))
+                       AND tier_id IN (SELECT id FROM tiers WHERE {kind}_id = ?)""",
+                (json.dumps(song_ids), owner_id),
+            )
+            if tier_id is not None:
+                current = [
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT song_id FROM tier_songs WHERE tier_id = ? ORDER BY position",
+                        (tier_id,),
+                    )
+                ]
+                at = len(current) if position is None else max(0, min(position, len(current)))
+                self._write_tier(conn, tier_id, current[:at] + song_ids + current[at:])
+        return self.get_tier_list(kind, owner_id)
+
+    def auto_tier_levels(self, kind: str, owner_id: int) -> list[list[SongSummary]]:
+        """What ``auto_tier`` puts in the first three levels: the favorite songs, then the songs
+        on a favorite album, then the other songs played at least once; each level's songs by
+        play count, most first (the owner's order breaks ties). In locking mode, the locked
+        songs are left out: they stay where they are."""
+        locking, locked = self._locks(kind, owner_id)
+        songs = [
+            s for s in self.tier_songs(kind, owner_id) if not (locking and s.song.id in locked)
+        ]
+        with self.connect() as conn:
+            favorite_albums = {
+                row[0] for row in conn.execute("SELECT id FROM albums WHERE favorite = 1")
+            }
+        levels: list[list[SongSummary]] = [[], [], []]
+        for s in songs:
+            if s.song.favorite:
+                levels[0].append(s)
+            elif s.song.album_id in favorite_albums:
+                levels[1].append(s)
+            elif s.play_count > 0:
+                levels[2].append(s)
+        return [sorted(level, key=lambda s: -s.play_count) for level in levels]
+
+    def auto_tier(self, kind: str, owner_id: int) -> int:
+        """Fill the tier list again from scratch as ``auto_tier_levels`` says, adding levels
+        when it has fewer than three; the other levels are emptied, and the songs in none of
+        the three left unassigned. In locking mode, the locked songs stay where they are, first
+        in their level. Returns how many songs were placed."""
+        tiers = self._tier_list_of(kind, owner_id)
+        levels = self.auto_tier_levels(kind, owner_id)
+        while len(tiers) < len(levels):
+            tiers.append(self.add_tier(kind, owner_id))
+        tier_list = self.get_tier_list(kind, owner_id)
+        kept = {
+            row.tier.id: [s.song.id for s in row.songs if s.song.id in tier_list.locked]
+            for row in tier_list.tiers
+        } if tier_list.locking else {}  # fmt: skip
+        with self.connect() as conn:
+            for i, tier in enumerate(tiers):
+                ids = [s.song.id for s in levels[i]] if i < len(levels) else []
+                self._write_tier(conn, tier.id, kept.get(tier.id, []) + ids)
+        return sum(len(level) for level in levels)
+
+    def set_locking(self, kind: str, owner_id: int, on: bool) -> TierList:
+        """Turn the tier list's locking mode on or off; its locks are kept either way."""
+        self._tier_list_of(kind, owner_id)
+        list_id = self._tier_list_id(kind, owner_id)
+        with self.connect() as conn:
+            conn.execute("UPDATE tier_lists SET locking = ? WHERE id = ?", (int(on), list_id))
+        return self.get_tier_list(kind, owner_id)
+
+    def set_locked(self, kind: str, owner_id: int, song_ids: list[int], locked: bool) -> TierList:
+        """Lock songs of the tier list where they are (or unlock them); only in locking
+        mode."""
+        self._tier_list_of(kind, owner_id)
+        locking, _locked = self._locks(kind, owner_id)
+        if not locking:
+            raise ValueError("turn locking mode on to lock or unlock songs")
+        song_ids = list(dict.fromkeys(song_ids))
+        if not song_ids:
+            raise ValueError("pick a song")
+        known = {s.song.id for s in self.tier_songs(kind, owner_id)}
+        for song_id in song_ids:
+            if song_id not in known:
+                raise NotFound(f"song {song_id} is not in the tier list of {kind} {owner_id}")
+        list_id = self._tier_list_id(kind, owner_id)
+        with self.connect() as conn:
+            if locked:
+                conn.executemany(
+                    "INSERT OR IGNORE INTO tier_locks (tier_list_id, song_id) VALUES (?, ?)",
+                    [(list_id, song_id) for song_id in song_ids],
+                )
+            else:
+                conn.execute(
+                    """DELETE FROM tier_locks WHERE tier_list_id = ?
+                          AND song_id IN (SELECT value FROM json_each(?))""",
+                    (list_id, json.dumps(song_ids)),
+                )
+        return self.get_tier_list(kind, owner_id)
+
+    def _locks(self, kind: str, owner_id: int) -> tuple[bool, set[int]]:
+        """Whether the tier list is in locking mode (it is, unless turned off), and the ids of
+        its locked songs."""
+        with self.connect() as conn:
+            row = conn.execute(
+                f"SELECT id, locking FROM tier_lists WHERE {kind}_id = ?", (owner_id,)
+            ).fetchone()
+            if row is None:
+                return True, set()
+            locked = {
+                r[0]
+                for r in conn.execute(
+                    "SELECT song_id FROM tier_locks WHERE tier_list_id = ?", (row["id"],)
+                )
+            }
+        return bool(row["locking"]), locked
+
+    def _tier_list_id(self, kind: str, owner_id: int) -> int:
+        """The id of the tier list's settings, made (in locking mode) when it has none yet: tier
+        lists from before locking mode came without."""
+        with self.connect() as conn:
+            conn.execute(
+                f"""INSERT INTO tier_lists ({kind}_id) SELECT ?
+                     WHERE NOT EXISTS (SELECT 1 FROM tier_lists WHERE {kind}_id = ?)""",
+                (owner_id, owner_id),
+            )
+            return conn.execute(
+                f"SELECT id FROM tier_lists WHERE {kind}_id = ?", (owner_id,)
+            ).fetchone()[0]
+
+    def _tiers(self, kind: str, owner_id: int) -> list[Tier]:
+        if kind not in TIER_OWNERS:
+            raise NotFound(f"no tier lists for {kind!r}")
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM tiers WHERE {kind}_id = ? ORDER BY position, id", (owner_id,)
+            ).fetchall()
+        return [Tier(**dict(row)) for row in rows]
+
+    def _tier_list_of(self, kind: str, owner_id: int) -> list[Tier]:
+        """The levels of a tier list; ``NotFound`` when its owner, or the tier list, does not
+        exist."""
+        self.tier_owner_name(kind, owner_id)
+        tiers = self._tiers(kind, owner_id)
+        if not tiers:
+            raise NotFound(f"{kind} {owner_id} has no tier list")
+        return tiers
+
+    @staticmethod
+    def _write_tier(conn: sqlite3.Connection, tier_id: int, song_ids: list[int]) -> None:
+        conn.execute("DELETE FROM tier_songs WHERE tier_id = ?", (tier_id,))
+        conn.executemany(
+            "INSERT INTO tier_songs (tier_id, song_id, position) VALUES (?, ?, ?)",
+            [(tier_id, song_id, position) for position, song_id in enumerate(song_ids)],
+        )
+
+    def _prune_tiers(self, kind: str, owner_id: int) -> None:
+        """Take the songs the owner no longer has (taken out of the playlist, moved to another
+        album or artist) out of its tier list, locks included."""
+        keep = [s.song.id for s in self.tier_songs(kind, owner_id)]
+        with self.connect() as conn:
+            conn.execute(
+                f"""DELETE FROM tier_songs
+                     WHERE tier_id IN (SELECT id FROM tiers WHERE {kind}_id = ?)
+                       AND song_id NOT IN (SELECT value FROM json_each(?))""",
+                (owner_id, json.dumps(keep)),
+            )
+            conn.execute(
+                f"""DELETE FROM tier_locks
+                     WHERE tier_list_id IN (SELECT id FROM tier_lists WHERE {kind}_id = ?)
+                       AND song_id NOT IN (SELECT value FROM json_each(?))""",
+                (owner_id, json.dumps(keep)),
+            )
+
+    @staticmethod
+    def _tier_name(name: str, others: list[Tier]) -> str:
+        name = " ".join(name.split())
+        if not name:
+            raise ValueError("a level needs a name")
+        if len(name) > TIER_NAME_LENGTH:
+            raise ValueError(f"a level's name has at most {TIER_NAME_LENGTH} characters")
+        if name.casefold() in {t.name.casefold() for t in others}:
+            raise ValueError(f"there is already a level {name}")
+        return name
 
     @staticmethod
     def _playlist_name(data: PlaylistIn) -> str:

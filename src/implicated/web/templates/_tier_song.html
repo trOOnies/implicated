@@ -1,0 +1,19 @@
+{# A song of a tier list: its album cover with its title on top. Needs `s`, a SongSummary,
+   `tier_list` and `owner_url`. In locking mode it has a lock button, and a locked song cannot
+   be dragged (it can be selected, with other locked songs only). tiers.js switches a song
+   between locked and not in place. #}
+{% from "_icons.html" import icon %}
+{% set is_locked = tier_list.locking and s.song.id in tier_list.locked %}
+<div class="tier-song{% if is_locked %} locked{% endif %}" draggable="{{ 'false' if is_locked else 'true' }}" tabindex="0" role="button"
+     aria-pressed="false" data-song="{{ s.song.id }}"
+     title="{{ s.song.title }} · {{ s.artist_name }}{% if s.album_title %} · {{ s.album_title }}{% endif %}{% if s.song.favorite %} · ♥{% endif %} · {{ s.play_count }} {{ 'play' if s.play_count == 1 else 'plays' }}{% if is_locked %} · locked{% endif %}">
+  {% if s.album_cover %}<img src="/api/albums/{{ s.song.album_id }}/cover?v={{ s.album_cover }}" alt="" loading="lazy" draggable="false">
+  {%- else %}<span class="tier-song-none" aria-hidden="true">♪</span>{% endif %}
+  <span class="tier-song-name">{{ s.song.title }}</span>
+  {% if tier_list.locking %}
+  {# Handled by tiers.js: with songs selected, locking one of them locks them all. #}
+  <button type="button" class="tier-lock" aria-pressed="{{ 'true' if is_locked else 'false' }}"
+          title="{{ 'Unlock it, to move it again' if is_locked else 'Lock it here: decided' }}" aria-label="{{ 'Unlock' if is_locked else 'Lock' }} {{ s.song.title }}"
+          ><span class="when-locked">{{ icon('lock') }}</span><span class="when-unlocked">{{ icon('unlock') }}</span></button>
+  {% endif %}
+</div>

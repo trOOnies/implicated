@@ -5,6 +5,8 @@
     <span class="spacer"></span>
     <button type="button" hx-post="/live/playlist/{{ playlist.id }}" hx-swap="none"{% if not songs %} disabled{% endif %}
             title="Follow the playlist song by song">Live Play</button>
+    <button type="button" class="secondary" hx-post="/playlists/{{ playlist.id }}/tiers" hx-swap="none"{% if not songs and not has_tier_list %} disabled{% endif %}
+            title="{% if has_tier_list %}Open the playlist's tier list{% else %}Rank the playlist's songs in a tier list{% endif %}">Tier List</button>
     {% if not playlist.kind %}
     <button type="button" class="secondary" hx-get="/fragments/playlists/{{ playlist.id }}/edit"
             hx-target="#playlist-info" hx-swap="outerHTML">Rename</button>

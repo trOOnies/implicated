@@ -1,7 +1,7 @@
 """Domain models.
 
 Persisted records (``Artist``, ``Member``, ``Album``, ``Song``, ``SongVideo``, ``Play``,
-``Playlist``, ``Picture``) carry their database id.
+``Playlist``, ``Tier``, ``Picture``) carry their database id.
 The ``*In`` variants are the writable fields, used as API request bodies and for form input.
 """
 
@@ -31,6 +31,16 @@ SPECIAL_PLAYLISTS = {
     "favorites": ("Favorites", "favorite"),
     "listen_later": ("Listen Later", "listen_later"),
 }
+
+# What a tier list can rank the songs of; a playlist, album or artist has at most one.
+TIER_OWNERS = ("playlist", "album", "artist")
+# A tier list: the levels it starts with, the letters new levels are named after (the
+# first one no level has yet), how many levels it may have, and how long a level's name may be.
+TIER_NAMES = ("S", "A", "B", "C", "D")
+TIER_LETTERS = "SABCDEFGHIJKLMNOPQRTUVWXYZ"
+MIN_TIERS = 3
+MAX_TIERS = 10
+TIER_NAME_LENGTH = 20
 
 # Any language edition, desktop or mobile: en.wikipedia.org, pt-br.m.wikipedia.org, ...
 WIKI_HOST = re.compile(r"[a-z]{2,3}(?:-[a-z0-9]{1,8})*(?:\.m)?\.wikipedia\.org")
@@ -206,6 +216,53 @@ class Playlist(PlaylistIn):
     # One of ``SPECIAL_PLAYLISTS`` for the built-in playlists, which cannot be renamed or
     # deleted; ``None`` for your own.
     kind: str | None = None
+
+
+@dataclass
+class Tier:
+    """A level of a tier list (S, A, B, ...); ``position`` 0 is the top one. The tier list is
+    of a playlist, album or artist: exactly one of their ids is set."""
+
+    id: int
+    position: int
+    name: str
+    playlist_id: int | None = None
+    album_id: int | None = None
+    artist_id: int | None = None
+
+    @property
+    def owner(self) -> tuple[str, int]:
+        """The kind of what the tier list ranks (one of ``TIER_OWNERS``) and its id."""
+        return next(
+            (kind, owner_id)
+            for kind in TIER_OWNERS
+            if (owner_id := getattr(self, f"{kind}_id")) is not None
+        )
+
+
+@dataclass
+class TierRow:
+    """A level with the songs put in it, in order."""
+
+    tier: Tier
+    songs: list[SongSummary] = field(default_factory=list)
+
+
+@dataclass
+class TierList:
+    """The tier list of a playlist, album or artist (``kind``, one of ``TIER_OWNERS``, and
+    ``owner_id``, named ``name``): its levels, top first, and the songs in none of them, in the
+    owner's order. One without a tier list has no ``tiers``."""
+
+    kind: str
+    owner_id: int
+    name: str
+    tiers: list[TierRow] = field(default_factory=list)
+    unassigned: list[SongSummary] = field(default_factory=list)
+    # Locking mode: while on, the ``locked`` songs (ids) cannot be moved. Off, they are all free,
+    # and the locks are kept for when it is on again.
+    locking: bool = True
+    locked: set[int] = field(default_factory=set)
 
 
 @dataclass
