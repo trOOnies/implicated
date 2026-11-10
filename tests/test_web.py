@@ -2394,3 +2394,30 @@ def test_tier_list_locks_on_the_board(client: TestClient, client_lib: Library, w
     page = client.get(f"/albums/{album}/tiers").text
     assert 'data-board="/fragments/albums/' in page and 'id="tier-autoadd"' in page
     assert "hx-post" not in page.split('class="tier-lock"')[1].split("</button>")[0]
+
+
+def test_tier_list_greys_decided_levels_and_offers_fast_assign(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    first, second = web_sample.song_ids
+    album = web_sample.album_id
+    client.post(f"/albums/{album}/tiers")
+    tiers = [row.tier.id for row in client_lib.get_tier_list("album", album).tiers]
+    client_lib.place_song("album", album, first, tiers[0])
+    client_lib.place_song("album", album, second, tiers[1])
+    decided = lambda html: html.count(' decided" data-name=')  # noqa: E731
+
+    # In locking mode, the empty levels are decided; the ones with an unlocked song are not.
+    page = client.get(f"/albums/{album}/tiers").text
+    assert decided(page) == len(tiers) - 2
+    assert 'class="tier tier-0" data-name="' in page
+    locked = client.post(f"/albums/{album}/tiers/lock", data={"song_id": str(first)}).text
+    assert decided(locked) == len(tiers) - 1 and 'class="tier tier-0 decided"' in locked
+    # Out of locking mode, nothing is.
+    off = client.post(f"/albums/{album}/tiers/locking", data={}).text
+    assert decided(off) == 0
+
+    # Fast assign runs in the page; the board gives it a button, a place to warn, and each
+    # song's artist.
+    assert "data-fast-assign" in off and 'class="warning tier-warning" role="alert" hidden' in off
+    assert off.count('data-artist="') == 2

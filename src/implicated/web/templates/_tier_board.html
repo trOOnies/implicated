@@ -27,6 +27,8 @@
           {% endfor %}
         </select></label>
     </form>
+    {# Ranks the unassigned songs one by one, by A/B questions: tiers.js. #}
+    <button type="button" class="secondary" data-fast-assign title="Place each unassigned song by picking the better of two songs, until it finds its place">Fast assign</button>
     {# Filled in by tiers.js while songs are selected. #}
     <span class="tier-selection small" aria-live="polite" hidden><span data-selection-count></span>
       {% if tier_list.locking %}<button type="button" class="link" data-lock-selection title="Lock the selected songs where they are">Lock</button>{% endif %}
@@ -41,10 +43,14 @@
     <span class="small">{{ levels }} levels (from {{ min_tiers }} to {{ max_tiers }})</span>
   </div>
   {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <p class="warning tier-warning" role="alert" hidden></p>
   <div class="tiers">
     {% for row in tier_list.tiers %}
     {% set tier = row.tier %}
-    <div class="tier tier-{{ loop.index0 }}">
+    {# In locking mode, a level whose songs are all locked (or that has none) is decided: grey. tiers.js keeps that
+       up to date as songs are locked. #}
+    {% set decided = tier_list.locking and row.songs | rejectattr('song.id', 'in', tier_list.locked) | list | length == 0 %}
+    <div class="tier tier-{{ loop.index0 }}{% if decided %} decided{% endif %}" data-name="{{ tier.name }}">
       {% if editing == tier.id %}
       <form class="tier-label editing" hx-post="/tiers/{{ tier.id }}" hx-target="#tier-board" hx-swap="outerHTML">
         <input name="name" value="{{ tier.name }}" required maxlength="{{ name_length }}" aria-label="Name of the level" autofocus>

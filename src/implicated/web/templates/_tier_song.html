@@ -5,7 +5,7 @@
 {% from "_icons.html" import icon %}
 {% set is_locked = tier_list.locking and s.song.id in tier_list.locked %}
 <div class="tier-song{% if is_locked %} locked{% endif %}" draggable="{{ 'false' if is_locked else 'true' }}" tabindex="0" role="button"
-     aria-pressed="false" data-song="{{ s.song.id }}"
+     aria-pressed="false" data-song="{{ s.song.id }}" data-artist="{{ s.artist_name }}"{% if s.album_title %} data-album="{{ s.album_title }}"{% endif %}
      title="{{ s.song.title }} · {{ s.artist_name }}{% if s.album_title %} · {{ s.album_title }}{% endif %}{% if s.song.favorite %} · ♥{% endif %} · {{ s.play_count }} {{ 'play' if s.play_count == 1 else 'plays' }}{% if is_locked %} · locked{% endif %}">
   {% if s.album_cover %}<img src="/api/albums/{{ s.song.album_id }}/cover?v={{ s.album_cover }}" alt="" loading="lazy" draggable="false">
   {%- else %}<span class="tier-song-none" aria-hidden="true">♪</span>{% endif %}

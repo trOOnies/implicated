@@ -85,6 +85,7 @@
       button.title = locked ? "Unlock it, to move it again" : "Lock it here: decided";
     }
     if (anchor && (!anchor.isConnected || songs.includes(anchor))) anchor = null;
+    showDecided(board);
     const count = board.querySelectorAll(".tier-song.locked").length;
     const label = board.querySelector("[data-locked-count]");
     if (label) label.textContent = count ? `(${count} locked)` : "";
@@ -112,6 +113,15 @@
         }
       })
       .catch(redraw);
+  }
+
+  // In locking mode, a level whose songs are all locked, or that has none, is decided: grey.
+  function showDecided(board) {
+    const locking = board.classList.contains("locking");
+    for (const tier of board.querySelectorAll(".tier")) {
+      const open = tier.querySelector(".tier-drop .tier-song:not(.locked)");
+      tier.classList.toggle("decided", locking && !open);
+    }
   }
 
   function place(board, songs, zone, position) {
@@ -327,5 +337,354 @@
   // A new board has nothing selected.
   document.addEventListener("htmx:afterSwap", () => {
     if (anchor && !anchor.isConnected) anchor = null;
+  });
+})();
+
+// Fast assign (`[data-fast-assign]`): gives each unassigned song (the unlocked ones, in board
+// order) its place by asking which of two songs is better, in a dialog over the board.
+//
+// It is a binary search over the ranked songs, top level first. It first matches the song against
+// the levels' borders (each level's top and bottom songs), the middle one first, to find its level.
+// When it falls inside a level, it goes on with that level's songs between its top and bottom.
+// When it falls between two levels, it would be a new border of either one, so a last question
+// asks which: "the bottom of Super, or the top of Meh?" (empty levels between them are options too).
+// Then it is placed there through the board's `data-place`, and the next song's questions start.
+// Undo takes back the last answer, Skip leaves the song unassigned. With no song to place, it
+// says so by the tools instead.
+(() => {
+  let run = null; // { song, levels, answers, skipped, placed, total, busy, note }
+  let dialog = null;
+
+  const boardNow = () => document.querySelector("#tier-board");
+
+  const songData = (element) => ({
+    id: element.dataset.song,
+    title: element.querySelector(".tier-song-name").textContent,
+    artist: element.dataset.artist || "",
+    album: element.dataset.album || "",
+    cover: element.querySelector("img")?.getAttribute("src") || null,
+  });
+
+  // The levels, top first, with their songs, as they are now.
+  const levelsOf = (board) =>
+    [...board.querySelectorAll(".tier")].map((tier, index) => {
+      const zone = tier.querySelector(".tier-drop");
+      const songs = [...zone.querySelectorAll(":scope > .tier-song")].map(songData);
+      return { id: zone.dataset.tier, name: tier.dataset.name, index, songs };
+    });
+
+  // The unassigned songs fast assign can place (not locked, not skipped).
+  const waiting = (board, skipped) =>
+    [...board.querySelectorAll(".tier-drop.unassigned > .tier-song:not(.locked)")].filter(
+      (song) => !skipped.has(song.dataset.song),
+    );
+
+  // The questions to place a song in `levels`: it yields each one, and takes its answer (for a
+  // match, whether the song is the better one; for a level, which option), then returns where the
+  // song goes, `{ level, position }`.
+  function* search(levels) {
+    const borders = [];
+    for (const level of levels) {
+      const { songs } = level;
+      if (!songs.length) continue;
+      borders.push({ song: songs[0], level, at: 0 });
+      if (songs.length > 1) borders.push({ song: songs.at(-1), level, at: songs.length - 1 });
+    }
+    // How many borders are better than the song.
+    let low = 0;
+    let high = borders.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (yield { kind: "match", against: borders[middle] }) high = middle;
+      else low = middle + 1;
+    }
+    const above = borders[low - 1];
+    const below = borders[low];
+    if (above && below && above.level === below.level) {
+      // Inside a level: on with its songs between the top and the bottom ones.
+      const { level } = above;
+      const inner = level.songs.slice(1, -1);
+      let from = 0;
+      let to = inner.length;
+      while (from < to) {
+        const middle = (from + to) >> 1;
+        if (yield { kind: "match", against: { song: inner[middle], level, at: middle + 1 } }) to = middle;
+        else from = middle + 1;
+      }
+      return { level, position: from + 1 };
+    }
+    // Between two levels (or above the first songs, or below the last): a new border of which?
+    const options = [];
+    if (above) options.push({ level: above.level, position: above.level.songs.length, where: "bottom", by: above.song });
+    const first = above ? above.level.index + 1 : 0;
+    const last = below ? below.level.index : levels.length;
+    for (const level of levels.slice(first, last)) options.push({ level, position: 0, where: "empty" });
+    if (below) options.push({ level: below.level, position: 0, where: "top", by: below.song });
+    if (options.length === 1) return options[0];
+    return options[yield { kind: "level", options }];
+  }
+
+  // The next question for the song, or (done) where it goes.
+  function step() {
+    const questions = search(run.levels);
+    let next = questions.next();
+    for (const answer of run.answers) next = questions.next(answer);
+    return next;
+  }
+
+  // Building the dialog
+
+  function element(tag, className, text) {
+    const made = document.createElement(tag);
+    if (className) made.className = className;
+    if (text !== undefined) made.textContent = text;
+    return made;
+  }
+
+  function cover(song, className) {
+    if (song.cover) {
+      const image = element("img", className);
+      image.src = song.cover;
+      image.alt = "";
+      return image;
+    }
+    return element("span", `${className} tier-fast-none`, "♪");
+  }
+
+  function badge(level, text) {
+    return element("span", `tier-fast-level tier-${level.index}`, text ?? level.name);
+  }
+
+  // A big button for a song: its cover, title, artist and album, and where it is.
+  function songOption(song, place) {
+    const button = element("button", "tier-fast-option");
+    button.type = "button";
+    button.append(cover(song, "tier-fast-cover"), element("strong", "tier-fast-title", song.title));
+    const by = [song.artist, song.album].filter(Boolean).join(" · ");
+    if (by) button.append(element("span", "small", by));
+    button.append(place);
+    return button;
+  }
+
+  // A big button for a level the song could be a new border of.
+  function levelOption(option) {
+    const { level, where, by } = option;
+    const button = element("button", "tier-fast-option tier-fast-place");
+    button.type = "button";
+    const text = where === "bottom" ? `Bottom of ${level.name}` : where === "top" ? `Top of ${level.name}` : level.name;
+    button.append(badge(level, text));
+    if (by) {
+      const line = element("span", "tier-fast-by small");
+      line.append(cover(by, "tier-fast-thumb"), element("span", "", `${where === "bottom" ? "below" : "above"} ${by.title}`));
+      button.append(line);
+    } else {
+      button.append(element("span", "small", "an empty level"));
+    }
+    return button;
+  }
+
+  function build() {
+    dialog = element("dialog", "tier-fast");
+    dialog.setAttribute("aria-labelledby", "tier-fast-title");
+    dialog.tabIndex = -1;
+    dialog.innerHTML = `
+      <div class="row tier-fast-head">
+        <h2 id="tier-fast-title">Fast assign</h2>
+        <span class="small" data-progress></span>
+        <span class="spacer"></span>
+        <button type="button" class="link" data-close aria-label="Close fast assign" title="Close (Escape)">✕</button>
+      </div>
+      <p class="tier-fast-question" data-question aria-live="polite"></p>
+      <div class="tier-fast-options" data-options></div>
+      <p class="warning" data-note hidden></p>
+      <div class="row wrap tier-fast-foot">
+        <button type="button" class="secondary" data-undo title="Take back the last answer (Backspace)">Undo</button>
+        <button type="button" class="secondary" data-skip title="Leave this song unassigned, and go on with the next one (S)">Skip song</button>
+        <span class="spacer"></span>
+        <span class="small" data-keys></span>
+      </div>`;
+    dialog.addEventListener("close", () => (run = null));
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog || event.target.closest("[data-close]")) dialog.close(); // the backdrop too
+      else if (event.target.closest("[data-undo]")) undo();
+      else if (event.target.closest("[data-skip]")) skip();
+      else {
+        const option = event.target.closest(".tier-fast-option");
+        if (option) answer(Number(option.dataset.answer));
+      }
+    });
+    dialog.addEventListener("keydown", (event) => {
+      if (!run || event.ctrlKey || event.metaKey || event.altKey) return;
+      const options = [...dialog.querySelectorAll(".tier-fast-option")];
+      let pick = null;
+      if (/^[1-9]$/.test(event.key)) pick = Number(event.key) - 1;
+      else if (event.key === "ArrowLeft" || event.key === "ArrowUp") pick = 0;
+      else if ((event.key === "ArrowRight" || event.key === "ArrowDown") && options.length === 2) pick = 1;
+      if (pick !== null && options[pick]) {
+        event.preventDefault();
+        options[pick].click();
+      } else if (event.key === "Backspace") {
+        event.preventDefault();
+        undo();
+      } else if (event.key === "s" || event.key === "S") {
+        event.preventDefault();
+        skip();
+      }
+    });
+    document.body.append(dialog);
+  }
+
+  function draw() {
+    const question = dialog.querySelector("[data-question]");
+    const options = dialog.querySelector("[data-options]");
+    const note = dialog.querySelector("[data-note]");
+    dialog.querySelector("[data-progress]").textContent =
+      `Song ${run.placed + 1} of ${run.total}` + (run.answers.length ? ` · ${run.answers.length} answered` : "");
+    dialog.querySelector("[data-undo]").disabled = run.busy || !run.answers.length;
+    dialog.querySelector("[data-skip]").disabled = run.busy;
+    note.hidden = !run.note;
+    note.textContent = run.note || "";
+    options.replaceChildren();
+    const next = step();
+    if (next.done) {
+      place(next.value);
+      return;
+    }
+    const ask = next.value;
+    options.classList.toggle("versus", ask.kind === "match");
+    if (ask.kind === "match") {
+      question.textContent = "Which is better?";
+      const song = songOption(run.song, element("span", "tier-fast-level tier-fast-new", "Unassigned"));
+      const { song: other, level, at } = ask.against;
+      const where = at === 0 ? `Top of ${level.name}` : at === level.songs.length - 1 ? `Bottom of ${level.name}` : level.name;
+      const against = songOption(other, badge(level, where));
+      song.dataset.answer = "1";
+      against.dataset.answer = "0";
+      options.append(song, element("span", "tier-fast-vs", "vs"), against);
+      dialog.querySelector("[data-keys]").textContent = "← or 1, → or 2";
+    } else {
+      question.textContent = "";
+      question.append(`Where does `, element("strong", "", run.song.title), ` go?`);
+      ask.options.forEach((option, index) => {
+        const button = levelOption(option);
+        button.dataset.answer = String(index);
+        options.append(button);
+      });
+      dialog.querySelector("[data-keys]").textContent =
+        ask.options.length === 2 ? "← or 1, → or 2" : `1 to ${ask.options.length}`;
+    }
+    dialog.focus();
+  }
+
+  function answer(value) {
+    if (!run || run.busy) return;
+    const next = step();
+    if (next.done) return;
+    run.answers.push(next.value.kind === "match" ? value === 1 : value);
+    run.note = null;
+    draw();
+  }
+
+  function undo() {
+    if (!run || run.busy || !run.answers.length) return;
+    run.answers.pop();
+    draw();
+  }
+
+  function skip() {
+    if (!run || run.busy) return;
+    run.skipped.add(run.song.id);
+    run.total -= 1;
+    run.note = null;
+    nextSong(boardNow());
+  }
+
+  // Put the song where it goes, then go on with the next one.
+  function place({ level, position }) {
+    const board = boardNow();
+    const { song } = run;
+    run.busy = true;
+    dialog.querySelector("[data-question]").textContent = `Placing ${song.title} in ${level.name}…`;
+    dialog.querySelector("[data-undo]").disabled = true;
+    dialog.querySelector("[data-skip]").disabled = true;
+    const values = { song_id: song.id, tier_id: level.id, position };
+    const after = () => {
+      if (!run) return;
+      run.busy = false;
+      const now = boardNow();
+      if (!now) {
+        dialog.close();
+        return;
+      }
+      const still = now.querySelector(`.tier-drop.unassigned > .tier-song[data-song="${CSS.escape(song.id)}"]`);
+      if (still) {
+        // Not placed: leave it, and say why.
+        run.skipped.add(song.id);
+        run.total -= 1;
+        run.note = `${song.title} could not be placed: ${now.querySelector(".error")?.textContent || "try again"}`;
+      } else {
+        run.placed += 1;
+      }
+      nextSong(now);
+    };
+    htmx.ajax("POST", board.dataset.place, { target: board, swap: "outerHTML", values }).then(after, after);
+  }
+
+  function nextSong(board) {
+    const songs = board ? waiting(board, run.skipped) : [];
+    if (!songs.length) {
+      finish();
+      return;
+    }
+    run.total = run.placed + songs.length;
+    run.song = songData(songs[0]);
+    run.levels = levelsOf(board);
+    run.answers = [];
+    draw();
+  }
+
+  function finish() {
+    const { placed, note } = run;
+    dialog.querySelector("[data-options]").replaceChildren();
+    dialog.querySelector("[data-keys]").textContent = "";
+    dialog.querySelector("[data-progress]").textContent = "";
+    dialog.querySelector("[data-undo]").disabled = true;
+    dialog.querySelector("[data-skip]").disabled = true;
+    dialog.querySelector("[data-question]").textContent = placed
+      ? `Done: ${placed} ${placed === 1 ? "song" : "songs"} placed.`
+      : "Done: no song placed.";
+    const shown = dialog.querySelector("[data-note]");
+    shown.hidden = !note;
+    shown.textContent = note || "";
+    run = null;
+    dialog.focus();
+  }
+
+  function warn(board, text) {
+    const warning = board.querySelector(".tier-warning");
+    if (!warning) return;
+    warning.textContent = text;
+    warning.hidden = false;
+  }
+
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest?.("[data-fast-assign]");
+    const board = button?.closest("#tier-board");
+    if (!board) return;
+    const warning = board.querySelector(".tier-warning");
+    if (warning) warning.hidden = true;
+    if (!waiting(board, new Set()).length) {
+      warn(
+        board,
+        board.querySelector(".tier-drop.unassigned > .tier-song")
+          ? "Every unassigned song is locked: unlock one to fast assign it."
+          : "Every song already has a level: there is no song to fast assign.",
+      );
+      return;
+    }
+    if (!dialog) build();
+    run = { skipped: new Set(), placed: 0, total: 0, busy: false, note: null };
+    dialog.showModal();
+    nextSong(board);
   });
 })();

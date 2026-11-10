@@ -517,11 +517,12 @@ fieldset.featuring-pick legend { font-size: .85rem; color: var(--muted); padding
 
 /* Tier lists: a colored label per level (red at the top, down the rainbow), its songs as album
    covers with the title on top, and the unassigned songs below */
-.tier-board {
+.tier-board, .tier-fast {
   --tier-song: 5.5rem;
   --tier-0: #ff7f7f; --tier-1: #ffbf7f; --tier-2: #ffdf7f; --tier-3: #ffff7f; --tier-4: #bfff7f;
   --tier-5: #7fff7f; --tier-6: #7fffff; --tier-7: #7fbfff; --tier-8: #bf9fff; --tier-9: #ff9fdf;
   --tier-ink: #1f1d1a;
+  --tier-decided: #c4c0b6;
 }
 .row.wrap.tier-tools { margin-bottom: .75rem; align-items: center; }
 .tier-make-playlist { margin: 0; gap: .35rem; }
@@ -534,6 +535,8 @@ fieldset.featuring-pick legend { font-size: .85rem; color: var(--muted); padding
 .tier-3 { --tier: var(--tier-3); } .tier-4 { --tier: var(--tier-4); } .tier-5 { --tier: var(--tier-5); }
 .tier-6 { --tier: var(--tier-6); } .tier-7 { --tier: var(--tier-7); } .tier-8 { --tier: var(--tier-8); }
 .tier-9 { --tier: var(--tier-9); }
+/* In locking mode, a level whose songs are all locked (or that has none) is decided: grey */
+.tier.decided { --tier: var(--tier-decided); }
 .tier-label {
   display: grid;
   place-items: center;
@@ -688,3 +691,70 @@ button.icon.danger:hover { background: var(--danger); color: var(--surface); }
 .tier-song.locked.selected { outline-color: var(--muted); }
 .tier-song.locked.selected::after { background: var(--muted); }
 .picking-locked .tier-selection { color: var(--muted); }
+
+/* Fast assign: a dialog over the tier list, asking which of two songs is better, in big buttons */
+.tier-fast {
+  width: min(46rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+.tier-fast::backdrop { background: rgb(0 0 0 / .45); }
+.tier-fast:focus { outline: none; }
+.tier-fast-head { align-items: baseline; gap: .75rem; }
+.tier-fast-head h2 { margin: 0; }
+.tier-fast-question { font-size: 1.2rem; font-weight: 600; text-align: center; margin: 1rem 0; }
+.tier-fast-options { display: flex; flex-wrap: wrap; justify-content: center; align-items: stretch; gap: .75rem; }
+.tier-fast-options:empty { display: none; }
+.tier-fast-options.versus { flex-wrap: nowrap; }
+.tier-fast-vs { align-self: center; font-weight: 700; color: var(--muted); }
+.tier-fast-option {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 18rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .35rem;
+  padding: .75rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  text-align: center;
+  font-weight: normal;
+}
+.tier-fast-option:hover, .tier-fast-option:focus-visible { border-color: var(--accent); background: var(--accent-soft); }
+.tier-fast-cover { width: 100%; max-width: 12rem; aspect-ratio: 1; object-fit: cover; border-radius: 6px; }
+.tier-fast-none { display: grid; place-items: center; background: var(--border); color: var(--muted); font-size: 3rem; }
+.tier-fast-title { font-size: 1.1rem; overflow-wrap: anywhere; }
+.tier-fast-option .small { overflow-wrap: anywhere; }
+.tier-fast-level {
+  padding: .15rem .6rem;
+  border-radius: 999px;
+  background: var(--tier, var(--border));
+  color: var(--tier-ink);
+  font-size: .85rem;
+  font-weight: 700;
+}
+.tier-fast-new { background: transparent; color: var(--muted); border: 1px dashed var(--muted); }
+.tier-fast-place { justify-content: center; min-height: 8rem; }
+.tier-fast-place .tier-fast-level { font-size: 1.25rem; padding: .4rem 1rem; }
+.tier-fast-by { display: flex; align-items: center; gap: .4rem; }
+.tier-fast-thumb { width: 2.5rem; height: 2.5rem; flex: none; object-fit: cover; border-radius: 4px; font-size: 1.1rem; }
+.tier-fast-foot { margin-top: 1rem; align-items: center; gap: .5rem; }
+.tier-fast-foot button:disabled { opacity: .4; cursor: not-allowed; }
+@media (max-width: 600px) {
+  .tier-fast { padding: .75rem; }
+  .tier-fast-options.versus { gap: .4rem; }
+  .tier-fast-option { padding: .5rem; }
+  .tier-fast-options:not(.versus) { flex-direction: column; }
+  .tier-fast-options:not(.versus) .tier-fast-option { max-width: none; flex: none; }
+  .tier-fast-place { min-height: 0; }
+  .tier-fast-place .tier-fast-level { font-size: 1.1rem; }
+  .tier-fast-head h2 { white-space: nowrap; }
+  .tier-fast-foot [data-keys] { display: none; }
+}
