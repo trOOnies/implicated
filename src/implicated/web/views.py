@@ -1681,7 +1681,11 @@ async def add_song_to_playlist(request: Request, lib: Lib, song_id: int):
 
 @router.get("/fragments/songs/{song_id}/lyrics")
 def song_lyrics(request: Request, lib: Lib, song_id: int, live: bool = False):
-    return render(request, "_lyrics.html", **_lyrics_context(lib, song_id, live=live))
+    was_explicit = found(lib.get_song, song_id).explicit
+    context = _lyrics_context(lib, song_id, live=live)
+    # New words with swearing mark the song as explicit; the title shows its badge then.
+    marked = context["s"].song.explicit and not was_explicit
+    return render(request, "_lyrics.html", trigger=("song-changed",) if marked else (), **context)
 
 
 @router.post("/songs/{song_id}/lyrics/open")

@@ -593,9 +593,11 @@ def _import_albums(
                 )
             if imported is not None:
                 seen.setdefault(imported.id, number)
+                # An ``explicit`` key in the file wins over what the lyrics suggest.
+                detect = not (isinstance(song, dict) and "explicit" in song)
                 used.update(
                     _import_song_files(
-                        lib, imported, inbox_files, f"{where} / {imported.title}", report
+                        lib, imported, inbox_files, f"{where} / {imported.title}", report, detect
                     )
                 )
 
@@ -631,10 +633,16 @@ def _copy(source: Path, target: Path | None, report: Report) -> bool:
 
 
 def _import_song_files(
-    lib: Library, song: Song, files: dict[str, dict[str, Path]], where: str, report: Report
+    lib: Library,
+    song: Song,
+    files: dict[str, dict[str, Path]],
+    where: str,
+    report: Report,
+    detect_explicit: bool = True,
 ) -> set[Path]:
     """Bring the song's lyrics, timed lyrics and tab from the inbox into the library, and set
-    the lyrics it shows. Returns the inbox files used."""
+    the lyrics it shows; swearing in new lyrics marks the song as explicit, unless
+    ``detect_explicit`` is false. Returns the inbox files used."""
     stem = lyrics_file_name(song.title).removesuffix(".txt")
     source = files["lyrics"].get(f"{stem}.txt".casefold())
     timed = files["timed"].get(f"{stem}.lrc".casefold())
@@ -668,11 +676,14 @@ def _import_song_files(
             report.tabs += 1
     if source is not None or timed is not None:
         before = song.lyrics
-        after = lib.set_lyrics(song.id, (text or "").strip() or words).lyrics
+        updated = lib.set_lyrics(song.id, (text or "").strip() or words, detect_explicit)
+        after = updated.lyrics
         if after:
             report.lyrics += 1
         if before != after and before is not None:
             report.changes.append(Change("song", where, "lyrics", before, after))
+        if updated.explicit and not song.explicit:
+            report.changes.append(Change("song", where, "explicit", False, True))
     return {p for p in (source, timed, tab) if p}
 
 

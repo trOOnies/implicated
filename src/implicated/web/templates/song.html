@@ -8,9 +8,10 @@
 {% endblock %}
 {% block content %}
 <p class="crumbs"><a href="/artists">Artists</a> / <a href="/artists/{{ artist.id }}">{{ artist.name }}</a> /{% if s.song.album_id %} <a href="/albums/{{ s.song.album_id }}">{{ s.album_title }}</a> /{% endif %}</p>
-{# Marks change when the song is added to or taken out of Favorites or Listen Later. #}
+{# Marks change when the song is added to or taken out of Favorites or Listen Later, and when
+   reloaded lyrics mark it as explicit. #}
 <div id="song-info-slot" hx-get="/fragments/songs/{{ s.song.id }}/info"
-     hx-trigger="playlists-changed from:body" hx-swap="innerHTML">
+     hx-trigger="playlists-changed from:body, song-changed from:body" hx-swap="innerHTML">
   {% include "_song_info.html" %}
 </div>
 <div class="layout">

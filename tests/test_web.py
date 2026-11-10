@@ -2453,3 +2453,20 @@ def test_explicit_songs(client: TestClient, client_lib: Library, web_sample: Sam
     added = {"artist_id": web_sample.artist_id, "title": "Bonus", "explicit": "on"}
     assert client.post("/songs", data=added).status_code == 200
     assert client_lib.find_song(web_sample.artist_id, None, "Bonus").explicit
+
+
+def test_reloaded_lyrics_mark_the_song_explicit(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    song_id = web_sample.song_ids[0]
+    page = client.get(f"/songs/{song_id}").text
+    assert "song-changed from:body" in page and 'class="explicit"' not in page
+    url = f"/fragments/songs/{song_id}/lyrics"
+    assert "HX-Trigger" not in client.get(url).headers
+
+    client_lib.lyrics_path(song_id).write_text("Take a fucking ride\n")
+    response = client.get(url)
+    assert response.headers["HX-Trigger"] == "song-changed"
+    assert client_lib.get_song(song_id).explicit
+    assert 'class="explicit"' in client.get(f"/fragments/songs/{song_id}/info").text
+    assert "HX-Trigger" not in client.get(url).headers  # already marked

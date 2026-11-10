@@ -438,6 +438,31 @@ def test_lyrics(lib: Library, sample: Sample):
         lib.set_lyrics(99, "words")
 
 
+def test_lyrics_with_swearing_mark_the_song_explicit(lib: Library, sample: Sample):
+    song_id = sample.song_ids[0]
+    lib.set_lyrics(song_id, "Take a ride up the hill")
+    assert not lib.get_song(song_id).explicit
+    assert lib.set_lyrics(song_id, "Take a fucking ride").explicit
+
+    # Unmarked by hand, it stays so while the words stay the same.
+    lib.update_song(song_id, SongIn(sample.artist_id, "Mysterons", sample.album_id))
+    assert not lib.set_lyrics(song_id, "Take a fucking ride\n").explicit
+    assert lib.set_lyrics(song_id, "Take a fucking ride, shit").explicit
+    # Clean words never unmark it, and detection can be turned off.
+    assert lib.set_lyrics(song_id, "Clean words").explicit
+    lib.update_song(song_id, SongIn(sample.artist_id, "Mysterons", sample.album_id))
+    assert not lib.set_lyrics(song_id, "Bullshit", detect_explicit=False).explicit
+
+
+def test_reloaded_lyrics_mark_the_song_explicit(files_lib: Library):
+    song_id = add_sample(files_lib).song_ids[0]
+    text = files_lib.lyrics_path(song_id)
+    lrc = text.with_suffix(".lrc")
+    lrc.write_text("[00:01.00]Timed shit")
+    text.write_text("")
+    assert files_lib.reload_lyrics(song_id).explicit  # from the .lrc file
+
+
 # Plays and favorites
 
 

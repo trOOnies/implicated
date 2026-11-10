@@ -755,3 +755,25 @@ def test_import_explicit(lib: Library, info: Path):
     albums.write_text(albums.read_text().replace("explicit: false", "explicit: maybe"))
     report = import_dir(lib, info)
     assert any("explicit must be true or false" in w for w in report.warnings)
+
+
+def test_lyrics_with_swearing_mark_the_song_explicit(lib: Library, info: Path):
+    songs = info / "bands" / "My Chemical Romance" / "songs"
+    (songs / "our lady of sorrows.txt").write_text("Get the fuck up\n")
+    (songs / "Sing.txt").write_text("Sing it out, motherfucker\n")
+    albums = info / "bands" / "My Chemical Romance" / "albums.yaml"
+    albums.write_text(
+        MCR_ALBUMS.replace("    duration: 4:30", "    duration: 4:30\n    explicit: false")
+    )
+
+    report = import_dir(lib, info)
+    mcr = lib.find_artist("My Chemical Romance")
+    sorrows = lib.find_song(
+        mcr.id,
+        lib.find_album(mcr.id, "I Brought You My Bullets, You Brought Me Your Love").id,
+        "Our Lady of Sorrows",
+    )
+    sing = lib.find_song(mcr.id, lib.find_album(mcr.id, "Danger Days").id, "Sing")
+    assert sorrows.explicit
+    assert not sing.explicit  # the file says so, and it wins
+    assert any(c.field == "explicit" and "Our Lady of Sorrows" in c.name for c in report.changes)

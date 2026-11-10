@@ -150,7 +150,10 @@ in file names (`<>:"\|?*`) left out, so `S/C/A/R/E/C/R/O/W` is `S_C_A_R_E_C_R_O_
 - 🎼 **Instrumentals** have `no_lyrics` (set in `albums.yaml`, or with the No lyrics box when adding
   or editing a song), so they never count as missing.
 - 🅴 **Explicit songs** have `explicit` (set in `albums.yaml`, or with the Explicit box when adding
-  or editing a song), and show an <kbd>E</kbd> by their title.
+  or editing a song), and show an <kbd>E</kbd> by their title. New or changed lyrics (a `.txt` or
+  `.lrc` file) with obvious swearing mark the song as explicit on their own, unless its
+  `albums.yaml` entry says `explicit`. Mild words (damn, hell, ass) don't count, and nothing ever
+  unmarks a song.
 
 ### ⏱️ Timed lyrics
 

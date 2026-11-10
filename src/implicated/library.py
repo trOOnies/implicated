@@ -14,6 +14,7 @@ from dataclasses import asdict, fields, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from implicated.explicit import is_explicit
 from implicated.lrc import TimedLine, plain_lyrics, read_lrc
 from implicated.models import (
     FORMATS,
@@ -1703,12 +1704,23 @@ class Library:
             raise ValueError(f"{path.name} is not UTF-8 text") from None
         return self.set_lyrics(song_id, text.strip() or plain_lyrics(self.timed_lyrics(song_id)))
 
-    def set_lyrics(self, song_id: int, lyrics: str | None) -> Song:
-        """Store the song's lyrics; blank text marks them as missing again."""
-        self.get_song(song_id)
-        lyrics = lyrics.strip() if lyrics else None
+    def set_lyrics(self, song_id: int, lyrics: str | None, detect_explicit: bool = True) -> Song:
+        """Store the song's lyrics; blank text marks them as missing again.
+
+        New lyrics with obvious swearing (see ``implicated.explicit``) mark the song as explicit,
+        unless ``detect_explicit`` is false. Only a change does it, so a song unmarked by hand
+        stays unmarked while its words stay the same, and nothing ever unmarks a song.
+        """
+        song = self.get_song(song_id)
+        lyrics = (lyrics.strip() if lyrics else None) or None
+        explicit = song.explicit or (
+            detect_explicit and lyrics != song.lyrics and is_explicit(lyrics)
+        )
         with self.connect() as conn:
-            conn.execute("UPDATE songs SET lyrics = ? WHERE id = ?", (lyrics or None, song_id))
+            conn.execute(
+                "UPDATE songs SET lyrics = ?, explicit = ? WHERE id = ?",
+                (lyrics, int(explicit), song_id),
+            )
         return self.get_song(song_id)
 
     def _song_values(self, data: SongIn) -> dict:
