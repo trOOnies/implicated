@@ -1,0 +1,25 @@
+{%- set entries = {
+  'pages': [('overview', 'Overview'), ('artists', 'Artists'), ('albums', 'Albums'),
+            ('songs', 'Songs'), ('playlists', 'Playlists'), ('budget', 'Budget'),
+            ('concerts', 'Concerts'), ('live-play', 'Live Play'), ('duo', 'Duo'),
+            ('import', 'Import'), ('exit', 'Exit')],
+  'actions': [('favorite', 'Favorite'), ('rating', 'Rating'), ('listen-later', 'Listen later'),
+              ('log-a-listen', 'Log a listen'), ('sorting', 'Sorting'),
+              ('edit-and-delete', 'Edit and delete'), ('song-lengths', 'Song lengths')],
+} %}
+<nav class="card help-index" id="index" aria-labelledby="index-title">
+  <h2 id="index-title">📑 Index</h2>
+  <ol>
+    {%- for s in sections %}
+    <li><a href="{{ s.url }}"{% if s.slug == section.slug %} aria-current="page"{% endif %}>{{ s.title|safe }}</a>
+      {%- if entries[s.slug] %}
+      <ul>
+        {%- for anchor, name in entries[s.slug] %}
+        <li><a href="{{ s.url }}#{{ anchor }}">{{ name }}</a></li>
+        {%- endfor %}
+      </ul>
+      {%- endif %}
+    </li>
+    {%- endfor %}
+  </ol>
+</nav>

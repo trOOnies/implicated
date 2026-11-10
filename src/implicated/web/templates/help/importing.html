@@ -1,0 +1,27 @@
+{% extends "help/_section.html" %}
+{% block section %}
+    <p>🗄️ <strong>The library is the one source of truth.</strong> Small edits (a year, a rating,
+    a new song) belong in the app. For bigger batches, like an artist's whole discography or a
+    list of concerts, prepare files in the <strong>inbox</strong>, <code>info/</code>, and import
+    them from the <a href="/import">Import</a> page (or <code>make import</code>). Nothing is
+    imported on its own, not even when the server starts, so what you edit in the app always
+    stays.</p>
+    <p>The inbox can hold a <code>bands.yaml</code> (artists, origin, genres, languages, a
+    description, a Wikipedia link and members), plus
+    <code>bands/&lt;artist&gt;/albums.yaml</code> (albums and their songs),
+    <code>bands/&lt;artist&gt;/band.jpg</code> (a picture of the artist),
+    <code>bands/&lt;artist&gt;/covers/</code> (cover images, matched to albums by file name),
+    <code>bands/&lt;artist&gt;/songs/&lt;song title&gt;.txt</code> (lyrics; a <code>/</code> in
+    the title becomes <code>_</code>, and <code>&lt;&gt;:"\|?*</code> are left out), optional
+    <code>&lt;song title&gt;.lrc</code> timed lyrics (a timestamp per line, like
+    <code>[01:23.40]Words</code>) and <code>bands/&lt;artist&gt;/tabs/</code> Guitar Pro files.
+    A <code>concerts.csv</code> and <code>tours.csv</code> are added to yours, and a
+    <em>Download my data</em> file named <code>userdata.json</code> brings back your marks.</p>
+    <p>🧩 Records are matched by their <code>uid</code> (exports carry one, so renamed records are
+    still found) or else by name. <strong>A key in a file wins; a key left out keeps what you
+    have</strong>, so a file only needs what it changes. Ratings, notes, favorites, CD and vinyl
+    ownership, videos, listen later marks, playlists and plays are never touched by the YAML.
+    Lyrics, timed lyrics and tabs are copied into the library's own folder
+    (<code>local/bands/</code>), where the song page's buttons open them; an empty lyrics file in
+    the inbox changes nothing. A broken file stops the whole import, and nothing changes.</p>
+{% endblock %}

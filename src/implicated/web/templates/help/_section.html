@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% set active = 'help' %}
+{% block title %}{% if section.slug %}{{ section.title|safe }} · {% endif %}Help{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Help</h1></div>
+<div class="help">
+  {% include "help/_index.html" %}
+  <section class="card help-section" id="{{ section.slug or 'about' }}">
+    {%- block lead %}{% endblock %}
+    <h2>{{ section.emoji }} {{ section.title|safe }}</h2>
+    {%- block section %}{% endblock %}
+    {% include "help/_nav.html" %}
+  </section>
+</div>
+{% endblock %}

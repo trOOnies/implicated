@@ -1,0 +1,16 @@
+{% extends "help/_section.html" %}
+{% block lead %}
+    <img class="help-logo" src="{{ url_for('static', path='favicon.svg') }}" width="72" height="72"
+         alt="The implicated logo: a vinyl record with a gold label carrying an i">
+{% endblock %}
+{% block section %}
+    <p>A <strong>personal library</strong> of the artists, albums and songs you like. Everything
+    you add is part of the library straight away; listening to it is optional.</p>
+    <p>It's a tracker of your <strong>listening habits and likes</strong>, not a music player or
+    a music store. implicated <strong>does not host, upload or ship any copyrighted
+    material</strong>: the artists, albums, songs, covers, lyrics and tabs in it are the ones you
+    provide, from your own sources. And it <strong>does not play your music</strong>: listen in
+    the apps and services where you have lawful access to it, then log your listens here. (Videos
+    you link play in YouTube's own embedded player, and the tab player synthesizes the notes of a
+    tab file, not a recording.)</p>
+{% endblock %}

@@ -442,6 +442,7 @@ def test_help_page_and_layout(client: TestClient):
     page = client.get("/help")
     assert page.status_code == 200
     assert "Importing from files" in page.text
+    assert "does not host, upload or ship any copyrighted" in page.text
     assert 'class="help-logo" src="http://testserver/static/favicon.svg"' in page.text
     assert 'href="/help" aria-current="page"' in page.text
     assert 'href="/docs">API</a>' in page.text
@@ -1185,17 +1186,45 @@ def test_song_rows_show_the_album_cover(
 
 def test_help_index_links_to_every_section(client: TestClient):
     page = client.get("/help").text
-    assert 'id="index"' in page
-    targets = re.findall(r'href="#([\w-]+)"', page)
-    assert {"pages", "albums", "live-play", "actions", "rating", "importing", "license"} <= set(
-        targets
-    )
-    for target in targets:
-        assert page.count(f'id="{target}"') == 1, target
+    assert 'id="index"' in page and "What is implicated?" in page
+    links = re.findall(r'href="(/help/[\w-]+)(?:#([\w-]+))?"', page)
+    assert {path for path, _ in links} == {
+        "/help/pages", "/help/actions", "/help/importing", "/help/backups", "/help/api",
+        "/help/license",
+    }  # fmt: skip
+    assert {"albums", "live-play", "rating"} <= {anchor for _, anchor in links}
+    for path, anchor in links:
+        section = client.get(path)
+        assert section.status_code == 200, path
+        assert 'href="/help" aria-current="page"' in section.text
+        assert 'id="index"' in section.text  # every page has the index
+        assert f'href="{path}" aria-current="page"' in section.text  # marking its own entry
+        if anchor:
+            assert section.text.count(f'id="{anchor}"') == 1, (path, anchor)
+    assert client.get("/help/nope").status_code == 404
+
+
+def test_help_sections_link_to_their_neighbors(client: TestClient):
+    landing = client.get("/help").text
+    assert "<h2>🎧 What is implicated?</h2>" in landing  # the first page, not just an index
+    assert '<a href="/help" aria-current="page">What is implicated?</a>' in landing
+    assert 'rel="prev"' not in landing
+    assert 'href="/help/pages" rel="next"><span>Next →</span>Pages</a>' in landing
+    page = client.get("/help/actions").text
+    assert "<title>Everyday actions · Help · implicated</title>" in page
+    assert 'href="/help/pages" rel="prev"><span>← Previous</span>Pages</a>' in page
+    assert 'href="/help/importing" rel="next"><span>Next →</span>Importing from files</a>' in page
+    assert '↑ Index' not in page
+    first = client.get("/help/pages").text
+    assert 'href="/help" rel="prev"><span>← Previous</span>What is implicated?</a>' in first
+    assert 'href="/help/backups"' in first
+    last = client.get("/help/license").text
+    assert 'rel="next"' not in last
+    assert 'href="/help/api" rel="prev"' in last
 
 
 def test_help_mentions_the_license_and_repo(client: TestClient):
-    page = client.get("/help").text
+    page = client.get("/help/license").text
     assert "GNU General Public License v3.0" in page
     assert 'href="https://github.com/trOOnies/implicated"' in page
 

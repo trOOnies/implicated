@@ -1,0 +1,27 @@
+{% extends "help/_section.html" %}
+{% block section %}
+    <dl>
+      <dt id="favorite"><span class="symbol">♡</span> Favorite</dt>
+      <dd>Mark an artist, album or song. Favorites are listed first and on the overview.</dd>
+      <dt id="rating"><span class="symbol">★</span> Rating</dt>
+      <dd>Click the stars of an artist, album or song to rate it from <strong>1 to 5</strong>;
+      click its current rating again to take it away.</dd>
+      <dt id="listen-later"><span class="symbol">⧖</span> Listen later</dt>
+      <dd>Mark an artist, album or song to listen to later; the overview lists them, and the
+      Albums and Songs pages can show only them. A song loses its mark once you log a listen of
+      it.</dd>
+      <dt id="log-a-listen"><span class="symbol">▶</span> Log a listen</dt>
+      <dd>Records that you played a song right now; it feeds the play charts and history. Song
+      pages have a <em>▶ Played</em> button too, and on an album page it logs a listen of every
+      song on the album.</dd>
+      <dt id="sorting">↕️ Sorting</dt>
+      <dd>Click a column header of a table to sort by it; click it again to reverse the
+      order. On the paged Songs list this sorts the page in view; the order selector above it
+      sorts all of them.</dd>
+      <dt id="edit-and-delete">✏️ Edit and delete</dt>
+      <dd>Buttons on each artist, album and song. Deleting an artist <strong>also deletes their
+      albums, songs and plays</strong>.</dd>
+      <dt id="song-lengths">⏱️ Song lengths</dt>
+      <dd>Type them as <code>3:45</code> or as plain seconds.</dd>
+    </dl>
+{% endblock %}

@@ -1,0 +1,4 @@
+<nav class="help-nav" aria-label="Help sections">
+  {% if prev %}<a class="help-prev" href="{{ prev.url }}" rel="prev"><span>← Previous</span>{{ prev.title|safe }}</a>{% else %}<span></span>{% endif %}
+  {% if next %}<a class="help-next" href="{{ next.url }}" rel="next"><span>Next →</span>{{ next.title|safe }}</a>{% else %}<span></span>{% endif %}
+</nav>

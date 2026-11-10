@@ -356,9 +356,44 @@ def view_fragment(request: Request, lib: Lib):
     return render(request, "_view.html", **_view_context(lib))
 
 
+# Help: one page per section, in reading order, each with the index and links to the section
+# before and after it. The first one, What is implicated?, is /help itself.
+HELP_SECTIONS = tuple(
+    {"slug": slug, "emoji": emoji, "title": title, "url": f"/help/{slug}" if slug else "/help"}
+    for slug, emoji, title in (
+        ("", "🎧", "What is implicated?"),
+        ("pages", "🗺️", "Pages"),
+        ("actions", "✨", "Everyday actions"),
+        ("importing", "📥", "Importing from files"),
+        ("backups", "📦", "Backups and exports"),
+        ("api", "🔌", "API"),
+        ("license", "📦", "Source &amp; license"),
+    )
+)
+
+
+def _help_page(request: Request, i: int) -> HTMLResponse:
+    return render(
+        request,
+        f"help/{HELP_SECTIONS[i]['slug'] or 'about'}.html",
+        sections=HELP_SECTIONS,
+        section=HELP_SECTIONS[i],
+        prev=HELP_SECTIONS[i - 1] if i else None,
+        next=HELP_SECTIONS[i + 1] if i + 1 < len(HELP_SECTIONS) else None,
+    )
+
+
 @router.get("/help")
 def help_page(request: Request):
-    return render(request, "help.html")
+    return _help_page(request, 0)
+
+
+@router.get("/help/{slug}")
+def help_section(request: Request, slug: str):
+    for i, section in enumerate(HELP_SECTIONS):
+        if i and section["slug"] == slug:
+            return _help_page(request, i)
+    raise HTTPException(404, "No such help section")
 
 
 # Duo: your data, and recommendations from it and a friend's
