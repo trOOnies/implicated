@@ -6,6 +6,19 @@ implicated is a personal app for keeping track of the artists, albums and songs 
 lyrics, play along with guitar tabs, plan your next record haul and never miss a concert.
 Everything lives on your own computer. ✨
 
+![The Overview page in dark mode: totals, the latest releases (covers blanked out), and charts of songs per artist, genres, decades and ratings](docs/implicated.png)
+
+## ⚖️ A tracker, not a player
+
+implicated keeps track of your **listening habits and likes**: what you love, what you own and
+what you've played. It is not a music player or a music store.
+
+- 🚫 **It does not host, upload or ship any copyrighted material.** The artists, albums, songs,
+  covers, lyrics and tabs in your library are the ones **you** provide, from your own sources.
+- 🎧 **It does not play your music.** Listen in the apps and services where you have lawful
+  access to it, then log your listens here. (Videos you link play in YouTube's own embedded
+  player, and the tab player synthesizes the notes of a tab file, not a recording.)
+
 ## 🚀 Quick start
 
 ```sh
