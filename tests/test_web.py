@@ -865,6 +865,10 @@ def test_tier_list_pages(client: TestClient, client_lib: Library, web_sample: Sa
 
     page = client.get(f"/playlists/{pid}/tiers").text
     assert "has no tier list yet" in page and "Make a tier list" in page
+    # How it works is in Help, which the page only links to.
+    assert 'href="/help/pages#tier-lists"' in page and "Drag the songs" not in page
+    help_page = client.get("/help/pages").text
+    assert 'id="tier-lists"' in help_page and "Fast assign" in help_page
     assert client.get(f"/fragments/playlists/{pid}/tiers").status_code == 404
     created = client.post(f"/playlists/{pid}/tiers")
     assert created.headers["hx-redirect"] == f"/playlists/{pid}/tiers"

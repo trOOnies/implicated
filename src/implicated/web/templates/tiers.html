@@ -14,22 +14,8 @@
             hx-confirm="Delete the tier list of {{ tier_list.name }}? Its songs stay as they are.">Delete tier list</button>
     {% endif %}
   </div>
-  {% if tier_list.tiers %}
-  <p class="small">Drag the songs of {{ tier_list.name }} into the levels, and between them. To move many at once,
-    select them: click each one (or press Enter on it), Shift+click to select every song between two, or drag a box
-    around them from an empty spot. Then drag one of them, or click a level (or press Enter on it) to put them last
-    there. Escape clears the selection. Click a level's name to rename it.
-    In <strong>locking mode</strong>, the lock on a song (shown when you point at it) locks it where it
-    is, as decided (its cover and lock go grey): it can't be moved until unlocked, though other songs can go
-    anywhere around it.
-    A selection is of unlocked songs (gold) or of locked ones (grey), never both: the lock on any
-    of them locks, or unlocks, them all.
-    Turn locking mode off to move every song freely; on again, your locked songs are locked where
-    they are then. <strong>Make playlist</strong> turns the ranking into a playlist: pick the last level to take,
-    and it holds the songs from the top level down to that one, in order. <strong>Fast assign</strong> places
-    the unassigned songs one at a time, by asking you which of two songs is better until each finds its place.
-    In locking mode, a level whose songs are all locked (or that has none) goes grey.</p>
-  {% else %}
+  <p class="small"><a href="/help/pages#tier-lists">How tier lists work</a></p>
+  {% if not tier_list.tiers %}
   <p class="small">{{ tier_list.name }} has no tier list yet.</p>
   <div class="row">
     <button type="button" hx-post="{{ owner_url }}/tiers" hx-swap="none">Make a tier list</button>
