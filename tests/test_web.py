@@ -571,6 +571,15 @@ def test_album_play_button_clears_its_listen_later(
     assert not client_lib.get_album(web_sample.album_id).listen_later
 
 
+def test_dark_mode_is_the_default_with_a_switch_by_exit(client: TestClient):
+    page = client.get("/").text
+    assert '<html lang="en" data-theme="dark">' in page
+    assert 'localStorage.getItem("theme") === "light"' in page
+    theme = page.index('class="theme"')
+    assert theme < page.index('class="exit"')  # to the left of Exit
+    assert 'class="moon"' in page and 'class="sun"' in page
+
+
 def test_playing_clears_listen_later(client: TestClient, client_lib: Library, web_sample: Sample):
     song_id = web_sample.song_ids[0]
     client.post(f"/later/song/{song_id}")

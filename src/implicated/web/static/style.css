@@ -11,23 +11,23 @@
   --fav: #c2185b;
   --artist-bg: .13;
   --radius: 10px;
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #161512;
-    --surface: #211f1b;
-    --text: #ece8df;
-    --muted: #a39d90;
-    --border: #36322b;
-    --accent: #e0c04a;
-    --accent-soft: #3d3412;
-    --danger: #f2827a;
-    --warn: #f0b45a;
-    --fav: #f48fb1;
-    --artist-bg: .2;
-  }
+/* Dark mode, the default: base.html sets it, and the header's moon/sun button switches. */
+:root[data-theme="dark"] {
+  --bg: #161512;
+  --surface: #211f1b;
+  --text: #ece8df;
+  --muted: #a39d90;
+  --border: #36322b;
+  --accent: #e0c04a;
+  --accent-soft: #3d3412;
+  --danger: #f2827a;
+  --warn: #f0b45a;
+  --fav: #f48fb1;
+  --artist-bg: .2;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -61,9 +61,9 @@ p { margin: .25rem 0; }
 .site-header nav a { color: var(--muted); }
 .site-header nav [aria-current] { color: var(--text); font-weight: 600; }
 /* Pinned to the top right corner whatever the width; plain, to stay out of the way */
-.site-header { position: relative; padding-right: 4rem; flex-wrap: wrap; row-gap: .5rem; }
+.site-header { position: relative; padding-right: 6.5rem; flex-wrap: wrap; row-gap: .5rem; }
 .site-header nav { flex-wrap: wrap; }
-.site-header .exit {
+.site-header .exit, .site-header .theme {
   position: absolute;
   top: .6rem;
   right: 1rem;
@@ -78,7 +78,12 @@ p { margin: .25rem 0; }
   border-radius: 3px;
   color: var(--muted);
 }
-.site-header .exit:hover, .site-header .exit:focus-visible { color: var(--text); border-color: var(--muted); }
+.site-header .exit:hover, .site-header .exit:focus-visible,
+.site-header .theme:hover, .site-header .theme:focus-visible { color: var(--text); border-color: var(--muted); }
+/* Left of Exit: the moon in dark mode, the sun in light mode. */
+.site-header .theme { right: 3.5rem; }
+.site-header .theme .sun, :root[data-theme="dark"] .site-header .theme .moon { display: block; }
+.site-header .theme .moon, :root[data-theme="dark"] .site-header .theme .sun { display: none; }
 .goodbye { max-width: 32rem; margin: 4rem auto; text-align: center; }
 
 main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 2rem; }
