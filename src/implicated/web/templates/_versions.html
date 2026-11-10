@@ -1,0 +1,51 @@
+{# The Same song card of a song's page: the songs merged with it, which count as one, and the
+   songs it could be merged with. Needs the context of `_versions_context`. #}
+{% set target %}hx-target="#song-versions" hx-swap="outerHTML"{% endset %}
+{% macro version(v, artist=True) -%}
+<div class="version-name">{% if v.song.id == page_song %}<strong>{{ v.song.title }}</strong>{% else %}<a href="/songs/{{ v.song.id }}">{{ v.song.title }}</a>{% endif %}
+  <span class="muted small">·{% if artist %} {{ v.artist_name }} ·{% endif %} {% if v.album_title %}{{ v.album_title }}{% else %}single{% endif %}</span></div>
+{%- endmacro %}
+{% macro merge_list(songs) %}
+<ul class="versions">
+  {% for v in songs %}
+  <li>{{ version(v) }}
+    <div class="version-actions"><button type="button" class="link" hx-post="/songs/{{ page_song }}/merge" hx-vals='{"song_id": "{{ v.song.id }}"}' {{ target }}
+            title="Count it as this same song">Merge</button></div></li>
+  {% endfor %}
+</ul>
+{% endmacro %}
+<section id="song-versions" class="card">
+  <h2>Same song</h2>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  {% if versions %}
+  <p class="small">These count as one song, with {{ versions[0].play_count }} {{ 'play' if versions[0].play_count == 1 else 'plays' }}
+    together: they share their plays, favorite and listen later marks and rating, and only the main
+    one shows in Favorites, Listen Later, the Overview and tier lists.</p>
+  <ul class="versions">
+    {% for v in versions %}
+    <li>{{ version(v, artist=v.song.artist_id != versions[0].song.artist_id) }}
+      <div class="version-actions">
+        {% if loop.first %}<span class="tag">main</span>
+        {% else %}<button type="button" class="link" hx-post="/songs/{{ v.song.id }}/main" hx-vals='{"page": "{{ page_song }}"}' {{ target }}
+                          title="Make this version the main one">Make main</button>{% endif %}
+        <button type="button" class="link danger" hx-post="/songs/{{ v.song.id }}/unmerge" hx-vals='{"page": "{{ page_song }}"}' {{ target }}
+                title="Count this version as a song of its own again">Unmerge</button>
+      </div></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="small">The same song on another album (a deluxe edition, say) can count as one with this
+    one: each stays on its album, sharing plays, marks and rating.</p>
+  {% endif %}
+  {% if suggestions %}
+  <h3 class="members-head">Same title</h3>
+  {{ merge_list(suggestions) }}
+  {% endif %}
+  <form class="stack members-head" hx-get="/fragments/songs/{{ page_song }}/versions" {{ target }}>
+    <label>Find another song <input type="search" name="q" value="{{ merge_q }}" autocomplete="off"
+           placeholder="Title, artist or album, then Enter"></label>
+  </form>
+  {% if merge_too_short %}<p class="small">Type at least {{ min_search }} characters.</p>
+  {% elif merge_q and not merge_results %}<p class="empty">No other song matches.</p>
+  {% elif merge_results %}{{ merge_list(merge_results) }}{% endif %}
+</section>

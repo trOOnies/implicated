@@ -1,0 +1,67 @@
+{# An album page's Editions card: the albums merged with it, merging it with another of the
+   artist's albums, and its songs left unmerged. Needs the context of `_album_merge_context`. #}
+{% set target %}hx-target="#album-merge" hx-swap="outerHTML"{% endset %}
+{% if editions or merge_choices or message %}
+<section id="album-merge" class="card">
+  <h2>Editions</h2>
+  {% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  {% if editions %}
+  <p class="small">These count as one album: they share their favorite and listen later marks and
+    rating, and only the main one shows in the Overview lists.</p>
+  <ul class="versions">
+    {% for a in editions %}
+    <li><div class="version-name">{% if a.id == album_id %}<strong>{{ a.title }}</strong>{% else %}<a href="/albums/{{ a.id }}">{{ a.title }}</a>{% endif %}
+        {% if a.year %}<span class="muted small">· {{ a.year }}</span>{% endif %}</div>
+      <div class="version-actions">
+        {% if loop.first %}<span class="tag">main</span>
+        {% else %}<button type="button" class="link" hx-post="/albums/{{ a.id }}/main" hx-vals='{"page": "{{ album_id }}"}' {{ target }}
+                          title="Make this edition the main one">Make main</button>{% endif %}
+        <button type="button" class="link danger" hx-post="/albums/{{ a.id }}/unmerge" hx-vals='{"page": "{{ album_id }}"}' {{ target }}
+                hx-confirm="Unmerge {{ a.title }}? Its songs are unmerged from the other editions' too."
+                title="Count this edition as an album of its own again">Unmerge</button>
+      </div></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if unmerged %}
+  <h3 class="members-head">Songs not merged</h3>
+  <p class="small">No song of the same name on the other editions. Pick the one each is, if any:
+    the main edition's stays the main version.</p>
+  <ul class="versions">
+    {% for s, candidates in unmerged %}
+    <li><div class="version-name"><a href="/songs/{{ s.song.id }}">{{ s.song.title }}</a></div>
+      {% if candidates %}
+      <form class="version-actions" hx-post="/albums/{{ album_id }}/merge-song" {{ target }}>
+        <input type="hidden" name="song_id" value="{{ s.song.id }}">
+        <select name="other_id" aria-label="The song {{ s.song.title }} is">
+          {% for c in candidates %}<option value="{{ c.song.id }}">{{ c.song.title }} · {{ c.album_title }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="link" title="Count them as the same song">Merge</button>
+      </form>
+      {% else %}<div class="version-actions small muted">Every song of the other editions is merged already.</div>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if merge_choices %}
+  <form class="stack members-head" hx-post="/albums/{{ album_id }}/merge" {{ target }}
+        hx-confirm="Merge the albums? Their songs of the same name are merged too, the same way round.">
+    <label>Merge with
+      <select name="other">
+        {% for other, alike in merge_choices %}<option value="{{ other.id }}">{{ other.title }}{% if other.year %} ({{ other.year }}){% endif %} · {{ alike }} {{ 'song' if alike == 1 else 'songs' }} of the same name</option>{% endfor %}
+      </select></label>
+    <div class="row wrap">
+      <button type="submit" name="direction" value="into" title="This album becomes another edition of the one picked, and its songs other versions of that one's">Into that one</button>
+      <button type="submit" name="direction" value="from" class="secondary" title="The album picked becomes another edition of this one, and its songs other versions of this one's">Into this one</button>
+    </div>
+    <p class="small">Pick which one is the main edition: its songs are the main versions of the songs
+      of the same name.</p>
+  </form>
+  {% endif %}
+</section>
+{% else %}
+<div id="album-merge" hidden></div>
+{% endif %}

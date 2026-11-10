@@ -337,11 +337,11 @@ def _view_context(lib: Library) -> dict:
         "overview_list": OVERVIEW_LIST,
         "latest_albums": lib.list_albums(order="latest", limit=OVERVIEW_LIST + 1),
         "favorite_artists": [a for a in artists if a.artist.favorite],
-        "favorite_albums": [a for a in albums if a.album.favorite],
-        "favorite_songs": lib.list_songs(favorites=True, order="plays"),
+        "favorite_albums": [a for a in albums if a.album.favorite and not a.album.main_id],
+        "favorite_songs": lib.list_songs(favorites=True, mains_only=True, order="plays"),
         "later_artists": [a for a in artists if a.artist.listen_later],
-        "later_albums": [a for a in albums if a.album.listen_later],
-        "later_songs": lib.list_songs(listen_later=True),
+        "later_albums": [a for a in albums if a.album.listen_later and not a.album.main_id],
+        "later_songs": lib.list_songs(listen_later=True, mains_only=True),
         "recent": lib.recent_plays(8),
     }
 
@@ -621,8 +621,19 @@ def artist_edit(request: Request, lib: Lib, artist_id: int):
 
 
 @router.get("/fragments/artists/{artist_id}/albums")
-def artist_albums(request: Request, lib: Lib, artist_id: int):
-    return render(request, "_albums.html", albums=lib.list_albums(artist_id), show_artist=False)
+def artist_albums(
+    request: Request, lib: Lib, artist_id: int, kind: str | None = None, mains: str | None = None
+):
+    """The artist's discography, of one ``kind`` of album when given, and with ``mains`` only
+    the albums not merged into another (main editions and albums merged with none)."""
+    found(lib.get_artist, artist_id)
+    albums = [
+        a for a in lib.list_albums(artist_id)
+        if (not kind or a.album.kind == kind) and not (mains and a.album.main_id)
+    ]  # fmt: skip
+    return render(
+        request, "_albums.html", albums=albums, show_artist=False, filtered=bool(kind or mains)
+    )
 
 
 @router.get("/fragments/artists/{artist_id}/featured")
@@ -942,10 +953,15 @@ def _album_context(lib: Library, album_id: int) -> dict:
         "artist": lib.get_artist(album.artist_id),
         "songs": songs,
         "total_seconds": sum(s.song.duration_seconds or 0 for s in songs),
-        "play_count": sum(s.play_count for s in songs),
+        # The album's own listens: its songs' play counts also count their merged versions'.
+        "play_count": next(
+            (a.play_count for a in lib.list_albums(album.artist_id) if a.album.id == album_id), 0
+        ),
         "lyrics_count": sum(1 for s in songs if s.song.lyrics and not s.song.no_lyrics),
         "no_lyrics_count": sum(1 for s in songs if s.song.no_lyrics),
         "has_tier_list": lib.has_tier_list("album", album_id),
+        "main_edition": lib.get_album(album.main_id) if album.main_id else None,
+        "edition_count": len(lib.album_editions(album_id)),
     }
 
 
@@ -955,6 +971,7 @@ def album_page(request: Request, lib: Lib, album_id: int):
         request,
         "album.html",
         **_album_context(lib, album_id),
+        **_album_merge_context(lib, album_id),
     )
 
 
@@ -1261,11 +1278,185 @@ def song_page(request: Request, lib: Lib, song_id: int):
         **_song_info_context(lib, song_id),
         **_song_playlists_context(lib, song_id),
         **_tab_context(lib, song_id),
+        **_versions_context(lib, song_id),
         videos=lib.list_videos(song_id),
         lyrics_path=context["lyrics_path"],
         lrc_path=context["lrc_path"],
         error=context.get("error"),
     )
+
+
+# Merged songs (see ``Library.merge_songs``): the Same song card of a song's page, and an
+# album page's Merge with another edition card.
+
+# What merging changes: plays, marks and ratings show on song lists, the song's own page and the
+# built-in playlists.
+MERGE_TRIGGER = ("songs-changed", "plays-changed", "playlists-changed", "library-changed")
+
+
+def _versions_context(lib: Library, song_id: int, q: str | None = None, **extra) -> dict:
+    """The Same song card of ``song_id``: the songs merged with it, the artist's other songs
+    with its title, and the songs matching the search ``q`` (from ``MIN_SEARCH`` characters)."""
+    versions = found(lib.song_versions, song_id)
+    group = {v.song.id for v in versions}
+    too_short = bool(q) and len("".join(q.split())) < MIN_SEARCH
+    results = []
+    if q and not too_short:
+        results = [s for s in lib.list_songs(q=q) if s.song.id not in group][:SONG_RESULTS]
+    return {
+        "page_song": song_id,
+        "versions": versions if len(versions) > 1 else [],
+        "suggestions": lib.merge_suggestions(song_id),
+        "merge_q": q or "",
+        "merge_too_short": too_short,
+        "merge_results": results,
+        "min_search": MIN_SEARCH,
+        **extra,
+    }
+
+
+@router.get("/fragments/songs/{song_id}/versions")
+def song_versions(request: Request, lib: Lib, song_id: int, q: str | None = None):
+    return render(request, "_versions.html", **_versions_context(lib, song_id, q))
+
+
+@router.post("/songs/{song_id}/merge")
+async def merge_song(request: Request, lib: Lib, song_id: int):
+    """Merge another song (``song_id`` of the form) with this one, whose main version stays the
+    main one."""
+    form = await request.form()
+    other = _id(form, "song_id")
+    if other is None:
+        raise HTTPException(422, "pick a song")
+    try:
+        found(lib.merge_songs, song_id, [other])
+    except ValueError as exc:
+        context = _versions_context(lib, song_id, error=str(exc))
+        return render(request, "_versions.html", status_code=422, **context)
+    return render(
+        request, "_versions.html", trigger=MERGE_TRIGGER, **_versions_context(lib, song_id)
+    )
+
+
+@router.post("/songs/{song_id}/main")
+async def make_main_song(request: Request, lib: Lib, song_id: int):
+    """Make the song the main version; answers with the card of the page it was done from
+    (``page``)."""
+    form = await request.form()
+    try:
+        found(lib.make_main, song_id)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    page = _id(form, "page") or song_id
+    return render(request, "_versions.html", trigger=MERGE_TRIGGER, **_versions_context(lib, page))
+
+
+@router.post("/songs/{song_id}/unmerge")
+async def unmerge_song(request: Request, lib: Lib, song_id: int):
+    """Take the song out of the songs it is merged with; answers with the card of the page it
+    was done from (``page``)."""
+    form = await request.form()
+    try:
+        found(lib.unmerge_song, song_id)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    page = _id(form, "page") or song_id
+    return render(request, "_versions.html", trigger=MERGE_TRIGGER, **_versions_context(lib, page))
+
+
+def _album_merge_context(lib: Library, album_id: int, **extra) -> dict:
+    """An album page's Editions card: the albums merged with it, the artist's albums it can be
+    merged with, and its songs merged with none of the other editions'."""
+    editions = found(lib.album_editions, album_id)
+    return {
+        "album_id": album_id,
+        "editions": editions if len(editions) > 1 else [],
+        "merge_choices": lib.album_merge_choices(album_id),
+        "unmerged": lib.unmerged_songs(album_id),
+        **extra,
+    }
+
+
+def _album_merge(request: Request, lib: Library, album_id: int, **extra) -> HTMLResponse:
+    """The Editions card after a change; the other sections of the page listen for it."""
+    return render(
+        request,
+        "_album_merge.html",
+        trigger=(*MERGE_TRIGGER, "albums-changed"),
+        **_album_merge_context(lib, album_id, **extra),
+    )
+
+
+@router.get("/fragments/albums/{album_id}/merge")
+def album_merge(request: Request, lib: Lib, album_id: int):
+    return render(request, "_album_merge.html", **_album_merge_context(lib, album_id))
+
+
+@router.post("/albums/{album_id}/merge")
+async def merge_album(request: Request, lib: Lib, album_id: int):
+    """Merge the album with another of the artist's (``other``): into it when ``direction`` is
+    ``into`` (the other one is the main edition), else the other one into this one. Songs of
+    equal names are merged the same way round."""
+    form = await request.form()
+    other_id = _id(form, "other")
+    if other_id is None:
+        context = _album_merge_context(lib, album_id, error="Pick an album to merge with.")
+        return render(request, "_album_merge.html", status_code=422, **context)
+    other = found(lib.get_album, other_id)
+    into = form.get("direction") == "into"
+    try:
+        merged = found(lib.merge_albums, *((album_id, other_id) if into else (other_id, album_id)))
+    except ValueError as exc:
+        context = _album_merge_context(lib, album_id, error=str(exc))
+        return render(request, "_album_merge.html", status_code=422, **context)
+    message = f"Merged into {other.title}." if into else f"Merged {other.title} into this album."
+    if merged:
+        songs = f"{merged} {'song' if merged == 1 else 'songs'} of the same name"
+        message += f" So were {songs}, {'theirs' if into else 'this album’s'} the main ones."
+    else:
+        message += " No songs of the same name were left to merge."
+    return _album_merge(request, lib, album_id, message=message)
+
+
+@router.post("/albums/{album_id}/main")
+async def make_main_album(request: Request, lib: Lib, album_id: int):
+    """Make the album the main edition; answers with the card of the page it was done from
+    (``page``)."""
+    form = await request.form()
+    try:
+        found(lib.make_main_album, album_id)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return _album_merge(request, lib, _id(form, "page") or album_id)
+
+
+@router.post("/albums/{album_id}/unmerge")
+async def unmerge_album(request: Request, lib: Lib, album_id: int):
+    """Take the album out of the albums it is merged with (and its songs out of their merges
+    with theirs); answers with the card of the page it was done from (``page``)."""
+    form = await request.form()
+    try:
+        found(lib.unmerge_album, album_id)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return _album_merge(request, lib, _id(form, "page") or album_id)
+
+
+@router.post("/albums/{album_id}/merge-song")
+async def merge_album_song(request: Request, lib: Lib, album_id: int):
+    """Merge a song of the album (``song_id``) left unmerged with one of another edition's
+    (``other_id``), the way round the albums are."""
+    form = await request.form()
+    song_id, other_id = _id(form, "song_id"), _id(form, "other_id")
+    if song_id is None or other_id is None:
+        context = _album_merge_context(lib, album_id, error="Pick a song to merge with.")
+        return render(request, "_album_merge.html", status_code=422, **context)
+    try:
+        found(lib.merge_album_song, song_id, other_id)
+    except ValueError as exc:
+        context = _album_merge_context(lib, album_id, error=str(exc))
+        return render(request, "_album_merge.html", status_code=422, **context)
+    return _album_merge(request, lib, album_id)
 
 
 @router.get("/fragments/songs/{song_id}/member-of")

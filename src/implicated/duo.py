@@ -7,7 +7,9 @@ what they say into ``Section``s, such as the songs you both love, what you both 
 later, or the albums one of you owns and the other wants.
 
 "Liking" a record means a favorite or a rating of 4 stars or more; a song is "on repeat" with
-``REPEAT`` plays or more. An album or artist counts as played when any of its songs was.
+``REPEAT`` plays or more. An album or artist counts as played when any of its songs was. Songs
+merged into a main version (``same_as``) count as that one song, with all their plays, and
+albums merged into a main edition as that one album.
 """
 
 from __future__ import annotations
@@ -190,15 +192,27 @@ class _Taste:
         self.records: dict[tuple, _Record] = {}
         album_plays: Counter = Counter()
         artist_plays: Counter = Counter()
+        merged = []
         for s in _dicts(data, "songs"):
             plays = len(s.get("plays") or [])
             k = ("song", *key(s.get("artist"), s.get("album"), s.get("title")))
             self.records[k] = _Record("song", s, plays)
             album_plays[key(s.get("artist"), s.get("album"))] += plays
             artist_plays[key(s.get("artist"))] += plays
+            if isinstance(s.get("same_as"), dict):
+                merged.append((k, s["same_as"]))
         for a in _dicts(data, "albums"):
             k = key(a.get("artist"), a.get("title"))
             self.records[("album", *k)] = _Record("album", a, album_plays[k])
+            if isinstance(a.get("same_as"), dict):
+                merged.append((("album", *k), a["same_as"]))
+        for k, ref in merged:
+            if k[0] == "album":
+                main = ("album", *key(ref.get("artist"), ref.get("title")))
+            else:
+                main = ("song", *key(ref.get("artist"), ref.get("album"), ref.get("title")))
+            if main != k and main in self.records:
+                self.records[main].plays += self.records.pop(k).plays
         for a in _dicts(data, "artists"):
             k = key(a.get("name"))
             self.records[("artist", *k)] = _Record("artist", a, artist_plays[k])

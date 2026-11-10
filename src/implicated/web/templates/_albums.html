@@ -29,5 +29,5 @@
 </table>
 </div>
 {% else %}
-<p class="empty">No albums yet.</p>
+<p class="empty">{{ 'No albums match these filters.' if filtered else 'No albums yet.' }}</p>
 {% endif %}

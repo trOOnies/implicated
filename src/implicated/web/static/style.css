@@ -605,6 +605,19 @@ button.tier-label:hover { filter: brightness(.93); }
   .tier-actions { padding: 0 .2rem; }
 }
 
+/* Merged songs: the Same song card of a song's page and the Other editions card of an album's */
+.versions { list-style: none; margin: .5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .5rem; }
+.versions li { padding-top: .5rem; border-top: 1px solid var(--border); }
+.versions li:first-child { padding-top: 0; border-top: 0; }
+.versions .version-name { overflow-wrap: anywhere; }
+.versions .version-actions { display: flex; align-items: center; gap: .5rem; margin-top: .15rem; }
+.versions .version-actions .tag { margin: 0; }
+.versions .version-actions button.link { padding: 0; }
+
+/* An artist page's Discography heading, with its filters beside it */
+.row.wrap.discography-head { align-items: center; margin-bottom: .5rem; }
+.discography-head h2 { margin: 0; }
+
 /* Tier list locks: a locked song wears a closed lock and cannot be grabbed; an unlocked one shows
    an open lock when hovered or focused, to lock it */
 .tier-locking { margin: 0; font-size: .9rem; white-space: nowrap; }

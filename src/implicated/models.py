@@ -110,6 +110,10 @@ class Album(AlbumIn):
     uid: str | None = None
     # File name inside the library's covers directory; set with ``Library.set_cover``.
     cover: str | None = None
+    # Set on an album merged into another (a deluxe edition into the original, say): the id of
+    # the main edition, which stands for them all where they count as one. Set with
+    # ``Library.merge_albums``.
+    main_id: int | None = None
 
 
 @dataclass
@@ -153,6 +157,10 @@ class Song(SongIn):
     id: int = 0
     created_at: str = ""
     uid: str | None = None
+    # Set on a song merged with others (the same song on a deluxe edition, say): the id of the
+    # main version of them, which stands for them all where they count as one. ``None`` on a
+    # main version and on a song not merged. Set with ``Library.merge_songs``.
+    main_id: int | None = None
     # Song text; set with ``Library.set_lyrics``. ``None`` means it is still missing.
     lyrics: str | None = None
 

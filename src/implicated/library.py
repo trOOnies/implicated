@@ -103,7 +103,9 @@ CREATE TABLE IF NOT EXISTS albums (
     cd          TEXT,
     vinyl       TEXT,
     listen_later INTEGER NOT NULL DEFAULT 0,
-    unreleased  INTEGER NOT NULL DEFAULT 0
+    unreleased  INTEGER NOT NULL DEFAULT 0,
+    -- The main edition of the albums this one is merged with (see ``Album.main_id``).
+    main_id     INTEGER REFERENCES albums(id) ON DELETE SET NULL
 );
 CREATE TABLE IF NOT EXISTS members (
     id         INTEGER PRIMARY KEY,
@@ -128,7 +130,9 @@ CREATE TABLE IF NOT EXISTS songs (
     lyrics           TEXT,
     no_lyrics        INTEGER NOT NULL DEFAULT 0,
     mv               TEXT,
-    listen_later     INTEGER NOT NULL DEFAULT 0
+    listen_later     INTEGER NOT NULL DEFAULT 0,
+    -- The main version of the songs this one is merged with (see ``Song.main_id``).
+    main_id          INTEGER REFERENCES songs(id) ON DELETE SET NULL
 );
 -- Other artists a song features ("feat."), in the order they are credited.
 CREATE TABLE IF NOT EXISTS song_features (
@@ -283,6 +287,8 @@ MIGRATIONS = [
     ("albums", "uid", "TEXT"),
     ("songs", "uid", "TEXT"),
     ("playlists", "uid", "TEXT"),
+    ("songs", "main_id", "INTEGER REFERENCES songs(id) ON DELETE SET NULL"),
+    ("albums", "main_id", "INTEGER REFERENCES albums(id) ON DELETE SET NULL"),
 ]
 # Tables whose records have a ``uid``: a stable id that survives renames, which exports and
 # inbox files use to point at a record (integer ids stay internal to one database).
@@ -323,9 +329,15 @@ SONGS_WHERE = """
      AND (:favorites = 0 OR s.favorite = 1)
      AND (:listen_later = 0 OR s.listen_later = 1)
      AND (:missing_lyrics = 0 OR (s.lyrics IS NULL AND s.no_lyrics = 0))
+     AND (:mains_only = 0 OR s.main_id IS NULL)
      AND (:q IS NULL OR s.title LIKE '%' || :q || '%'
           OR ar.name LIKE '%' || :q || '%'
           OR al.title LIKE '%' || :q || '%')
+"""
+
+# The ids of the songs merged with ``s`` (``s`` included): they count as one song.
+SAME_SONG = """
+    SELECT id FROM songs WHERE id = COALESCE(s.main_id, s.id) OR main_id = COALESCE(s.main_id, s.id)
 """
 
 # Which of an artist's pictures ``list_pictures`` and ``count_pictures`` look at: ``q`` is found in
@@ -365,6 +377,11 @@ ALBUMS_WHERE = f"""
 # Dashes that count as the same one when looking a title up, so an en dash turned into a hyphen
 # in ``albums.yaml`` renames the album instead of importing it again. See ``_same_title``.
 DASHES = ("\u2013", "\u2014")
+
+
+def _title_key(title: str) -> str:
+    """How titles compare, in Python: ignoring case, outer spaces and kinds of dash."""
+    return _dashless(title).casefold()
 
 
 def _same_title(column: str) -> str:
@@ -599,6 +616,8 @@ class Library:
                 )
                 conn.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{table}_uid ON {table}(uid)")
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_playlists_kind ON playlists(kind)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_songs_main ON songs(main_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_albums_main ON albums(main_id)")
             for kind, (name, _field) in SPECIAL_PLAYLISTS.items():
                 conn.execute(
                     """INSERT INTO playlists (name, created_at, kind, uid) SELECT ?, ?, ?, ?
@@ -870,6 +889,7 @@ class Library:
                     "SELECT file FROM pictures WHERE artist_id = ?", (artist_id,)
                 )
             ]
+        self._hand_over_mains("artist_id = ?", artist_id)
         self._delete("artists", artist_id)
         self._remove_files(self.covers_dir, covers)
         self._remove_files(self.images_dir, [image])
@@ -1278,6 +1298,10 @@ class Library:
 
     def delete_album(self, album_id: int) -> None:
         cover = self.get_album(album_id).cover
+        self._hand_over_mains("album_id = ?", album_id)
+        heir = self._next_main_album(album_id)
+        if heir is not None:
+            self._swap_main_album(album_id, heir)
         self._delete("albums", album_id)
         self._remove_files(self.covers_dir, [cover])
 
@@ -1380,15 +1404,18 @@ class Library:
         playlist_id: int | None = None,
         song_ids: list[int] | None = None,
         featuring: int | None = None,
+        mains_only: bool = False,
         order: str = "title",
         favorites_first: bool = False,
         limit: int | None = None,
         offset: int = 0,
     ) -> list[SongSummary]:
         """Songs matching every filter given (``missing_lyrics``: songs with words but no lyrics
-        yet; ``featuring``: songs of other artists that feature this one), and only ``limit``
-        of them after the first ``offset``; ``order="playlist"`` keeps
-        the order of the songs in ``playlist_id``, and ``favorites_first`` goes before it."""
+        yet; ``featuring``: songs of other artists that feature this one; ``mains_only``: no
+        songs merged into a main version), and only ``limit`` of them after the first
+        ``offset``; ``order="playlist"`` keeps the order of the songs in ``playlist_id``, and
+        ``favorites_first`` goes before it. Merged songs count as one: each has the plays of
+        them all."""
         order_by = {
             "title": "s.title COLLATE NOCASE",
             "track": "s.track_number IS NULL, s.track_number, s.title COLLATE NOCASE",
@@ -1400,8 +1427,9 @@ class Library:
         }[order]
         sql = f"""
             SELECT s.*, ar.name AS x_artist, al.title AS x_album, al.cover AS x_album_cover,
-                   (SELECT COUNT(*) FROM plays WHERE song_id = s.id) AS x_plays,
-                   (SELECT MAX(played_at) FROM plays WHERE song_id = s.id) AS x_last_played,
+                   (SELECT COUNT(*) FROM plays WHERE song_id IN ({SAME_SONG})) AS x_plays,
+                   (SELECT MAX(played_at) FROM plays WHERE song_id IN ({SAME_SONG}))
+                       AS x_last_played,
                    (SELECT COUNT(*) FROM song_videos WHERE song_id = s.id) AS x_videos
               {SONGS_WHERE}
              ORDER BY {"s.favorite DESC," if favorites_first else ""} {order_by}, s.id
@@ -1418,6 +1446,7 @@ class Library:
                 playlist_id,
                 song_ids,
                 featuring,
+                mains_only,
             ),
             "limit": -1 if limit is None else limit,
             "offset": offset,
@@ -1464,6 +1493,7 @@ class Library:
         playlist_id: int | None = None,
         song_ids: list[int] | None = None,
         featuring: int | None = None,
+        mains_only: bool = False,
     ) -> dict:
         return {
             "artist_id": artist_id,
@@ -1474,6 +1504,7 @@ class Library:
             "favorites": int(favorites),
             "listen_later": int(listen_later),
             "missing_lyrics": int(missing_lyrics),
+            "mains_only": int(mains_only),
             "q": q or None,
         }
 
@@ -1557,7 +1588,7 @@ class Library:
                 "DELETE FROM song_features WHERE song_id = ? AND artist_id = ?",
                 (song_id, data.artist_id),
             )
-        self._sync_marks(song_id)
+        self._sync_marks(self._spread_marks(song_id))
         # A renamed song takes its lyrics, timed lyrics and tab files along (copies, if another
         # song still uses them).
         new_path = self.lyrics_path(song_id)
@@ -1575,6 +1606,7 @@ class Library:
     def delete_song(self, song_id: int) -> None:
         path = self.lyrics_path(song_id)
         shared = self._shares_lyrics_file(self.get_song(song_id))
+        self._hand_over_mains("id = ?", song_id)
         self._delete("songs", song_id)
         # Lyrics someone wrote are kept; an empty file only belonged to this song.
         if path and not self.dry and not shared and path.is_file() and path.stat().st_size == 0:
@@ -1815,7 +1847,7 @@ class Library:
                 "INSERT INTO plays (song_id, played_at) VALUES (?, ?)", (song_id, played_at)
             )
             conn.execute("UPDATE songs SET listen_later = 0 WHERE id = ?", (song_id,))
-        self._sync_marks(song_id)
+        self._sync_marks(self._spread_marks(song_id))
         return Play(cur.lastrowid, song_id, played_at)
 
     def record_album_play(self, album_id: int) -> list[Play]:
@@ -2233,6 +2265,9 @@ class Library:
         self._write_playlist(playlist_id, song_ids)
 
     def _write_playlist(self, playlist_id: int, song_ids: list[int]) -> None:
+        if self.get_playlist(playlist_id).kind:
+            # Built-in playlists hold the main version of merged songs.
+            song_ids = list(dict.fromkeys(self.get_song(i).main_id or i for i in song_ids))
         with self.connect() as conn:
             conn.execute("DELETE FROM playlist_songs WHERE playlist_id = ?", (playlist_id,))
             conn.executemany(
@@ -2243,7 +2278,8 @@ class Library:
         self._marks_from_playlist(playlist_id)
 
     def _marks_from_playlist(self, playlist_id: int) -> None:
-        """After a built-in playlist changed, mark exactly the songs in it."""
+        """After a built-in playlist changed, mark exactly the songs in it, and the songs merged
+        with them."""
         kind = self.get_playlist(playlist_id).kind
         if kind is None:
             return
@@ -2251,20 +2287,21 @@ class Library:
         with self.connect() as conn:
             conn.execute(
                 f"""UPDATE songs SET {field} = EXISTS (SELECT 1 FROM playlist_songs
-                        WHERE playlist_id = ? AND song_id = songs.id)""",
+                        WHERE playlist_id = ? AND song_id = COALESCE(songs.main_id, songs.id))""",
                 (playlist_id,),
             )
 
     def _sync_marks(self, song_id: int | None = None) -> None:
         """After songs' marks changed, put the marked songs (all of them, or just ``song_id``)
-        at the end of their built-in playlist and take out the others."""
+        at the end of their built-in playlist and take out the others. Songs merged into a main
+        version are left out: the main one stands for them."""
         for kind, (_name, field) in SPECIAL_PLAYLISTS.items():
             params = {"playlist_id": self.special_playlist(kind).id, "song_id": song_id}
             with self.connect() as conn:
                 conn.execute(
                     f"""DELETE FROM playlist_songs
                          WHERE playlist_id = :playlist_id AND song_id IN (
-                               SELECT id FROM songs WHERE {field} = 0
+                               SELECT id FROM songs WHERE ({field} = 0 OR main_id IS NOT NULL)
                                   AND (:song_id IS NULL OR id = :song_id))""",
                     params,
                 )
@@ -2275,20 +2312,451 @@ class Library:
                                  WHERE playlist_id = :playlist_id)
                                + ROW_NUMBER() OVER (ORDER BY s.id)
                           FROM songs s
-                         WHERE s.{field} = 1 AND (:song_id IS NULL OR s.id = :song_id)
+                         WHERE s.{field} = 1 AND s.main_id IS NULL
+                           AND (:song_id IS NULL OR s.id = :song_id)
                            AND s.id NOT IN (SELECT song_id FROM playlist_songs
                                              WHERE playlist_id = :playlist_id)""",
                     params,
                 )
             self._prune_tiers("playlist", params["playlist_id"])
 
+    # Merged songs: the same song on several albums (a deluxe edition, say), each still on its
+    # own album, counted as one where it matters. One of them is the main version (its
+    # ``main_id`` is ``None``); the others point at it. They share the plays (see
+    # ``list_songs``), the favorite and listen later marks and the rating; the built-in
+    # playlists, the Overview lists of marked songs and tier lists show the main one only.
+
+    def song_versions(self, song_id: int) -> list[SongSummary]:
+        """The songs merged with this one, itself included, the main one first and then album
+        by album; just the song when it is not merged."""
+        main = self._main_of(song_id)
+        with self.connect() as conn:
+            ids = [
+                row[0]
+                for row in conn.execute(
+                    "SELECT id FROM songs WHERE id = ? OR main_id = ?", (main, main)
+                )
+            ]
+        songs = self.list_songs(song_ids=ids, order="album")
+        return sorted(songs, key=lambda s: s.song.id != main)
+
+    def merge_suggestions(self, song_id: int) -> list[SongSummary]:
+        """The artist's other songs with the same title (ignoring case and kinds of dash) that
+        are not merged with this one yet, album by album."""
+        song = self.get_song(song_id)
+        main = song.main_id or song.id
+        with self.connect() as conn:
+            ids = [
+                row[0]
+                for row in conn.execute(
+                    f"""SELECT id FROM songs WHERE artist_id = ? AND {_same_title("title")}
+                          AND COALESCE(main_id, id) != ?""",
+                    (song.artist_id, _dashless(song.title), main),
+                )
+            ]
+        return self.list_songs(song_ids=ids, order="album") if ids else []
+
+    def merge_songs(self, main_id: int, song_ids: list[int]) -> list[SongSummary]:
+        """Merge songs with ``main_id``: from now on they count as one, with the main version of
+        ``main_id`` (itself, or the one it is merged into) as theirs. A song already merged with
+        others brings them along. They are a favorite, or to listen to later, when any of them
+        was, and they keep the main version's rating (or the first one any of them has).
+        Returns all the songs merged, as ``song_versions``."""
+        main = self._main_of(main_id)
+        joining = []
+        for song_id in dict.fromkeys(song_ids):
+            other = self._main_of(song_id)
+            if other != main and other not in joining:
+                joining.append(other)
+        if not joining:
+            raise ValueError("those songs are merged already")
+        with self.transaction(), self.connect() as conn:
+            members = [main]
+            for other in joining:
+                group = [
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT id FROM songs WHERE id = ? OR main_id = ?", (other, other)
+                    )
+                ]
+                members += group
+                conn.execute(
+                    "UPDATE songs SET main_id = ? WHERE id = ? OR main_id = ?",
+                    (main, other, other),
+                )
+                # Where the main version now stands for the song, it keeps the joining
+                # one's place.
+                self._carry_placements(other, main)
+                self._carry_playlist_places(other, main)
+            rows = conn.execute(
+                "SELECT favorite, listen_later, rating FROM songs WHERE id IN "
+                "(SELECT value FROM json_each(?))",
+                (json.dumps(members),),
+            ).fetchall()
+            ratings = [self.get_song(main).rating, *(row["rating"] for row in rows)]
+            conn.execute(
+                "UPDATE songs SET favorite = ?, listen_later = ?, rating = ? WHERE id = ?",
+                (
+                    int(any(row["favorite"] for row in rows)),
+                    int(any(row["listen_later"] for row in rows)),
+                    next((r for r in ratings if r is not None), None),
+                    main,
+                ),
+            )
+            self._spread_marks(main)
+            self._sync_marks()
+        return self.song_versions(main)
+
+    def make_main(self, song_id: int) -> list[SongSummary]:
+        """Make a merged song the main version of the songs it is merged with."""
+        song = self.get_song(song_id)
+        if song.main_id is None:
+            raise ValueError(f"{song.title} is not merged into another song")
+        self._swap_main(song.main_id, song_id)
+        return self.song_versions(song_id)
+
+    def unmerge_song(self, song_id: int) -> None:
+        """Take a song out of the songs it is merged with; it keeps its marks and rating. When
+        it was the main version, the next one becomes the main one."""
+        song = self.get_song(song_id)
+        if song.main_id is None:
+            heir = self._next_main(song_id)
+            if heir is None:
+                raise ValueError(f"{song.title} is not merged with other songs")
+            self._swap_main(song_id, heir)
+        with self.connect() as conn:
+            conn.execute("UPDATE songs SET main_id = NULL WHERE id = ?", (song_id,))
+        self._sync_marks()
+
+    # Merged albums: editions of one album (a deluxe one and the original, say), each with its
+    # own songs, counted as one: they share the favorite and listen later marks and the rating,
+    # and the Overview lists the main edition only. Merging one into another merges their songs
+    # of equal names the same way (see ``merge_albums``).
+
+    def album_editions(self, album_id: int) -> list[Album]:
+        """The albums merged with this one, itself included: the main edition first, then by
+        year; just the album when it is not merged."""
+        main = self._main_album_of(album_id)
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT * FROM albums WHERE id = ? OR main_id = ?
+                    ORDER BY id != ?, year IS NULL, year, id""",
+                (main, main, main),
+            ).fetchall()
+        return [_album(row) for row in rows]
+
+    def album_merge_choices(self, album_id: int) -> list[tuple[Album, int]]:
+        """The artist's albums this one can be merged with (those not merged with it yet), each
+        with how many of their songs are named like one of this album's."""
+        album = self.get_album(album_id)
+        mine = {_title_key(s.song.title) for s in self.list_songs(album_id=album_id)}
+        group = {a.id for a in self.album_editions(album_id)}
+        return [
+            (other.album, len(mine & set(self._by_title(other.album.id))))
+            for other in self.list_albums(album.artist_id)
+            if other.album.id not in group
+        ]
+
+    def merge_albums(self, album_id: int, into_album_id: int) -> int:
+        """Merge an album (and the albums merged with it) into ``into_album_id``, whose main
+        edition is theirs from now on. Then each song of the album is merged with the song of
+        ``into_album_id`` with the same name (ignoring case, outer spaces and kinds of dash),
+        whose version is the main one, the same way round. The albums are a favorite, or to
+        listen to later, when any of them was, and keep the main edition's rating (or the first
+        one any of them has). Returns how many songs were merged."""
+        main = self._main_album_of(into_album_id)
+        joining = self._main_album_of(album_id)
+        if main == joining:
+            raise ValueError("those albums are merged already")
+        with self.transaction(), self.connect() as conn:
+            conn.execute(
+                "UPDATE albums SET main_id = ? WHERE id = ? OR main_id = ?",
+                (main, joining, joining),
+            )
+            rows = conn.execute(
+                "SELECT favorite, listen_later, rating FROM albums WHERE id = ? OR main_id = ?",
+                (main, main),
+            ).fetchall()
+            ratings = [self.get_album(main).rating, *(row["rating"] for row in rows)]
+            conn.execute(
+                "UPDATE albums SET favorite = ?, listen_later = ?, rating = ? WHERE id = ?",
+                (
+                    int(any(row["favorite"] for row in rows)),
+                    int(any(row["listen_later"] for row in rows)),
+                    next((r for r in ratings if r is not None), None),
+                    main,
+                ),
+            )
+            self._spread_album_marks(main)
+            return self._merge_album_songs(album_id, into_album_id)
+
+    def make_main_album(self, album_id: int) -> list[Album]:
+        """Make a merged album the main edition of the albums it is merged with."""
+        album = self.get_album(album_id)
+        if album.main_id is None:
+            raise ValueError(f"{album.title} is not merged into another album")
+        self._swap_main_album(album.main_id, album_id)
+        return self.album_editions(album_id)
+
+    def unmerge_album(self, album_id: int) -> None:
+        """Take an album out of the albums it is merged with, and its songs out of their merges
+        with songs of those albums; it keeps its marks and rating. When it was the main
+        edition, the next one becomes the main one."""
+        album = self.get_album(album_id)
+        others = [a.id for a in self.album_editions(album_id) if a.id != album_id]
+        if not others:
+            raise ValueError(f"{album.title} is not merged with other albums")
+        with self.transaction():
+            for s in self.list_songs(album_id=album_id):
+                if any(
+                    v.song.album_id in others for v in self.song_versions(s.song.id)
+                ):  # fmt: skip
+                    self.unmerge_song(s.song.id)
+            if album.main_id is None:
+                self._swap_main_album(album_id, self._next_main_album(album_id))
+            with self.connect() as conn:
+                conn.execute("UPDATE albums SET main_id = NULL WHERE id = ?", (album_id,))
+
+    def unmerged_songs(self, album_id: int) -> list[tuple[SongSummary, list[SongSummary]]]:
+        """The album's songs merged with no song of the albums it is merged with, each with the
+        songs of those albums it could be merged with (the ones merged with none of this
+        album's), album by album."""
+        others = [a.id for a in self.album_editions(album_id) if a.id != album_id]
+        if not others:
+            return []
+        mine = self.list_songs(album_id=album_id, order="track")
+        mine_groups = {s.song.main_id or s.song.id for s in mine}
+        theirs = [
+            s
+            for other in others
+            for s in self.list_songs(album_id=other, order="track")
+        ]  # fmt: skip
+        theirs_groups = {s.song.main_id or s.song.id for s in theirs}
+        candidates = [s for s in theirs if (s.song.main_id or s.song.id) not in mine_groups]
+        return [
+            (s, candidates)
+            for s in mine
+            if (s.song.main_id or s.song.id) not in theirs_groups
+        ]  # fmt: skip
+
+    def merge_album_song(self, song_id: int, other_id: int) -> list[SongSummary]:
+        """Merge two songs of merged albums, the way round the albums are: the song on the
+        main edition is the main version (and when neither is, ``other_id``'s)."""
+        song = self.get_song(song_id)
+        other = self.get_song(other_id)
+        main_album = self._main_album_of(song.album_id) if song.album_id else None
+        if main_album is not None and song.album_id == main_album:
+            return self.merge_songs(song_id, [other_id])
+        return self.merge_songs(other.id, [song_id])
+
+    def _merge_album_songs(self, album_id: int, into_album_id: int) -> int:
+        """Merge each song of the album with the song named like it on ``into_album_id``, whose
+        version is the main one (or stays merged into its own main version). Returns how many
+        songs were merged."""
+        theirs = self._by_title(into_album_id)
+        merged = 0
+        with self.transaction():
+            for s in self.list_songs(album_id=album_id, order="track"):
+                match = theirs.get(_title_key(s.song.title))
+                if match is not None and self._main_of(match) != self._main_of(s.song.id):
+                    self.merge_songs(match, [s.song.id])
+                    merged += 1
+        return merged
+
+    def _main_album_of(self, album_id: int) -> int:
+        album = self.get_album(album_id)
+        return album.main_id or album.id
+
+    def _spread_album_marks(self, album_id: int) -> None:
+        """Give the albums merged with ``album_id`` its marks and rating."""
+        album = self.get_album(album_id)
+        main = album.main_id or album.id
+        with self.connect() as conn:
+            conn.execute(
+                """UPDATE albums SET favorite = :favorite, listen_later = :later, rating = :rating
+                    WHERE (id = :main OR main_id = :main) AND id != :id""",
+                {
+                    "favorite": int(album.favorite),
+                    "later": int(album.listen_later),
+                    "rating": album.rating,
+                    "main": main,
+                    "id": album_id,
+                },
+            )
+
+    def _spread_all_album_marks(self) -> None:
+        """Give every merged album the marks and rating of its main edition."""
+        with self.connect() as conn:
+            conn.execute(
+                """UPDATE albums SET (favorite, listen_later, rating) =
+                       (SELECT m.favorite, m.listen_later, m.rating FROM albums m
+                         WHERE m.id = albums.main_id)
+                    WHERE main_id IS NOT NULL"""
+            )
+
+    def _next_main_album(self, main_id: int) -> int | None:
+        """The album merged into ``main_id`` that would be the main edition after it."""
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT id FROM albums WHERE main_id = ? ORDER BY year IS NULL, year, id LIMIT 1",
+                (main_id,),
+            ).fetchone()
+        return row[0] if row else None
+
+    def _swap_main_album(self, old: int, new: int | None) -> None:
+        """Make ``new``, merged into ``old``, the main edition instead of it."""
+        if new is None:
+            return
+        with self.connect() as conn:
+            conn.execute("UPDATE albums SET main_id = ? WHERE main_id = ?", (new, old))
+            conn.execute("UPDATE albums SET main_id = ? WHERE id = ?", (new, old))
+            conn.execute("UPDATE albums SET main_id = NULL WHERE id = ?", (new,))
+
+    def _by_title(self, album_id: int) -> dict[str, int]:
+        """The album's song ids by ``_title_key``, the first one by track for repeated titles."""
+        out: dict[str, int] = {}
+        for s in self.list_songs(album_id=album_id, order="track"):
+            out.setdefault(_title_key(s.song.title), s.song.id)
+        return out
+
+    def _main_of(self, song_id: int) -> int:
+        song = self.get_song(song_id)
+        return song.main_id or song.id
+
+    def _spread_marks(self, song_id: int) -> int:
+        """Give the songs merged with ``song_id`` its favorite and listen later marks and its
+        rating; returns the main version's id."""
+        song = self.get_song(song_id)
+        main = song.main_id or song.id
+        with self.connect() as conn:
+            conn.execute(
+                """UPDATE songs SET favorite = :favorite, listen_later = :later, rating = :rating
+                    WHERE (id = :main OR main_id = :main) AND id != :id""",
+                {
+                    "favorite": int(song.favorite),
+                    "later": int(song.listen_later),
+                    "rating": song.rating,
+                    "main": main,
+                    "id": song_id,
+                },
+            )
+        return main
+
+    def _spread_all_marks(self) -> None:
+        """Give every merged song the marks and rating of its main version."""
+        with self.connect() as conn:
+            conn.execute(
+                """UPDATE songs SET (favorite, listen_later, rating) =
+                       (SELECT m.favorite, m.listen_later, m.rating FROM songs m
+                         WHERE m.id = songs.main_id)
+                    WHERE main_id IS NOT NULL"""
+            )
+
+    def _next_main(self, main_id: int, leaving: str = "0", *params: object) -> int | None:
+        """The song merged into ``main_id`` that would be the main one after it: the first
+        album by album, leaving out the songs ``s`` matching the SQL ``leaving`` (with
+        ``params``)."""
+        with self.connect() as conn:
+            row = conn.execute(
+                f"""SELECT s.id FROM songs s LEFT JOIN albums al ON al.id = s.album_id
+                     WHERE s.main_id = ? AND NOT ({leaving})
+                     ORDER BY al.id IS NULL, al.year IS NULL, al.year, al.id,
+                              s.track_number, s.id LIMIT 1""",
+                (main_id, *params),
+            ).fetchone()
+        return row[0] if row else None
+
+    def _swap_main(self, old: int, new: int) -> None:
+        """Make ``new``, merged into ``old``, the main version instead of it."""
+        with self.transaction(), self.connect() as conn:
+            conn.execute("UPDATE songs SET main_id = ? WHERE main_id = ?", (new, old))
+            conn.execute("UPDATE songs SET main_id = ? WHERE id = ?", (new, old))
+            conn.execute("UPDATE songs SET main_id = NULL WHERE id = ?", (new,))
+            self._carry_placements(old, new)
+            self._carry_playlist_places(old, new)
+            self._sync_marks()
+
+    def _hand_over_mains(self, where: str, value: int) -> None:
+        """Before the songs matching the SQL ``where`` (on ``songs``) are deleted: the main
+        versions among them hand over to one of their merged songs that stays."""
+        leaving = f"s.id IN (SELECT id FROM songs WHERE {where})"
+        with self.connect() as conn:
+            mains = [
+                row[0]
+                for row in conn.execute(
+                    f"""SELECT id FROM songs WHERE {where} AND main_id IS NULL
+                          AND EXISTS (SELECT 1 FROM songs m WHERE m.main_id = songs.id)""",
+                    (value,),
+                )
+            ]
+        for main in mains:
+            heir = self._next_main(main, leaving, value)
+            if heir is not None:
+                self._swap_main(main, heir)
+
+    def _carry_playlist_places(self, old: int, new: int) -> None:
+        """``new`` takes the place of ``old`` in the built-in playlists."""
+        with self.connect() as conn:
+            conn.execute(
+                """UPDATE OR IGNORE playlist_songs SET song_id = ?
+                    WHERE song_id = ? AND playlist_id IN
+                          (SELECT id FROM playlists WHERE kind IS NOT NULL)""",
+                (new, old),
+            )
+
+    def _carry_placements(self, old: int, new: int) -> None:
+        """In the tier lists where ``new`` now stands for ``old`` (they rank both, and it is
+        not placed there yet), it takes the level and place of ``old``."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT t.*, ts.position AS x_at FROM tier_songs ts "
+                "JOIN tiers t ON t.id = ts.tier_id WHERE ts.song_id = ?",
+                (old,),
+            ).fetchall()
+            for row in rows:
+                own, _extra = _split(row, "x_")
+                kind, owner_id = Tier(**own).owner
+                if new not in {s.song.id for s in self._owner_songs(kind, owner_id)}:
+                    continue
+                placed = conn.execute(
+                    f"""SELECT 1 FROM tier_songs ts JOIN tiers t ON t.id = ts.tier_id
+                         WHERE ts.song_id = ? AND t.{kind}_id = ?""",
+                    (new, owner_id),
+                ).fetchone()
+                if placed is None:
+                    conn.execute(
+                        "UPDATE tier_songs SET song_id = ? WHERE tier_id = ? AND song_id = ?",
+                        (new, row["id"], old),
+                    )
+                    # A lock goes along.
+                    conn.execute(
+                        f"""UPDATE OR IGNORE tier_locks SET song_id = ? WHERE song_id = ?
+                              AND tier_list_id IN (SELECT id FROM tier_lists
+                                                    WHERE {kind}_id = ?)""",
+                        (new, old, owner_id),
+                    )
+
     # Tier lists
 
     def tier_songs(self, kind: str, owner_id: int) -> list[SongSummary]:
         """The songs a tier list of ``kind`` (one of ``TIER_OWNERS``) ranks, in the owner's
         order: a playlist's, an album's in track order, or an artist's own songs album by album
-        (oldest first, then the songs on no album). ``NotFound`` when the owner does not
-        exist."""
+        (oldest first, then the songs on no album). Merged songs are ranked once: as their
+        main version, or, when the owner does not have it, the first of them it has.
+        ``NotFound`` when the owner does not exist."""
+        songs = self._owner_songs(kind, owner_id)
+        present = {s.song.id for s in songs}
+        out, seen = [], set()
+        for s in songs:
+            main = s.song.main_id or s.song.id
+            if main in seen or (main != s.song.id and main in present):
+                continue
+            seen.add(main)
+            out.append(s)
+        return out
+
+    def _owner_songs(self, kind: str, owner_id: int) -> list[SongSummary]:
+        """All the songs of a playlist, album or artist, in its order (see ``tier_songs``)."""
         if kind == "playlist":
             return self.get_playlist_detail(owner_id).songs
         if kind == "album":
@@ -2648,7 +3116,9 @@ class Library:
             row = conn.execute(f"SELECT {flag} FROM {table} WHERE id = ?", (record_id,))
             value = bool(row.fetchone()[0])
         if kind == "song":
-            self._sync_marks(record_id)
+            self._sync_marks(self._spread_marks(record_id))
+        elif kind == "album":
+            self._spread_album_marks(record_id)
         return value
 
     def set_rating(self, kind: str, record_id: int, rating: int | None) -> int | None:
@@ -2659,6 +3129,10 @@ class Library:
             cur = conn.execute(f"UPDATE {table} SET rating = ? WHERE id = ?", (rating, record_id))
         if cur.rowcount == 0:
             raise NotFound(f"{kind} {record_id} not found")
+        if kind == "song":
+            self._spread_marks(record_id)
+        elif kind == "album":
+            self._spread_album_marks(record_id)
         return rating
 
     def _delete(self, table: str, record_id: int) -> None:

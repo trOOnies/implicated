@@ -8,8 +8,21 @@
 
 {# Full width: the discography table has too many columns to share the page with the sidebar. #}
 <section class="card">
-  <h2>Discography</h2>
-  <div id="albums" hx-get="/fragments/artists/{{ artist.id }}/albums"
+  <div class="row wrap discography-head">
+    <h2>Discography</h2>
+    <span class="spacer"></span>
+    <form id="discography-filters" class="filters" hx-get="/fragments/artists/{{ artist.id }}/albums"
+          hx-target="#albums" hx-swap="innerHTML" hx-trigger="change">
+      <select name="kind" aria-label="Type">
+        <option value="">Any type</option>
+        {% for k in album_kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
+      </select>
+      <label class="check" title="Leave out the albums merged into another: show main editions and albums merged with none">
+        <input type="checkbox" name="mains" value="1"> Main or non-merged only</label>
+    </form>
+  </div>
+  {# Reloaded with the filters kept. #}
+  <div id="albums" hx-get="/fragments/artists/{{ artist.id }}/albums" hx-include="#discography-filters"
        hx-trigger="albums-changed from:body" hx-swap="innerHTML">
     {% set show_artist = False %}
     {% include "_albums.html" %}
