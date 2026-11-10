@@ -1,0 +1,12 @@
+<section class="card" id="artist-pictures">
+  <div class="row">
+    <h2>Pictures</h2>
+    <span class="spacer"></span>
+    <a href="/artists/{{ artist.id }}/pictures">{% if picture_count %}See all {{ picture_count }} pictures{% else %}Add pictures{% endif %} →</a>
+  </div>
+  {% if pictures %}
+  {% include "_picture_grid.html" %}
+  {% else %}
+  <p class="empty">No pictures saved yet.</p>
+  {% endif %}
+</section>

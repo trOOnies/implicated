@@ -2,11 +2,19 @@
   <div class="row">
     <h1>{{ picture.name }}</h1>
     <span class="spacer"></span>
+    {% if is_profile %}
+    <span class="tag" title="This picture is {{ artist.name }}'s profile picture">Profile picture</span>
+    {% else %}
+    <button type="button" class="secondary" hx-post="/pictures/{{ picture.id }}/profile"
+            hx-target="#picture-info" hx-swap="outerHTML"
+            {% if is_square %}title="Show this picture on {{ artist.name }}'s page and in the artist lists"{% else %}disabled title="Only a square picture can be the profile picture"{% endif %}>Make profile picture</button>
+    {% endif %}
     <button type="button" class="secondary" hx-get="/fragments/pictures/{{ picture.id }}/edit"
             hx-target="#picture-info" hx-swap="outerHTML">Edit</button>
     <button type="button" class="danger" hx-post="/pictures/{{ picture.id }}/delete"
             hx-confirm="Delete the picture {{ picture.name }}?">Delete</button>
   </div>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
   <p class="muted small">File: <code>{{ picture.file_name }}</code> · added {{ picture.created_at | when }}</p>
   {% if picture.tags %}
   <p>{% for t in picture.tags %}<a class="tag" href="/artists/{{ artist.id }}/pictures?{{ {'tag': t} | urlencode }}" title="Pictures of {{ artist.name }} tagged {{ t }}">{{ t }}</a>{% endfor %}</p>

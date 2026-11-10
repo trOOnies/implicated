@@ -36,18 +36,10 @@
 </div>
 
 {# The newest pictures saved for the artist; all of them are on their Pictures page. #}
-<section class="card" id="artist-pictures">
-  <div class="row">
-    <h2>Pictures</h2>
-    <span class="spacer"></span>
-    <a href="/artists/{{ artist.id }}/pictures">{% if picture_count %}See all {{ picture_count }} pictures{% else %}Add pictures{% endif %} →</a>
-  </div>
-  {% if pictures %}
-  {% include "_picture_grid.html" %}
-  {% else %}
-  <p class="empty">No pictures saved yet.</p>
-  {% endif %}
-</section>
+{# Refreshed when a new profile picture adds one. #}
+<div hx-get="/fragments/artists/{{ artist.id }}/pictures-card" hx-trigger="pictures-changed from:body" hx-swap="innerHTML">
+{% include "_artist_pictures.html" %}
+</div>
 
 <div class="grid">
   {% if album_plays %}

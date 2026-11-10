@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from conftest import Sample
 from fastapi.testclient import TestClient
+from test_imagesize import png
 
 from implicated import inbox
 from implicated.library import Library
@@ -2343,6 +2344,45 @@ def test_picture_page(client: TestClient, client_lib: Library, web_sample: Sampl
     assert deleted.headers["hx-redirect"] == f"/artists/{web_sample.artist_id}/pictures"
     assert client.get(url).status_code == 404
     assert client.get(f"/api/pictures/{picture.id}/image").status_code == 404
+
+
+def test_artist_profile_picture_upload_and_pick(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    artist_id = web_sample.artist_id
+    page = client.get(f"/artists/{artist_id}").text
+    assert f'hx-post="/artists/{artist_id}/image"' in page and "Set picture" in page
+    assert f'hx-get="/fragments/artists/{artist_id}/pictures-card"' in page
+
+    files = {"image": ("me.png", png(400, 400), "image/png")}
+    uploaded = client.post(f"/artists/{artist_id}/image", files=files)
+    assert uploaded.status_code == 200 and "Change picture" in uploaded.text
+    assert "pictures-changed" in uploaded.headers["HX-Trigger"]
+    (kept,) = client_lib.list_pictures(artist_id)
+    card = client.get(f"/fragments/artists/{artist_id}/pictures-card").text
+    assert f'href="/pictures/{kept.id}"' in card and "See all 1 pictures" in card
+    bad = client.post(f"/artists/{artist_id}/image", files={"image": ("x.txt", b"x", "text/plain")})
+    assert bad.status_code == 422 and "image must be one of" in bad.text
+    empty = client.post(f"/artists/{artist_id}/image", files={"image": ("", b"", "image/png")})
+    assert empty.status_code == 422 and "Pick an image first." in empty.text
+
+    # The profile picture says so; another square one can take its place; a wide one cannot.
+    assert "Profile picture</span>" in client.get(f"/pictures/{kept.id}").text
+    square = client_lib.add_picture(artist_id, PictureIn("Live"), png(300, 300), "live.png")
+    wide = client_lib.add_picture(artist_id, PictureIn("Wide"), png(600, 300), "wide.png")
+    page = client.get(f"/pictures/{square.id}").text
+    assert f'hx-post="/pictures/{square.id}/profile"' in page
+    made = client.post(f"/pictures/{square.id}/profile")
+    assert made.status_code == 200 and "Profile picture</span>" in made.text
+    assert "artists-changed" in made.headers["HX-Trigger"]
+    assert client_lib.image_path(artist_id).read_bytes() == png(300, 300)
+    assert (
+        "Only a square picture can be the profile picture"
+        in client.get(f"/pictures/{wide.id}").text
+    )
+    refused = client.post(f"/pictures/{wide.id}/profile")
+    assert refused.status_code == 422 and client_lib.is_profile_picture(square.id)
+    assert client.post("/pictures/99/profile").status_code == 404
 
 
 def test_tier_list_makes_a_playlist_of_its_top_levels(

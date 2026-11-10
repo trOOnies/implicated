@@ -652,6 +652,34 @@ def artist_info(request: Request, lib: Lib, artist_id: int):
     return render(request, "_artist_info.html", **_artist_info_context(lib, artist_id))
 
 
+@router.post("/artists/{artist_id}/image")
+async def set_artist_image(request: Request, lib: Lib, artist_id: int):
+    """Upload a profile picture from the artist page: it replaces the current one, and is kept
+    in the artist's Pictures too."""
+    form = await request.form()
+    found(lib.get_artist, artist_id)
+    upload = form.get("image")
+    try:
+        # Browsers send an empty, nameless file when nothing was picked.
+        if upload is None or isinstance(upload, str) or not upload.filename:
+            raise ValueError("Pick an image first.")
+        lib.set_image_data(artist_id, await upload.read(), upload.filename)
+    except ValueError as exc:
+        return render(
+            request,
+            "_artist_info.html",
+            status_code=422,
+            image_error=str(exc),
+            **_artist_info_context(lib, artist_id),
+        )
+    return render(
+        request,
+        "_artist_info.html",
+        trigger=("artists-changed", "pictures-changed", "library-changed"),
+        **_artist_info_context(lib, artist_id),
+    )
+
+
 @router.get("/fragments/artists/{artist_id}/edit")
 def artist_edit(request: Request, lib: Lib, artist_id: int):
     return render(request, "_artist_edit.html", artist=found(lib.get_artist, artist_id))
@@ -750,6 +778,18 @@ def pictures_page(
     )
 
 
+@router.get("/fragments/artists/{artist_id}/pictures-card")
+def artist_pictures_card(request: Request, lib: Lib, artist_id: int):
+    """The artist page's Pictures card, with the newest pictures."""
+    return render(
+        request,
+        "_artist_pictures.html",
+        artist=found(lib.get_artist, artist_id),
+        pictures=lib.list_pictures(artist_id, limit=ARTIST_PAGE_PICTURES),
+        picture_count=lib.count_pictures(artist_id),
+    )
+
+
 @router.get("/fragments/artists/{artist_id}/pictures")
 def pictures_fragment(
     request: Request,
@@ -800,7 +840,12 @@ async def add_picture(request: Request, lib: Lib, artist_id: int):
 
 def _picture_context(lib: Library, picture_id: int) -> dict:
     picture = found(lib.get_picture, picture_id)
-    return {"picture": picture, "artist": lib.get_artist(picture.artist_id)}
+    return {
+        "picture": picture,
+        "artist": lib.get_artist(picture.artist_id),
+        "is_profile": lib.is_profile_picture(picture_id),
+        "is_square": lib.picture_is_square(picture_id),
+    }
 
 
 @router.get("/pictures/{picture_id}")
@@ -830,6 +875,22 @@ async def update_picture(request: Request, lib: Lib, picture_id: int):
         request,
         "_picture_info.html",
         trigger=("pictures-changed",),
+        **_picture_context(lib, picture_id),
+    )
+
+
+@router.post("/pictures/{picture_id}/profile")
+def make_profile_picture(request: Request, lib: Lib, picture_id: int):
+    """Make a square picture its artist's profile picture."""
+    context = _picture_context(lib, picture_id)
+    try:
+        lib.make_profile_picture(picture_id)
+    except ValueError as exc:
+        return render(request, "_picture_info.html", status_code=422, error=str(exc), **context)
+    return render(
+        request,
+        "_picture_info.html",
+        trigger=("artists-changed", "library-changed"),
         **_picture_context(lib, picture_id),
     )
 

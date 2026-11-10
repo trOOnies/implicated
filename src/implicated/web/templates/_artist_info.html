@@ -1,7 +1,21 @@
 <section id="artist-info" class="card info media-head">
-  {% if artist.image %}
-  <img class="cover big" src="/api/artists/{{ artist.id }}/image?v={{ artist.image }}" alt="{{ artist.name }}">
-  {% endif %}
+  <div class="cover-pick">
+    {% if artist.image %}
+    <img class="cover big" src="/api/artists/{{ artist.id }}/image?v={{ artist.image }}" alt="{{ artist.name }}">
+    {% else %}
+    <span class="cover big none" aria-hidden="true">🎤</span>
+    {% endif %}
+    {# Picking a file uploads it right away: it replaces the profile picture, and is added to
+       the artist's Pictures too. #}
+    <form hx-post="/artists/{{ artist.id }}/image" hx-encoding="multipart/form-data" hx-trigger="change"
+          hx-target="#artist-info" hx-swap="outerHTML">
+      <label class="file-button" title="Upload an image as this artist's profile picture (it is added to their Pictures too)">
+        {{ 'Change picture' if artist.image else 'Set picture' }}
+        <input type="file" name="image" accept="{{ picture_accept }}">
+      </label>
+    </form>
+    {% if image_error %}<p class="error small" role="alert">{{ image_error }}</p>{% endif %}
+  </div>
   <div>
   <div class="row">
     <h1>{{ artist.name }}</h1>

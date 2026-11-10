@@ -193,6 +193,10 @@ file in TuxGuitar and to reload it after saving.
   and below the list. Filters and order selectors apply to the whole list, while clicking a column
   header sorts the page in view.
 - 🖼️ **Artist cards** show the artist's picture in grey behind the card, when they have one.
+- 🧑‍🎤 **Profile pictures**: *Set picture* (or *Change picture*) under an artist's picture uploads a
+  new one, which is also kept in their Pictures (named "Profile picture", tagged `profile`). Any
+  square picture of theirs can become the profile picture with *Make profile picture* on its
+  Picture page; the current one is marked *Profile picture* there.
 - 📸 **Pictures**: an artist page shows the newest pictures you saved of them and links to their
   **Pictures** page, 24 thumbnails at a time. Add one there (AVIF, GIF, JPEG, PNG or WebP) with a
   name (the file's, when left empty), a description and comma-separated tags. Search by name, file

@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from implicated.explicit import is_explicit
+from implicated.imagesize import is_square
 from implicated.lrc import TimedLine, plain_lyrics, read_lrc
 from implicated.models import (
     FORMATS,
@@ -481,6 +482,12 @@ def _tags(values: list[str]) -> str:
     return json.dumps(list(tags.values()))
 
 
+def _content_key(file_name: str) -> str:
+    """The content hash in an image file name the library made (``<id>-<hash>.<suffix>``, see
+    ``Library._store_image``), the same for the same image wherever it is kept."""
+    return file_name.partition("-")[2].rpartition(".")[0]
+
+
 def _picture(row: sqlite3.Row) -> Picture:
     data = dict(row)
     data["tags"] = json.loads(data["tags"])
@@ -902,17 +909,59 @@ class Library:
     def set_image(self, artist_id: int, source: str | Path) -> Artist:
         """Copy ``source`` into the artist images directory as the artist's picture; works
         like ``set_cover``."""
-        artist = self.get_artist(artist_id)
         source = Path(source)
         check_image_name(source.name)
-        name = self._store_image(
-            self.images_dir, artist_id, source.read_bytes(), source.name, artist.image
-        )
+        return self.set_image_data(artist_id, source.read_bytes(), source.name, picture=False)
+
+    def set_image_data(
+        self, artist_id: int, data: bytes, file_name: str, picture: bool = True
+    ) -> Artist:
+        """Make the image ``data`` (say, an upload) the artist's profile picture, its type
+        coming from ``file_name``. With ``picture``, it is also kept in the artist's Pictures
+        (see ``add_profile_picture``)."""
+        artist = self.get_artist(artist_id)
+        with self.transaction():
+            name = self._store_image(self.images_dir, artist_id, data, file_name, artist.image)
+            if name != artist.image:
+                with self.connect() as conn:
+                    conn.execute("UPDATE artists SET image = ? WHERE id = ?", (name, artist_id))
+            if picture:
+                self.add_profile_picture(artist_id, data, file_name)
         if name != artist.image:
-            with self.connect() as conn:
-                conn.execute("UPDATE artists SET image = ? WHERE id = ?", (name, artist_id))
             self._remove_files(self.images_dir, [artist.image])
         return self.get_artist(artist_id)
+
+    def add_profile_picture(self, artist_id: int, data: bytes, file_name: str) -> Picture | None:
+        """Keep a profile picture in the artist's Pictures, named "Profile picture" and tagged
+        "profile", unless one of them is that same image already (``None`` then)."""
+        key = hashlib.sha256(data).hexdigest()[:12]
+        if any(_content_key(p.file) == key for p in self.list_pictures(artist_id)):
+            return None
+        return self.add_picture(
+            artist_id, PictureIn("Profile picture", tags=["profile"]), data, file_name
+        )
+
+    def is_profile_picture(self, picture_id: int) -> bool:
+        """Whether the picture is the same image as its artist's profile picture."""
+        picture = self.get_picture(picture_id)
+        image = self.get_artist(picture.artist_id).image
+        return bool(image) and _content_key(image) == _content_key(picture.file)
+
+    def picture_is_square(self, picture_id: int) -> bool:
+        """Whether the picture is square (see ``imagesize.is_square``), so it can be the
+        artist's profile picture; ``False`` when its file is missing or unreadable."""
+        try:
+            return is_square(self.picture_path(picture_id).read_bytes())
+        except NotFound:
+            return False
+
+    def make_profile_picture(self, picture_id: int) -> Artist:
+        """Make a square picture its artist's profile picture."""
+        picture = self.get_picture(picture_id)
+        if not self.picture_is_square(picture_id):
+            raise ValueError("Only a square picture can be the profile picture.")
+        data = self.picture_path(picture_id).read_bytes()
+        return self.set_image_data(picture.artist_id, data, picture.file, picture=False)
 
     def image_path(self, artist_id: int) -> Path:
         artist = self.get_artist(artist_id)

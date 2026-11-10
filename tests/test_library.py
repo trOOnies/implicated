@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from conftest import Sample, add_sample
+from test_imagesize import png
 
 from implicated.library import SCHEMA, Library, NotFound
 from implicated.lrc import TimedLine
@@ -1718,6 +1719,32 @@ def test_favorite_songs_first(lib: Library, sample: Sample):
 
 
 # Pictures
+
+
+def test_uploaded_profile_pictures_go_to_pictures(lib: Library, sample: Sample):
+    square, wide = png(400, 400), png(800, 400)
+    artist = lib.set_image_data(sample.artist_id, square, "me.png")
+    (kept,) = lib.list_pictures(sample.artist_id)
+    assert (kept.name, kept.tags, kept.file_name) == ("Profile picture", ["profile"], "me.png")
+    assert lib.picture_path(kept.id).read_bytes() == square
+    assert lib.is_profile_picture(kept.id) and lib.picture_is_square(kept.id)
+    # The same image again adds nothing; imports (``set_image``) never add pictures.
+    assert lib.set_image_data(sample.artist_id, square, "again.png").image == artist.image
+    assert lib.count_pictures(sample.artist_id) == 1
+
+    # Any square picture can become the profile picture; a wide one cannot.
+    other = lib.add_picture(sample.artist_id, PictureIn("Live"), png(500, 500), "live.png")
+    poster = lib.add_picture(sample.artist_id, PictureIn("Poster"), wide, "poster.png")
+    artist = lib.make_profile_picture(other.id)
+    assert lib.image_path(sample.artist_id).read_bytes() == png(500, 500)
+    assert lib.is_profile_picture(other.id) and not lib.is_profile_picture(kept.id)
+    assert lib.count_pictures(sample.artist_id) == 3  # no copy of it is added
+    with pytest.raises(ValueError, match="Only a square picture"):
+        lib.make_profile_picture(poster.id)
+    assert lib.get_artist(sample.artist_id).image == artist.image
+    assert [p.name for p in lib.images_dir.iterdir()] == [artist.image]  # the old one is gone
+    with pytest.raises(NotFound):
+        lib.make_profile_picture(99)
 
 
 def test_pictures_are_saved_searched_and_deleted(lib: Library, sample: Sample):
