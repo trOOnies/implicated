@@ -288,6 +288,7 @@ def write_export(lib: Library, target: str | Path, owner: str | None = None) -> 
                                 "uid": song["uid"],
                                 "duration": _duration(song["duration_seconds"]),
                                 "no_lyrics": bool(song["no_lyrics"]),
+                                "explicit": bool(song["explicit"]),
                             }
                         )
                         | ({"featuring": features[song["id"]]} if song["id"] in features else {})

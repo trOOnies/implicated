@@ -93,8 +93,9 @@ info/
                                   #   languages, description, wiki, members
   bands/<artist name>/albums.yaml # album title -> uid, release_year, unreleased: true for
                                   #   scrapped or leaked albums, cover, songs (name, uid,
-                                  #   duration, no_lyrics: true for instrumentals, featuring:
-                                  #   other artists of bands.yaml on the song)
+                                  #   duration, no_lyrics: true for instrumentals, explicit:
+                                  #   true for explicit songs, featuring: other artists of
+                                  #   bands.yaml on the song)
   bands/<artist name>/band.jpg    # picture of the artist (.jpg, .png, .webp, .avif, ...)
   bands/<artist name>/covers/     # cover images (no GIFs), matched to albums by file name
   bands/<artist name>/songs/      # lyrics, <song title>.txt, and timed lyrics, <song title>.lrc
@@ -148,6 +149,8 @@ in file names (`<>:"\|?*`) left out, so `S/C/A/R/E/C/R/O/W` is `S_C_A_R_E_C_R_O_
   of songs that have them, and the Albums and Songs pages can show only what still needs them.
 - 🎼 **Instrumentals** have `no_lyrics` (set in `albums.yaml`, or with the No lyrics box when adding
   or editing a song), so they never count as missing.
+- 🅴 **Explicit songs** have `explicit` (set in `albums.yaml`, or with the Explicit box when adding
+  or editing a song), and show an <kbd>E</kbd> by their title.
 
 ### ⏱️ Timed lyrics
 

@@ -145,6 +145,8 @@ class SongIn:
     favorite: bool = False
     # The song has no words (an instrumental), so its lyrics are not missing.
     no_lyrics: bool = False
+    # The song has explicit content (marked "E").
+    explicit: bool = False
     # The song's music video on YouTube: a link to it or its id, stored as the id (see
     # ``youtube_id``). Other videos of the song (lessons, covers, live takes) are ``SongVideo``s.
     mv: str | None = None

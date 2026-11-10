@@ -52,6 +52,8 @@ The inbox may hold any of::
         duration: 1:52
       - name: Intro (instrumental)
         no_lyrics: true           # optional; the song has no words, so no lyrics are missing
+      - name: Teenagers
+        explicit: true            # optional; the song has explicit content
       - name: Everything Has Changed
         featuring: Ed Sheeran     # optional; a single name or a list, of artists in bands.yaml
 
@@ -114,14 +116,14 @@ BAND_KEYS = {
 }  # fmt: skip
 MEMBER_KEYS = {"name", "roles", "from", "to"}
 ALBUM_KEYS = {"uid", "release_year", "kind", "unreleased", "cover", "songs"}
-SONG_KEYS = {"name", "uid", "duration", "no_lyrics", "featuring"}
+SONG_KEYS = {"name", "uid", "duration", "no_lyrics", "explicit", "featuring"}
 USERDATA_FILE = "userdata.json"
 
 # The catalog fields the files describe, compared to say what an import changes. Your own data
 # (ratings, notes, marks, ownership) is never among them.
 ARTIST_FIELDS = ("name", "country", "formed_year", "genres", "languages", "bio", "wiki")
 ALBUM_FIELDS = ("title", "year", "kind", "unreleased")
-SONG_FIELDS = ("title", "track_number", "duration_seconds", "no_lyrics")
+SONG_FIELDS = ("title", "track_number", "duration_seconds", "no_lyrics", "explicit")
 
 # Words that say nothing about which album a cover file belongs to.
 COVER_STOPWORDS = {
@@ -703,11 +705,12 @@ def _import_song(
             report.warnings.append(f"{where} / {title}: {exc}")
     if values.get("duration_seconds") is None and not (existing and existing.duration_seconds):
         report.warnings.append(f"{where} / {title}: no duration")
-    if "no_lyrics" in data:
-        if isinstance(data["no_lyrics"], bool):
-            values["no_lyrics"] = data["no_lyrics"]
-        else:
-            report.warnings.append(f"{where} / {title}: no_lyrics must be true or false")
+    for flag in ("no_lyrics", "explicit"):
+        if flag in data:
+            if isinstance(data[flag], bool):
+                values[flag] = data[flag]
+            else:
+                report.warnings.append(f"{where} / {title}: {flag} must be true or false")
     if existing:
         current = SongIn(**{f.name: getattr(existing, f.name) for f in fields(SongIn)})
         song_in = replace(current, **values)

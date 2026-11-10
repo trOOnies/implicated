@@ -2421,3 +2421,35 @@ def test_tier_list_greys_decided_levels_and_offers_fast_assign(
     # song's artist.
     assert "data-fast-assign" in off and 'class="warning tier-warning" role="alert" hidden' in off
     assert off.count('data-artist="') == 2
+
+
+def test_explicit_songs(client: TestClient, client_lib: Library, web_sample: Sample):
+    first, second = web_sample.song_ids
+    album = web_sample.album_id
+    badge = '<abbr class="explicit" title="Explicit">E</abbr>'
+    assert badge not in client.get(f"/albums/{album}").text
+
+    # Ticked in the edit row, it shows by the title in tracklists, on its page and in tier lists.
+    form = {"title": client_lib.get_song(first).title, "album_id": album}
+    client.post(f"/songs/{first}", data=form | {"explicit": "on"})
+    assert client_lib.get_song(first).explicit
+    assert client.get(f"/albums/{album}").text.count(badge) == 1
+    assert client.get("/songs").text.count(badge) == 1
+    assert badge in client.get(f"/songs/{first}").text
+    assert 'name="explicit" checked' in client.get(f"/fragments/songs/{first}/edit").text
+    client.post(f"/albums/{album}/tiers")
+    tiers = client.get(f"/albums/{album}/tiers").text
+    assert tiers.count("tier-explicit") == 1 and " · explicit" in tiers
+    client.post(f"/songs/{first}", data=form)
+    assert not client_lib.get_song(first).explicit
+
+    # On the song page's details, which keep the rest of the song as it is.
+    assert 'name="explicit" checked' not in client.get(f"/fragments/songs/{second}/details").text
+    client.post(f"/songs/{second}/details", data={"notes": "loud", "explicit": "on"})
+    song = client_lib.get_song(second)
+    assert song.explicit and song.notes == "loud" and song.album_id == album
+    assert 'name="explicit" checked' in client.get(f"/fragments/songs/{second}/details").text
+
+    added = {"artist_id": web_sample.artist_id, "title": "Bonus", "explicit": "on"}
+    assert client.post("/songs", data=added).status_code == 200
+    assert client_lib.find_song(web_sample.artist_id, None, "Bonus").explicit

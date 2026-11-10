@@ -167,6 +167,23 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 2rem; }
 }
 
 .tag.none, .tag.unreleased { background: transparent; border: 1px solid var(--border); color: var(--muted); font-size: .72rem; }
+/* An explicit song's "E", like the one on music stores */
+abbr.explicit {
+  display: inline-grid;
+  place-items: center;
+  width: 1.05em;
+  height: 1.05em;
+  border-radius: 3px;
+  background: var(--muted);
+  color: var(--surface);
+  font-size: .7rem;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  vertical-align: middle;
+  cursor: help;
+}
+h1 abbr.explicit { font-size: .9rem; }
 .tag.missing { background: transparent; border: 1px dashed var(--muted); color: var(--muted); font-size: .72rem; }
 .tag.owned { background: var(--accent); color: var(--surface); }
 .tag.wanted, .tag.later { background: transparent; border: 1px dashed var(--accent); color: var(--accent); }
@@ -584,6 +601,7 @@ button.tier-label:hover { filter: brightness(.93); }
   user-select: none;
 }
 .tier-song img, .tier-song-none { display: block; width: 100%; height: 100%; object-fit: cover; }
+.tier-explicit { position: absolute; right: .2rem; bottom: .2rem; }
 .tier-song-none { display: grid; place-items: end center; padding-bottom: .3rem; color: var(--muted); font-size: 1.6rem; }
 .tier-song-name {
   position: absolute;

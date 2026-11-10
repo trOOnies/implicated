@@ -129,6 +129,7 @@ CREATE TABLE IF NOT EXISTS songs (
     created_at       TEXT NOT NULL,
     lyrics           TEXT,
     no_lyrics        INTEGER NOT NULL DEFAULT 0,
+    explicit         INTEGER NOT NULL DEFAULT 0,
     mv               TEXT,
     listen_later     INTEGER NOT NULL DEFAULT 0,
     -- The main version of the songs this one is merged with (see ``Song.main_id``).
@@ -289,6 +290,7 @@ MIGRATIONS = [
     ("playlists", "uid", "TEXT"),
     ("songs", "main_id", "INTEGER REFERENCES songs(id) ON DELETE SET NULL"),
     ("albums", "main_id", "INTEGER REFERENCES albums(id) ON DELETE SET NULL"),
+    ("songs", "explicit", "INTEGER NOT NULL DEFAULT 0"),
 ]
 # Tables whose records have a ``uid``: a stable id that survives renames, which exports and
 # inbox files use to point at a record (integer ids stay internal to one database).
@@ -535,6 +537,7 @@ def _song(row: sqlite3.Row) -> Song:
     data = dict(row)
     data["favorite"] = bool(data["favorite"])
     data["no_lyrics"] = bool(data["no_lyrics"])
+    data["explicit"] = bool(data["explicit"])
     data["listen_later"] = bool(data["listen_later"])
     return Song(**data)
 
@@ -1557,10 +1560,10 @@ class Library:
             cur = conn.execute(
                 """INSERT INTO songs (artist_id, album_id, title, track_number,
                                       duration_seconds, rating, notes, favorite, no_lyrics,
-                                      mv, listen_later, created_at, uid)
+                                      explicit, mv, listen_later, created_at, uid)
                    VALUES (:artist_id, :album_id, :title, :track_number, :duration_seconds,
-                           :rating, :notes, :favorite, :no_lyrics, :mv, :listen_later,
-                           :now, :uid)""",
+                           :rating, :notes, :favorite, :no_lyrics, :explicit, :mv,
+                           :listen_later, :now, :uid)""",
                 {**values, "now": _now(), "uid": uid or new_uid()},
             )
         self._sync_marks(cur.lastrowid)
@@ -1579,7 +1582,7 @@ class Library:
                        title = :title, track_number = :track_number,
                        duration_seconds = :duration_seconds, rating = :rating,
                        notes = :notes, favorite = :favorite, no_lyrics = :no_lyrics,
-                       mv = :mv, listen_later = :listen_later
+                       explicit = :explicit, mv = :mv, listen_later = :listen_later
                    WHERE id = :id""",
                 {**self._song_values(data), "id": song_id},
             )
@@ -1723,6 +1726,7 @@ class Library:
         values["title"] = data.title.strip()
         values["favorite"] = int(data.favorite)
         values["no_lyrics"] = int(data.no_lyrics)
+        values["explicit"] = int(data.explicit)
         values["mv"] = youtube_id(data.mv, "mv")
         values["listen_later"] = int(data.listen_later)
         return values

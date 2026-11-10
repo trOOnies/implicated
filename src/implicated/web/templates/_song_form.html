@@ -25,5 +25,6 @@
   </label>
   <label>Music video <input name="mv" placeholder="YouTube link or id" value="{{ form.get('mv', '') }}"></label>
   <label class="check"><input type="checkbox" name="no_lyrics" {% if form.get('no_lyrics') %}checked{% endif %}> No lyrics (instrumental)</label>
+  <label class="check"><input type="checkbox" name="explicit" {% if form.get('explicit') %}checked{% endif %}> Explicit</label>
   <button type="submit">Add song</button>
 </form>

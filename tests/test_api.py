@@ -196,6 +196,15 @@ def test_song_no_lyrics(client: TestClient, web_sample: Sample):
     assert albums[0]["no_lyrics_count"] == 0
 
 
+def test_song_explicit(client: TestClient, web_sample: Sample):
+    body = {"artist_id": web_sample.artist_id, "title": "Loud", "explicit": True}
+    created = client.post("/api/songs", json=body).json()
+    assert created["explicit"] is True
+    assert client.get(f"/api/songs/{created['id']}").json()["explicit"] is True
+    plain = client.post("/api/songs", json=body | {"title": "Quiet", "explicit": False}).json()
+    assert plain["explicit"] is False
+
+
 def test_album_filters_and_ownership(client: TestClient, web_sample: Sample):
     url = f"/api/albums/{web_sample.album_id}"
     album = client.get(url).json()

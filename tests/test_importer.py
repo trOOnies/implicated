@@ -732,3 +732,26 @@ def test_the_same_title_twice_in_an_album_warns(lib: Library, tmp_path: Path):
     assert "Band / A / song: listed as tracks 1 and 3, which are one song" in "\n".join(
         report.warnings
     )
+
+
+def test_import_explicit(lib: Library, info: Path):
+    albums = info / "bands" / "My Chemical Romance" / "albums.yaml"
+    albums.write_text(
+        albums.read_text().replace(
+            "  - name: Our Lady of Sorrows\n", "  - name: Our Lady of Sorrows\n    explicit: true\n"
+        )
+    )
+    import_dir(lib, info)
+    mcr = lib.find_artist("My Chemical Romance")
+    bullets = lib.find_album(mcr.id, "I Brought You My Bullets, You Brought Me Your Love")
+    assert lib.find_song(mcr.id, bullets.id, "Our Lady of Sorrows").explicit
+    assert not lib.find_song(mcr.id, bullets.id, "Romance (instrumental)").explicit
+
+    # A key in the file wins; a bad value only warns.
+    albums.write_text(albums.read_text().replace("explicit: true", "explicit: false"))
+    report = import_dir(lib, info)
+    assert not lib.find_song(mcr.id, bullets.id, "Our Lady of Sorrows").explicit
+    assert any("explicit" in str(change) for change in report.changes)
+    albums.write_text(albums.read_text().replace("explicit: false", "explicit: maybe"))
+    report = import_dir(lib, info)
+    assert any("explicit must be true or false" in w for w in report.warnings)

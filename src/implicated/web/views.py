@@ -313,6 +313,7 @@ def song_from_form(form: FormData) -> SongIn:
         notes=_text(form, "notes"),
         favorite="favorite" in form,
         no_lyrics="no_lyrics" in form,
+        explicit="explicit" in form,
         mv=_text(form, "mv"),
         listen_later="listen_later" in form,
     )
@@ -1619,7 +1620,7 @@ def _featuring_ids(form: FormData) -> list[int]:
 @router.get("/fragments/songs/{song_id}/details")
 def song_details_edit(request: Request, lib: Lib, song_id: int):
     song = found(lib.get_song, song_id)
-    form = {"notes": song.notes or "", "mv": song.mv or ""}
+    form = {"notes": song.notes or "", "mv": song.mv or "", "explicit": song.explicit}
     featuring = [artist.id for artist in lib.list_featuring(song_id)]
     return render(
         request, "_song_details_edit.html", **_song_details_context(lib, song, form, featuring)
@@ -1628,13 +1629,14 @@ def song_details_edit(request: Request, lib: Lib, song_id: int):
 
 @router.post("/songs/{song_id}/details")
 async def update_song_details(request: Request, lib: Lib, song_id: int):
-    """Change only the notes, the music video and the featured artists of a song, from its
-    page."""
+    """Change only the notes, the music video, whether it is explicit and the featured artists
+    of a song, from its page."""
     form = await request.form()
     song = found(lib.get_song, song_id)
     data = song_in(song)
     data.notes = _text(form, "notes")
     data.mv = _text(form, "mv")
+    data.explicit = "explicit" in form
     featuring: list[int] = []
     try:
         featuring = _featuring_ids(form)

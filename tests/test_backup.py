@@ -36,7 +36,9 @@ def full_library(root: Path) -> Library:
     lib.set_cover(dummy.id, root.parent / "img" / "dummy.png")
     lib.create_album(AlbumIn(a.id, "Third", 2008, kind="album", unreleased=True))
     s1 = lib.create_song(SongIn(a.id, "Mysterons", dummy.id, 1, 302, favorite=True))
-    s2 = lib.create_song(SongIn(a.id, "Sour Times", dummy.id, 2, 3725, no_lyrics=True))
+    s2 = lib.create_song(
+        SongIn(a.id, "Sour Times", dummy.id, 2, 3725, no_lyrics=True, explicit=True)
+    )
     lib.set_featuring(s1.id, [b.id])
     lib.lyrics_path(s1.id).write_text("Did you really want\n")
     lib.reload_lyrics(s1.id)
@@ -113,6 +115,7 @@ def test_export_round_trips_through_the_inbox(tmp_path: Path):
         ).uid,  # fmt: skip
         "duration": "1:02:05",
         "no_lyrics": True,
+        "explicit": True,
     }
     assert "bands/Portishead/tabs/Mysterons.gp5" in first
 

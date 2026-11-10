@@ -6,7 +6,7 @@
   {% endif %}
   <div>
   <div class="row">
-    <h1>{{ s.song.title }}</h1>
+    <h1>{{ s.song.title }}{% if s.song.explicit %} <abbr class="explicit" title="Explicit">E</abbr>{% endif %}</h1>
     {% with kind='song', record_id=s.song.id, favorite=s.song.favorite %}{% include "_fav.html" %}{% endwith %}
     {% with kind='song', record_id=s.song.id, later=s.song.listen_later %}{% include "_later.html" %}{% endwith %}
     <span class="spacer"></span>

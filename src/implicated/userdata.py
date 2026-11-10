@@ -205,6 +205,7 @@ def export_data(lib: Library, owner: str | None = None) -> dict:
                     "track_number": s["track_number"],
                     "duration": s["duration_seconds"],
                     "no_lyrics": bool(s["no_lyrics"]),
+                    "explicit": bool(s["explicit"]),
                     "favorite": bool(s["favorite"]),
                     "listen_later": bool(s["listen_later"]),
                     "rating": s["rating"],
