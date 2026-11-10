@@ -1867,12 +1867,24 @@ class Library:
         return Play(cur.lastrowid, song_id, played_at)
 
     def record_album_play(self, album_id: int) -> list[Play]:
-        """Log a listen of every song on the album, in track order."""
+        """Log a listen of every song on the album, in track order; the album is no longer
+        waiting to be listened to later."""
         self.get_album(album_id)
         played_at = _now()
         songs = self.list_songs(album_id=album_id, order="track")
         with self.transaction():
-            return [self.record_play(s.song.id, played_at) for s in songs]
+            plays = [self.record_play(s.song.id, played_at) for s in songs]
+            self.finish_album(album_id)
+            return plays
+
+    def finish_album(self, album_id: int) -> None:
+        """The album was listened to in full, so it leaves Listen Later, with the editions
+        merged with it. (Artists only ever leave it by hand.)"""
+        with self.connect() as conn:
+            cur = conn.execute("UPDATE albums SET listen_later = 0 WHERE id = ?", (album_id,))
+        if cur.rowcount == 0:
+            raise NotFound(f"album {album_id} not found")
+        self._spread_album_marks(album_id)
 
     def recent_plays(self, limit: int = 10) -> list[tuple[Play, SongSummary]]:
         with self.connect() as conn:

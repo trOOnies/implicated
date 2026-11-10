@@ -304,8 +304,9 @@ Besides what the import brings, the app keeps:
   album page. A song is in a playlist at most once.
 - 💖 **Favorites** and ⧖ **Listen Later** are built-in playlists that cannot be renamed or deleted:
   they always hold the songs with that mark, and adding or removing songs sets or clears it.
-- ⧖ **Listen later** marks on artists, albums and songs. A song's mark goes away when you log a play
-  of it.
+- ⧖ **Listen later** marks on artists, albums and songs. A song's mark goes away whenever you log a
+  play of it, and an album's when you press its ▶ Played button or Live Play reaches its last song.
+  An artist's mark only goes away by hand.
 
 <details>
 <summary>🔗 <strong>Which YouTube links work?</strong></summary>

@@ -402,3 +402,14 @@ def test_discography_filters(client, client_lib: Library, web_sample):
     client_lib.make_main_album(album)
     assert shown(mains="1") == {album, ep}
     assert client.get("/fragments/artists/9999/albums").status_code == 404
+
+
+def test_finishing_an_album_clears_its_editions_listen_later(lib: Library, sample: Sample):
+    album, _ = deluxe(lib, sample)
+    lib.merge_albums(album, sample.album_id)
+    lib.toggle("album", album, "listen_later")
+    assert lib.get_album(sample.album_id).listen_later
+
+    lib.finish_album(album)
+    assert not lib.get_album(album).listen_later
+    assert not lib.get_album(sample.album_id).listen_later

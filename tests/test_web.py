@@ -562,6 +562,15 @@ def test_listen_later_toggle(client: TestClient, client_lib: Library, web_sample
     assert client.post("/later/song/99").status_code == 404
 
 
+def test_album_play_button_clears_its_listen_later(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    client.post(f"/later/album/{web_sample.album_id}")
+    played = client.post(f"/albums/{web_sample.album_id}/play")
+    assert "plays-changed" in played.headers["HX-Trigger"]  # the album's ⧗ refreshes
+    assert not client_lib.get_album(web_sample.album_id).listen_later
+
+
 def test_playing_clears_listen_later(client: TestClient, client_lib: Library, web_sample: Sample):
     song_id = web_sample.song_ids[0]
     client.post(f"/later/song/{song_id}")
@@ -1894,9 +1903,16 @@ def test_live_play_listen_later_and_lyrics(
     assert "New words" in client.get(f"/fragments/songs/{first}/lyrics").text  # Reload lyrics
     assert client_lib.get_song_summary(first).play_count == 1
 
+    client.post(f"/later/album/{web_sample.album_id}")
+    client.post(f"/later/artist/{web_sample.artist_id}")
+    client.post(url.split("?")[0], data={"queue": f"{first},{second}", "at": "1"})
+    assert client_lib.get_album(web_sample.album_id).listen_later  # not at the end yet
     last = client.post(url.split("?")[0], data={"queue": f"{first},{second}", "at": "2"}).text
     assert 'aria-label="Previous song" disabled' not in last
     assert 'aria-label="Next song" disabled' in last
+    # Reaching the album's last song takes the album, not its artist, off Listen Later.
+    assert not client_lib.get_album(web_sample.album_id).listen_later
+    assert client_lib.get_artist(web_sample.artist_id).listen_later
 
 
 def test_live_play_timed_lyrics(client: TestClient, client_lib: Library, web_sample: Sample):

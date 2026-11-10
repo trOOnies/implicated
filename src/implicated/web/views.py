@@ -2339,7 +2339,7 @@ def live_page(request: Request, lib: Lib, kind: str, record_id: int, queue: str 
 async def live_play(request: Request, lib: Lib, kind: str, record_id: int):
     """Put a song in Live Play and log a listen of it. Without a ``queue`` this starts Live Play
     from the album or playlist's page, opening it on its first song; with one it steps to song
-    number ``at``."""
+    number ``at``. Reaching an album's last song takes the album out of Listen Later."""
     form = await request.form()
     queue = _queue(_text(form, "queue"))
     start = not queue
@@ -2350,6 +2350,8 @@ async def live_play(request: Request, lib: Lib, kind: str, record_id: int):
     at = min(max(_id(form, "at") or 1, 1), len(queue))
     url = _live_url(kind, record_id, queue, at)
     found(lib.record_play, queue[at - 1])
+    if kind == "album" and at == len(queue):
+        found(lib.finish_album, record_id)  # reaching its last song finishes the album
     if start:
         return Response(headers={"HX-Redirect": url})
     return render(

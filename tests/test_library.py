@@ -1617,6 +1617,19 @@ def test_record_album_play(lib: Library, sample: Sample):
         lib.record_album_play(99)
 
 
+def test_playing_an_album_clears_its_listen_later_but_not_its_artists(lib: Library, sample: Sample):
+    lib.toggle("album", sample.album_id, "listen_later")
+    lib.toggle("artist", sample.artist_id, "listen_later")
+    lib.record_play(sample.song_ids[0])  # one song is not the album
+    assert lib.get_album(sample.album_id).listen_later
+
+    lib.record_album_play(sample.album_id)
+    assert not lib.get_album(sample.album_id).listen_later
+    assert lib.get_artist(sample.artist_id).listen_later  # only ever taken off by hand
+    with pytest.raises(NotFound):
+        lib.finish_album(99)
+
+
 def test_lists_page_by_page(lib: Library, sample: Sample):
     lib.create_artist(ArtistIn("Air", country="France", genres=["Electronic"]))
     assert [a.artist.name for a in lib.list_artists(limit=1)] == ["Air"]
