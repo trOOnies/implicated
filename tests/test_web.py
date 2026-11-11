@@ -211,6 +211,10 @@ def test_ago_is_short():
     assert ago(old.isoformat()) == old.strftime("%b %Y")
 
 
+def test_artists_page_puts_add_artist_below_sooner(client: TestClient):
+    assert '<div class="layout stack-early">' in client.get("/artists").text
+
+
 def test_albums_page(client: TestClient, client_lib: Library, web_sample: Sample, image):
     other = client_lib.create_artist(ArtistIn("Air"))
     client_lib.create_album(AlbumIn(other.id, "Moon Safari", 1998))

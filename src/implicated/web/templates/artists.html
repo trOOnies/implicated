@@ -20,7 +20,7 @@
     <label class="check"><input type="checkbox" name="later" value="1" {% if later %}checked{% endif %}> Listen later</label>
   </form>
 </div>
-<div class="layout">
+<div class="layout stack-early">
   <section id="artists" hx-get="/fragments/artists" hx-trigger="artists-changed from:body"
            hx-include="#artist-filters, #artists-page" hx-disinherit="hx-include" hx-swap="innerHTML">
     {% include "_artists.html" %}
