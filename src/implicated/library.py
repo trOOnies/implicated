@@ -2278,6 +2278,14 @@ class Library:
             )
         return self.get_playlist(cur.lastrowid)
 
+    def copy_playlist(self, playlist_id: int, data: PlaylistIn) -> Playlist:
+        """A new playlist named as in ``data`` with the songs of ``playlist_id``, in its order
+        (a built-in one's too: the copy is a playlist of your own, which keeps them)."""
+        songs = [s.song.id for s in self.get_playlist_detail(playlist_id).songs]
+        copy = self.create_playlist(data)
+        self._write_playlist(copy.id, songs)
+        return copy
+
     def update_playlist(self, playlist_id: int, data: PlaylistIn) -> Playlist:
         self._own_playlist(playlist_id, "renamed")
         name = self._playlist_name(data)

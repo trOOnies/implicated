@@ -9,9 +9,6 @@
            hx-trigger="playlists-changed from:body" hx-swap="innerHTML">
     {% include "_playlists.html" %}
   </section>
-  <aside class="card">
-    <h2>New playlist</h2>
-    {% include "_playlist_form.html" %}
-  </aside>
+  {% with form={} %}{% include "_playlist_form.html" %}{% endwith %}
 </div>
 {% endblock %}

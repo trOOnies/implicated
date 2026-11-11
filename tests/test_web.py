@@ -215,6 +215,32 @@ def test_artists_page_puts_add_artist_below_sooner(client: TestClient):
     assert '<div class="layout stack-early">' in client.get("/artists").text
 
 
+def test_copy_playlist(client: TestClient, client_lib: Library, web_sample: Sample):
+    songs = web_sample.song_ids[:2][::-1]
+    source = client_lib.create_playlist(PlaylistIn("Road trip"))
+    client_lib.set_playlist_songs(source.id, songs)
+
+    page = client.get("/playlists").text
+    assert f'hx-get="/fragments/playlists/{source.id}/copy"' in page
+    assert 'aria-label="Copy Road trip"' in page and "<h2>New playlist</h2>" in page
+    form = client.get(f"/fragments/playlists/{source.id}/copy").text
+    assert "<h2>Copy playlist</h2>" in form and f'name="copy_of" value="{source.id}"' in form
+    assert ">Road trip</a>" in form and "(2 songs)" in form
+    assert 'hx-get="/fragments/playlists/new"' in form and ">Cancel</button>" in form
+    cancel = client.get("/fragments/playlists/new").text
+    assert "<h2>New playlist</h2>" in cancel and "copy_of" not in cancel and "Cancel" not in cancel
+
+    missing = client.post("/playlists", data={"copy_of": source.id, "name": ""})
+    assert missing.status_code == 422 and "<h2>Copy playlist</h2>" in missing.text
+    made = client.post("/playlists", data={"copy_of": source.id, "name": "Road trip 2"})
+    assert made.status_code == 200 and "playlists-changed" in made.headers["hx-trigger"]
+    assert "<h2>New playlist</h2>" in made.text  # back to a new one
+    copy = next(p for p in client_lib.list_playlists() if p.playlist.name == "Road trip 2")
+    assert [s.song.id for s in client_lib.get_playlist_detail(copy.playlist.id).songs] == songs
+    assert client.get("/fragments/playlists/999/copy").status_code == 404
+    assert client.post("/playlists", data={"copy_of": 999, "name": "X"}).status_code == 404
+
+
 def test_albums_page(client: TestClient, client_lib: Library, web_sample: Sample, image):
     other = client_lib.create_artist(ArtistIn("Air"))
     client_lib.create_album(AlbumIn(other.id, "Moon Safari", 1998))

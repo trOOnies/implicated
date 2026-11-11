@@ -1,5 +1,17 @@
-<form class="stack" hx-post="/playlists" hx-swap="outerHTML">
-  {% if error %}<p class="error">{{ error }}</p>{% endif %}
-  <label>Name <input name="name" required value="{{ form.get('name', '') }}"></label>
-  <button type="submit">Create playlist</button>
-</form>
+{# The Playlists page's side card: New playlist, or Copy playlist when `copy_of` (a
+   PlaylistSummary) is the playlist being copied, which Cancel turns back into New playlist. #}
+<aside id="playlist-new" class="card">
+  <h2>{{ 'Copy playlist' if copy_of else 'New playlist' }}</h2>
+  <form class="stack" hx-post="/playlists" hx-target="#playlist-new" hx-swap="outerHTML">
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    {% if copy_of %}
+    <input type="hidden" name="copy_of" value="{{ copy_of.playlist.id }}">
+    <p class="small">Copying <a href="/playlists/{{ copy_of.playlist.id }}">{{ copy_of.playlist.name }}</a>
+      ({{ copy_of.song_count }} {{ 'song' if copy_of.song_count == 1 else 'songs' }}) into a new playlist, in its order.</p>
+    {% endif %}
+    <label>Name <input name="name" required value="{{ form.get('name', '') }}"></label>
+    <button type="submit">Create playlist</button>
+    {% if copy_of %}<button type="button" class="link" hx-get="/fragments/playlists/new"
+            hx-target="#playlist-new" hx-swap="outerHTML">Cancel</button>{% endif %}
+  </form>
+</aside>

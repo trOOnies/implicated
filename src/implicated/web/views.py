@@ -77,6 +77,7 @@ from implicated.models import (
     PictureIn,
     Playlist,
     PlaylistIn,
+    PlaylistSummary,
     Point,
     Song,
     SongIn,
@@ -2073,13 +2074,41 @@ def playlists_fragment(request: Request, lib: Lib):
     return render(request, "_playlists.html", playlists=lib.list_playlists())
 
 
+def _playlist_summary(lib: Library, playlist_id: int) -> PlaylistSummary:
+    found(lib.get_playlist, playlist_id)
+    return next(p for p in lib.list_playlists() if p.playlist.id == playlist_id)
+
+
+@router.get("/fragments/playlists/new")
+def new_playlist_form(request: Request):
+    return render(request, "_playlist_form.html", form={})
+
+
+@router.get("/fragments/playlists/{playlist_id}/copy")
+def copy_playlist_form(request: Request, lib: Lib, playlist_id: int):
+    """New playlist turned into Copy playlist, for ``playlist_id``."""
+    copy_of = _playlist_summary(lib, playlist_id)
+    return render(request, "_playlist_form.html", copy_of=copy_of, form={})
+
+
 @router.post("/playlists")
 async def create_playlist(request: Request, lib: Lib):
+    """A new playlist, or with ``copy_of`` in the form a copy of that one."""
     form = await request.form()
+    copy_of = _int(form, "copy_of")
+    source = _playlist_summary(lib, copy_of) if copy_of is not None else None
+    data = PlaylistIn(_text(form, "name") or "")
     try:
-        lib.create_playlist(PlaylistIn(_text(form, "name") or ""))
+        lib.copy_playlist(copy_of, data) if source else lib.create_playlist(data)
     except ValueError as exc:
-        return render(request, "_playlist_form.html", status_code=422, error=str(exc), form=form)
+        return render(
+            request,
+            "_playlist_form.html",
+            status_code=422,
+            error=str(exc),
+            form=form,
+            copy_of=source,
+        )
     return render(request, "_playlist_form.html", trigger=("playlists-changed",), form={})
 
 
