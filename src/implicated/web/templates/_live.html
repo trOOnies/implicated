@@ -1,9 +1,10 @@
+{% from "_icons.html" import help_link %}
 {# Live Play: song number `at` of the `songs` of an album or playlist (`kind`, `record_id`), with
    `s` that song. Every button posts the `queue` and the number of the song to go to, which logs a
    listen. live.js keeps time: it runs the bar and presses the next button when the song is over. #}
 {% macro step(number) %}hx-post="/live/{{ kind }}/{{ record_id }}" hx-vals='{"queue": "{{ queue }}", "at": {{ number }}}' hx-target="#live" hx-swap="outerHTML" hx-sync="#live:drop"{% endmacro %}
 <div id="live"{% if s and not s.song.duration_seconds %} class="paused"{% endif %}>
-  <div class="page-head"><h1>Live Play: <a href="{{ link }}">{{ title }}</a></h1></div>
+  <div class="page-head"><div class="row"><h1>Live Play: <a href="{{ link }}">{{ title }}</a></h1>{{ help_link('pages', 'live-play', 'Live Play') }}</div></div>
   {% if s %}
   {% set seconds = s.song.duration_seconds %}
   <section class="card live media-head">

@@ -103,6 +103,9 @@ def test_overview_needs_no_plays(client: TestClient, client_lib: Library, web_sa
     page = client.get("/fragments/view").text
     assert "Plays, last 30 days" in page and "Recently played" in page and "Mysterons" in page
     assert "Favorite artists" in page and "No favorite albums yet" in page
+    # Help icons by the charts and lists, leading to the actions they come from
+    for entry in ("rating", "log-a-listen", "favorite"):
+        assert f'class="help-link" href="/help/actions#{entry}"' in page, entry
 
 
 def test_albums_page(client: TestClient, client_lib: Library, web_sample: Sample, image):
@@ -558,6 +561,7 @@ def test_listen_later_toggle(client: TestClient, client_lib: Library, web_sample
     assert client_lib.get_album(web_sample.album_id).listen_later
     overview = client.get("/").text
     assert "Artists to listen to" in overview and "Songs to listen to" in overview
+    assert 'class="help-link" href="/help/actions#listen-later"' in overview
     assert f'href="/songs/{web_sample.song_ids[0]}">Mysterons' in overview
     assert 'aria-pressed="false"' in client.post(f"/later/album/{web_sample.album_id}").text
     assert client.post("/later/playlist/1").status_code == 404
@@ -887,7 +891,7 @@ def test_tier_list_pages(client: TestClient, client_lib: Library, web_sample: Sa
     assert "has no tier list yet" in page and "Make a tier list" in page
     # How it works is in Help, which the page only links to, with the Help icon.
     assert 'class="help-link" href="/help/pages#tier-lists"' in page
-    assert 'aria-label="Help: tier lists"' in page and "Drag the songs" not in page
+    assert 'aria-label="Help: Tier List"' in page and "Drag the songs" not in page
     help_page = client.get("/help/pages").text
     assert 'id="tier-lists"' in help_page and "Fast assign" in help_page
     assert client.get(f"/fragments/playlists/{pid}/tiers").status_code == 404
@@ -1247,7 +1251,11 @@ def test_help_icons_lead_to_help_entries_that_exist(client: TestClient):
         if path.name != "_icons.html"
         for call in re.findall(r"help_link\((.*?)\)", path.read_text())
     ]
-    assert ("pages", "tier-lists") in calls
+    for entry in ("tier-lists", "albums", "artists", "songs", "playlists", "budget", "concerts",
+                  "duo", "import", "live-play", "merged-songs", "merged-albums"):
+        assert ("pages", entry) in calls, entry
+    for entry in ("rating", "log-a-listen", "listen-later", "favorite"):  # on the Overview
+        assert ("actions", entry) in calls, entry
     for section, anchor in calls:
         url = help_url(section, anchor)
         page = client.get(url.split("#")[0])

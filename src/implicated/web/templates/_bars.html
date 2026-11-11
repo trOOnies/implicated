@@ -1,8 +1,9 @@
-{# Horizontal bar chart drawn with plain HTML and CSS widths. `points` is a list of Point(label, value). #}
-{% macro bar_chart(points, title, href=None) %}
+{# Horizontal bar chart drawn with plain HTML and CSS widths. `points` is a list of Point(label, value);
+   `help`, a Help icon (help_link in _icons.html) to show after the title. #}
+{% macro bar_chart(points, title, href=None, help=None) %}
 {% set top = [(points | map(attribute='value') | max) if points else 0, 1] | max %}
 <figure class="chart bar-chart">
-  <figcaption>{{ title }}</figcaption>
+  <figcaption>{{ title }}{% if help %} {{ help }}{% endif %}</figcaption>
   {% if points %}
   <ul class="bars">
     {% for p in points %}

@@ -1,9 +1,10 @@
+{% from "_icons.html" import help_link %}
 {# An album page's Editions card: the albums merged with it, merging it with another of the
    artist's albums, and its songs left unmerged. Needs the context of `_album_merge_context`. #}
 {% set target %}hx-target="#album-merge" hx-swap="outerHTML"{% endset %}
 {% if editions or merge_choices or message %}
 <section id="album-merge" class="card">
-  <h2>Editions</h2>
+  <div class="row"><h2>Editions</h2>{{ help_link('pages', 'merged-albums', 'Editions') }}</div>
   {% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
   {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
   {% if editions %}

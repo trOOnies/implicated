@@ -15,7 +15,8 @@
 </li>
 {% endmacro %}
 {% block content %}
-<div class="page-head"><h1>Duo</h1></div>
+{% from "_icons.html" import help_link %}
+<div class="page-head"><div class="row"><h1>Duo</h1>{{ help_link('pages', 'duo', 'Duo') }}</div></div>
 
 <section class="card">
   <h2>👥 You and a friend</h2>

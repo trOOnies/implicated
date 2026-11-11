@@ -1,5 +1,6 @@
-{# Line chart drawn as inline SVG. `points` is a list of Point(label, value). #}
-{% macro line_chart(points, title, width=640, height=180) %}
+{# Line chart drawn as inline SVG. `points` is a list of Point(label, value);
+   `help`, a Help icon (help_link in _icons.html) to show after the title. #}
+{% macro line_chart(points, title, width=640, height=180, help=None) %}
 {% set pad_l, pad_r, pad_t, pad_b = 36, 12, 12, 26 %}
 {% set values = points | map(attribute='value') | list %}
 {% set top = [(values | max) if values else 0, 1] | max %}
@@ -9,7 +10,7 @@
 {% set plot_h = height - pad_t - pad_b %}
 {% set label_every = [(n / 6) | round(0, 'ceil') | int, 1] | max %}
 <figure class="chart line-chart">
-  <figcaption>{{ title }}</figcaption>
+  <figcaption>{{ title }}{% if help %} {{ help }}{% endif %}</figcaption>
   {% if n %}
   <svg viewBox="0 0 {{ width }} {{ height }}" role="img" aria-label="{{ title }}">
     {% for frac in (0, 0.5, 1) %}

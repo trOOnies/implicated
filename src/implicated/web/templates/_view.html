@@ -1,5 +1,6 @@
 {% from "_line.html" import line_chart %}
 {% from "_bars.html" import bar_chart %}
+{% from "_icons.html" import help_link %}
 {# The link to the full list on `href`, when `records` holds more than the list shows. #}
 {% macro see_more(records, href) %}
 {% if records | length > overview_list %}<p class="see-more"><a href="{{ href }}">See more...</a></p>{% endif %}
@@ -30,13 +31,13 @@
   <div class="card">{{ bar_chart(stats.genres, "Genres") }}</div>
   <div class="card">{{ bar_chart(stats.albums_per_decade, "Albums by decade") }}</div>
   {% if stats.ratings | map(attribute='value') | sum %}
-  <div class="card">{{ bar_chart(stats.ratings, "Album ratings") }}</div>
+  <div class="card">{{ bar_chart(stats.ratings, "Album ratings", help=help_link('actions', 'rating', 'Rating')) }}</div>
   {% endif %}
 </div>
 
 {% if stats.plays %}
 <div class="card wide">
-  {{ line_chart(stats.plays_per_day, "Plays, last 30 days") }}
+  {{ line_chart(stats.plays_per_day, "Plays, last 30 days", help=help_link('actions', 'log-a-listen', 'Log a listen')) }}
 </div>
 
 <div class="grid">
@@ -60,7 +61,7 @@
 {% if later_artists or later_albums or later_songs %}
 <div class="grid">
   <div class="card">
-    <h2>Artists to listen to</h2>
+    <div class="row"><h2>Artists to listen to</h2>{{ help_link('actions', 'listen-later', 'Listen later') }}</div>
     {% for a in later_artists[:overview_list] %}
     <p><a href="/artists/{{ a.artist.id }}">{{ a.artist.name }}</a> <small>{{ a.album_count }} albums</small></p>
     {% else %}<p class="empty">Mark artists with ⧖ to listen to them later.</p>{% endfor %}
@@ -86,7 +87,7 @@
 {% if favorite_artists or favorite_albums or favorite_songs %}
 <div class="grid">
   <div class="card">
-    <h2>Favorite artists</h2>
+    <div class="row"><h2>Favorite artists</h2>{{ help_link('actions', 'favorite', 'Favorite') }}</div>
     {% for a in favorite_artists[:overview_list] %}
     <p><a href="/artists/{{ a.artist.id }}">{{ a.artist.name }}</a> <small>{{ a.album_count }} albums</small></p>
     {% else %}<p class="empty">Mark artists with ♡ to see them here.</p>{% endfor %}

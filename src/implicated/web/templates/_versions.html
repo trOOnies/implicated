@@ -1,3 +1,4 @@
+{% from "_icons.html" import help_link %}
 {# The Same song card of a song's page: the songs merged with it, which count as one, and the
    songs it could be merged with. Needs the context of `_versions_context`. #}
 {% set target %}hx-target="#song-versions" hx-swap="outerHTML"{% endset %}
@@ -15,7 +16,7 @@
 </ul>
 {% endmacro %}
 <section id="song-versions" class="card">
-  <h2>Same song</h2>
+  <div class="row"><h2>Same song</h2>{{ help_link('pages', 'merged-songs', 'Same song') }}</div>
   {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
   {% if versions %}
   <p class="small">These count as one song, with {{ versions[0].play_count }} {{ 'play' if versions[0].play_count == 1 else 'plays' }}

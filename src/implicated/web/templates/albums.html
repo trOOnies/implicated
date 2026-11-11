@@ -2,8 +2,9 @@
 {% set active = 'albums' %}
 {% block title %}Albums{% endblock %}
 {% block content %}
+{% from "_icons.html" import help_link %}
 <div class="page-head">
-  <h1>Albums</h1>
+  <div class="row"><h1>Albums</h1>{{ help_link('pages', 'albums', 'Albums') }}</div>
   <form class="filters" hx-get="/fragments/albums" hx-target="#albums" hx-swap="innerHTML"
         hx-trigger="input changed delay:300ms, change, search">
     <input type="search" name="q" value="{{ q }}" placeholder="Filter by title or artist…">

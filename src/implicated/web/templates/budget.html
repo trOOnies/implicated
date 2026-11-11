@@ -2,6 +2,7 @@
 {% set active = 'budget' %}
 {% block title %}Budget{% endblock %}
 {% block content %}
-<div class="page-head"><h1>Budget</h1></div>
+{% from "_icons.html" import help_link %}
+<div class="page-head"><div class="row"><h1>Budget</h1>{{ help_link('pages', 'budget', 'Budget') }}</div></div>
 {% include "_budget.html" %}
 {% endblock %}
