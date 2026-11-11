@@ -1699,6 +1699,7 @@ def test_concerts_page(client: TestClient, client_lib: Library, web_sample: Samp
     assert f'src="/api/artists/{web_sample.artist_id}/image?v=' in upcoming  # the band's image
     assert '<td data-sort="Air">Air</td>' in upcoming  # not in the library
     assert "3 concerts · going to 1" in upcoming
+    assert "every time this page opens" not in page  # Help explains the file
     assert "line 5: &#39;someday&#39; is not a date" in page and "Nobody" not in page
     assert "line 6: &#39;maybe&#39; is not true or false" in page
     # Coming concerts are nothing, want to go or going; past ones nothing or went.
