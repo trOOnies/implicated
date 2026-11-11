@@ -7,6 +7,7 @@
   {% include "help/_index.html" %}
   <section class="card help-section" id="{{ section.slug or 'about' }}">
     {%- block lead %}{% endblock %}
+    <p class="help-group">{{ section.group }}</p>
     <h2>{{ section.emoji }} {{ section.title|safe }}</h2>
     {%- block section %}{% endblock %}
     {% include "help/_nav.html" %}

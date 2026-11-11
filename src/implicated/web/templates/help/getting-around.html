@@ -1,0 +1,66 @@
+{% extends "help/_section.html" %}
+{% block section %}
+    <p class="help-lead">Each tab along the top bar is a page of its own. The ❔ by a heading
+    leads to the Help about it.</p>
+
+    <h3 id="overview">📊 Overview</h3>
+    <p>Click the <strong>implicated logo</strong> at the top left to come here. It has a
+    <a href="#showcase">showcase</a> of your library, and charts of it:</p>
+    <ul>
+      <li>songs per artist, genres, albums by decade and album ratings;</li>
+      <li>plays in the last 30 days, once you have some.</li>
+    </ul>
+
+    <h3 id="showcase">🖼️ The showcase</h3>
+    <p>A grid of up to 30 pictures. Pick its <strong>Type</strong> and its
+    <strong>Order</strong>:</p>
+    <table class="help-table">
+      <thead><tr><th>Order</th><th>Artists</th><th>Albums</th><th>Songs</th></tr></thead>
+      <tbody>
+        <tr><td>Latest releases <span class="muted">(where it starts)</span></td><td></td><td>✓</td><td></td></tr>
+        <tr><td>Favorites</td><td>✓</td><td>✓</td><td>✓</td></tr>
+        <tr><td>Listen Later</td><td>✓</td><td>✓</td><td>✓</td></tr>
+        <tr><td>Recently played</td><td></td><td>✓</td><td>✓</td></tr>
+        <tr><td>Most played</td><td>✓</td><td>✓</td><td>✓</td></tr>
+        <tr><td>Highest rated</td><td>✓</td><td>✓</td><td>✓</td></tr>
+      </tbody>
+    </table>
+    <ul>
+      <li>A <strong>badge</strong> on each picture shows what the order goes by: the ♡ or ⧖
+      (click it to take the mark off), the plays, when it was last played, the rating or the
+      year.</li>
+      <li>The played and rated orders show only records that were played or rated.</li>
+      <li><em>See more...</em> opens the rest on the Artists, Albums or Songs page, already
+      filtered, when that page can show them.</li>
+    </ul>
+
+    <h3 id="tabs">🗂️ The tabs</h3>
+    <dl class="help-tabs">
+      <dt>🎤 <a href="/artists">Artists</a>, 💿 <a href="/albums">Albums</a>, 🎵 <a href="/songs">Songs</a></dt>
+      <dd>Your library. See <a href="/help/artists">Artists</a>,
+      <a href="/help/albums">Albums</a> and <a href="/help/songs">Songs</a>.</dd>
+      <dt>📜 <a href="/playlists">Playlists</a></dt>
+      <dd>Lists of songs in your order. See <a href="/help/playlists">Playlists</a>.</dd>
+      <dt>🛒 <a href="/budget">Budget</a></dt>
+      <dd>The CDs and vinyls you plan to buy. See <a href="/help/budget">Budget</a>.</dd>
+      <dt>🎟️ <a href="/concerts">Concerts</a></dt>
+      <dd>Shows you want to go to, or went to. See <a href="/help/concerts">Concerts</a>.</dd>
+      <dt>👥 <a href="/duo">Duo</a></dt>
+      <dd>Your taste next to a friend's. See <a href="/help/duo">Duo</a>.</dd>
+      <dt>📥 <a href="/import">Import</a></dt>
+      <dd>Files in, backups out. See <a href="/help/importing">Importing from files</a>.</dd>
+    </dl>
+
+    <h3 id="help-icon">❔ The Help icon</h3>
+    <p>The quiet <strong>?</strong> beside a heading opens this Help at the part about it.</p>
+
+    <h3 id="dark-mode">🌙 Dark mode</h3>
+    <p>implicated starts in dark mode. The moon at the top right, left of Exit, switches to
+    light mode, and the sun switches back. The browser remembers your pick.</p>
+
+    <h3 id="exit">🚪 Exit</h3>
+    <p>The door at the top right closes implicated: confirm, and the window closes (if the
+    browser lets it) and the server stops.</p>
+    <p class="help-tip">💡 Everything is saved as you go, so there is nothing to save before
+    leaving.</p>
+{% endblock %}

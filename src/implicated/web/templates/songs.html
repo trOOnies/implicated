@@ -4,7 +4,7 @@
 {% block content %}
 {% from "_icons.html" import help_link %}
 <div class="page-head">
-  <div class="row"><h1>Songs</h1>{{ help_link('pages', 'songs', 'Songs') }}</div>
+  <div class="row"><h1>Songs</h1>{{ help_link('songs', topic='Songs') }}</div>
   <form id="song-filters" class="filters" hx-get="/fragments/songs" hx-target="#songs" hx-swap="innerHTML"
         hx-trigger="input changed delay:300ms, change">
     <input type="search" name="q" value="{{ q }}" placeholder="Search title, artist, album…">

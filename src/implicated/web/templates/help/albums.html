@@ -1,0 +1,81 @@
+{% extends "help/_section.html" %}
+{% block section %}
+    <p class="help-lead">All albums, with their covers and how many of their songs have lyrics.
+    Open <a href="/albums">Albums</a> from the top bar.</p>
+
+    <h3 id="finding">🔎 Finding albums</h3>
+    <p>They come a page at a time, your favorites first (the ♡ on a cover marks one), or
+    <em>Newest first</em>. Show only:</p>
+    <ul>
+      <li><em>Wanted (CD)</em>, <em>Owned (CD)</em>, <em>Wanted (Vinyl)</em> or
+      <em>Owned (Vinyl)</em>;</li>
+      <li>favorites, or listen later;</li>
+      <li>the ones with songs still <em>missing lyrics</em>;</li>
+      <li>the ones with <em>no own cover</em> (see <a href="#covers">Covers</a>).</li>
+    </ul>
+
+    <h3 id="album-page">📄 An album's page</h3>
+    <ul>
+      <li>Its <strong>tracklist</strong>, <strong>rating</strong> and <strong>notes</strong>.</li>
+      <li><em>▶ Played</em> logs a listen of every song on it.</li>
+      <li>Add all its songs to a <a href="/help/playlists">playlist</a>.</li>
+      <li>Follow it in <a href="/help/live-play">Live Play</a>, or rank it in a
+      <a href="/help/tier-lists">tier list</a>.</li>
+      <li>The ‹ and › arrows step through the artist's albums, oldest to newest.</li>
+    </ul>
+
+    <h3 id="lyrics">📝 Lyrics and explicit songs</h3>
+    <p>Songs are tagged in the tracklist:</p>
+    <ul>
+      <li><span class="tag missing">missing lyrics</span>: lyrics still to add.</li>
+      <li><span class="tag none">no lyrics</span>: nothing to add (tick <em>No lyrics</em> when
+      adding or editing the song). These don't count against the album's lyrics
+      percentage.</li>
+      <li><abbr class="explicit" title="Explicit">E</abbr> by the title: explicit content, in
+      tracklists, on the song's page and in tier lists. Tick <em>Explicit</em> when adding or
+      editing a song, or on its page's <em>Edit details</em>.</li>
+    </ul>
+    <p class="help-tip">💡 New or changed lyrics with obvious swearing tick <em>Explicit</em> on
+    their own. Mild words like <em>damn</em> or <em>hell</em> don't count; untick it by hand if
+    a song gets it wrong.</p>
+
+    <h3 id="formats">💽 CD and vinyl</h3>
+    <p>The <strong>CD</strong> and <strong>Vinyl</strong> selectors on an album page, and in an
+    artist's discography, say whether you want or own it on each format. The
+    <a href="/help/budget">Budget</a> uses them too.</p>
+
+    <h3 id="covers">🖼️ Covers</h3>
+    <ul>
+      <li><em>Set cover</em> under the cover on its page (or <em>Change cover</em>) gives the
+      album its cover. The <em>Add album</em> form takes one right away too.</li>
+      <li>Covers can be AVIF, JPEG, PNG or WebP, not GIFs.</li>
+      <li><span class="tag missing">no cover</span>: the ♪ placeholder shows instead.</li>
+      <li><span class="tag missing">shared cover</span>: the same image as another album, like
+      a deluxe edition that matched the original's cover file.</li>
+      <li>An import only changes a cover when its inbox has a file for that album.</li>
+    </ul>
+
+    <h3 id="copying">📑 Copying an album</h3>
+    <p><em>Copy</em> on an album page makes it again under a new name (a deluxe edition, say),
+    with its cover, songs, lyrics and song videos. The copy opens right away.</p>
+
+    <h3 id="editions">🔗 Editions</h3>
+    <p>Two editions of an album can count as one. In the <strong>Editions</strong> card of an
+    album page:</p>
+    <ol>
+      <li>Pick any of the artist's albums; the names needn't match.</li>
+      <li>Choose whether this one goes <em>Into that one</em>, or that one <em>Into this
+      one</em>. The one merged into is the <strong>main</strong> edition.</li>
+      <li>Their songs of the same name (ignoring case and kinds of dash) are merged too, the
+      main edition's being the main versions (see <a href="/help/songs#same-song">Same
+      song</a>).</li>
+      <li>The card lists the songs left unmerged: pick by hand which song of the other editions
+      each is (say, "Tim McGraw (Taylor's Version)" and "Tim McGraw").</li>
+    </ol>
+    <ul>
+      <li>The editions share the ♡ and ⧖ marks and the rating, and the main one stands for them
+      on the Overview.</li>
+      <li><em>Unmerge</em> on an edition also unmerges its songs from the other editions'.</li>
+      <li>Deleting the main edition makes the next one the main one.</li>
+    </ul>
+{% endblock %}

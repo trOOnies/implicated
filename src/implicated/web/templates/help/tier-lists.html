@@ -1,0 +1,93 @@
+{% extends "help/_section.html" %}
+{% block section %}
+    <p class="help-lead">Rank the songs of any playlist, album or artist in levels, from S
+    down.</p>
+
+    <h3 id="starting">🏁 Starting one</h3>
+    <ol>
+      <li>Press <em>Tier List</em> on a playlist's, album's or artist's page.</li>
+      <li>Press <em>Make a tier list</em>.</li>
+    </ol>
+    <ul>
+      <li>It starts with the levels <strong>S, A, B, C and D</strong>, and every song below
+      them, <em>Unassigned</em>.</li>
+      <li>An album's songs come in track order; an artist's are all of their own, album by
+      album.</li>
+      <li>Each song shows as its album cover with its title on top. Point at it for its artist,
+      album and plays.</li>
+      <li>Each playlist, album and artist has its own: a song can be S on its album and C on a
+      playlist.</li>
+    </ul>
+
+    <h3 id="moving">✋ Moving songs</h3>
+    <p><strong>Drag</strong> songs into the levels and between them. To move many at once,
+    select them first:</p>
+    <table class="help-table">
+      <tbody>
+        <tr><td>Select a song</td><td>Click it, or press <kbd>Enter</kbd> or <kbd>Space</kbd> on it</td></tr>
+        <tr><td>Select a range</td><td><kbd>Shift</kbd>+click</td></tr>
+        <tr><td>Select by area</td><td>Drag a box from an empty spot</td></tr>
+        <tr><td>Select every unassigned song</td><td><em>Select all</em></td></tr>
+        <tr><td>Move the selection</td><td>Drag one of them, or click a level (or press <kbd>Enter</kbd> on it) to put them last there</td></tr>
+        <tr><td>Clear the selection</td><td><kbd>Escape</kbd>, or <em>Clear</em></td></tr>
+      </tbody>
+    </table>
+
+    <h3 id="levels">📶 Levels</h3>
+    <ul>
+      <li><em>Add level</em> adds one at the bottom, named after the next free letter.</li>
+      <li>Click a level's name (or ✎) to rename it.</li>
+      <li>✕ deletes it; its songs go back to the unassigned ones.</li>
+      <li>A tier list has 3 to 10 levels.</li>
+    </ul>
+
+    <h3 id="autoadd">🪄 Autoadd</h3>
+    <p>After asking, it empties the levels and fills the first three, each by plays, most
+    first:</p>
+    <ol>
+      <li>the favorite songs;</li>
+      <li>the songs on a favorite album;</li>
+      <li>the other songs played at least once.</li>
+    </ol>
+    <p>The rest stay unassigned. A tier list of 2 levels gets a third one.</p>
+
+    <h3 id="locking">🔒 Locking mode</h3>
+    <p>On in a new tier list, it lets you <strong>lock</strong> a song where it is, as decided:
+    press the lock on it, shown when you point at it.</p>
+    <ul>
+      <li>A locked song's cover and lock grey out, and so does a level's name once every song
+      in it is locked (or it has none).</li>
+      <li>It can't be dragged, or moved by Autoadd, until you unlock it. Other songs can still
+      go anywhere around it.</li>
+      <li>A selection holds unlocked songs (in gold) or locked ones (in grey), never both.
+      Selecting a song of the other kind starts a new selection.</li>
+      <li>The lock on any selected song, or <em>Lock</em> and <em>Unlock</em> by the
+      selection, lock or unlock all of them.</li>
+      <li>Turning locking mode off frees every song; turning it on again locks the same songs,
+      wherever they are by then. The box shows how many are locked.</li>
+    </ul>
+
+    <h3 id="fast-assign">⚡ Fast assign</h3>
+    <p>Places the unassigned (unlocked) songs one by one, asking you which of two songs is
+    better. It searches like a binary search: first against the levels' top and bottom songs to
+    find the song's level, then within that level.</p>
+    <table class="help-table">
+      <tbody>
+        <tr><td>Left song is better</td><td>Click it, or <kbd>←</kbd> or <kbd>1</kbd></td></tr>
+        <tr><td>Right song is better</td><td>Click it, or <kbd>→</kbd> or <kbd>2</kbd></td></tr>
+        <tr><td>Take back the last answer</td><td><em>Undo</em>, or <kbd>Backspace</kbd></td></tr>
+        <tr><td>Leave the song unassigned</td><td><em>Skip song</em>, or <kbd>S</kbd></td></tr>
+        <tr><td>Close it</td><td><kbd>Escape</kbd></td></tr>
+      </tbody>
+    </table>
+    <p>When a song falls between two levels, a last question asks which border it is: the bottom
+    of the upper level or the top of the lower one. Empty levels between them are options too;
+    press their number to pick one. With no song to place, it only warns you.</p>
+
+    <h3 id="make-playlist">📜 Make playlist</h3>
+    <p>Makes a playlist of the ranked songs, in order, from the top level down to the one you
+    pick (that one included). It is named after the tier list and those levels; making it again
+    refills it.</p>
+    <p class="help-tip">💡 A song that leaves the playlist, album or artist leaves its tier list
+    too, and <em>Delete tier list</em> leaves the songs as they were.</p>
+{% endblock %}

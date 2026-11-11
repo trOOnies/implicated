@@ -1,27 +1,57 @@
 {% extends "help/_section.html" %}
 {% block section %}
-    <p>🗄️ <strong>The library is the one source of truth.</strong> Small edits (a year, a rating,
-    a new song) belong in the app. For bigger batches, like an artist's whole discography or a
-    list of concerts, prepare files in the <strong>inbox</strong>, <code>info/</code>, and import
-    them from the <a href="/import">Import</a> page (or <code>make import</code>). Nothing is
-    imported on its own, not even when the server starts, so what you edit in the app always
-    stays.</p>
-    <p>The inbox can hold a <code>bands.yaml</code> (artists, origin, genres, languages, a
-    description, a Wikipedia link and members), plus
-    <code>bands/&lt;artist&gt;/albums.yaml</code> (albums and their songs),
-    <code>bands/&lt;artist&gt;/band.jpg</code> (a picture of the artist),
-    <code>bands/&lt;artist&gt;/covers/</code> (cover images, matched to albums by file name),
-    <code>bands/&lt;artist&gt;/songs/&lt;song title&gt;.txt</code> (lyrics; a <code>/</code> in
-    the title becomes <code>_</code>, and <code>&lt;&gt;:"\|?*</code> are left out), optional
-    <code>&lt;song title&gt;.lrc</code> timed lyrics (a timestamp per line, like
-    <code>[01:23.40]Words</code>) and <code>bands/&lt;artist&gt;/tabs/</code> Guitar Pro files.
-    A <code>concerts.csv</code> and <code>tours.csv</code> are added to yours, and a
-    <em>Download my data</em> file named <code>userdata.json</code> brings back your marks.</p>
-    <p>🧩 Records are matched by their <code>uid</code> (exports carry one, so renamed records are
-    still found) or else by name. <strong>A key in a file wins; a key left out keeps what you
-    have</strong>, so a file only needs what it changes. Ratings, notes, favorites, CD and vinyl
-    ownership, videos, listen later marks, playlists and plays are never touched by the YAML.
-    Lyrics, timed lyrics and tabs are copied into the library's own folder
-    (<code>local/bands/</code>), where the song page's buttons open them; an empty lyrics file in
-    the inbox changes nothing. A broken file stops the whole import, and nothing changes.</p>
+    <p class="help-lead">🗄️ <strong>The library is the one source of truth.</strong> Small edits
+    (a year, a rating, a new song) belong in the app. Files are for bigger batches, like an
+    artist's whole discography or a list of concerts.</p>
+
+    <h3 id="inbox">📬 The inbox</h3>
+    <p>Prepare the files in the <strong>inbox</strong>, <code>info/</code>, then import them.
+    Nothing is imported on its own, not even when the server starts, so what you edit in the app
+    always stays.</p>
+
+    <h3 id="import-page">📥 The Import page</h3>
+    <ol>
+      <li>Put files in the inbox, or upload them on the <a href="/import">Import</a> page.</li>
+      <li>See what they would change first.</li>
+      <li>Press <em>Accept</em> (or run <code>make import</code>).</li>
+    </ol>
+    <ul>
+      <li>Accepted files move to an <strong>archive</strong>, so the inbox is empty again.
+      Delete archives there once you no longer need them; you are asked first.</li>
+      <li>The page also downloads a <a href="/help/backups">backup or an export</a> of your
+      library.</li>
+    </ul>
+
+    <h3 id="files">🗂️ What goes in it</h3>
+    <table class="help-table">
+      <thead><tr><th>File</th><th>What it holds</th></tr></thead>
+      <tbody>
+        <tr><td><code>bands.yaml</code></td><td>Artists: origin, genres, languages, a description, a Wikipedia link and members</td></tr>
+        <tr><td><code>bands/&lt;artist&gt;/albums.yaml</code></td><td>Their albums and songs</td></tr>
+        <tr><td><code>bands/&lt;artist&gt;/band.jpg</code></td><td>A picture of the artist</td></tr>
+        <tr><td><code>bands/&lt;artist&gt;/covers/</code></td><td>Cover images, matched to albums by file name</td></tr>
+        <tr><td><code>bands/&lt;artist&gt;/songs/&lt;song title&gt;.txt</code></td><td>Lyrics</td></tr>
+        <tr><td><code>…/songs/&lt;song title&gt;.lrc</code></td><td>Timed lyrics, optional: a timestamp per line, like <code>[01:23.40]Words</code></td></tr>
+        <tr><td><code>bands/&lt;artist&gt;/tabs/</code></td><td>Guitar Pro files</td></tr>
+        <tr><td><code>concerts.csv</code>, <code>tours.csv</code></td><td>Added to yours</td></tr>
+        <tr><td><code>userdata.json</code></td><td>A <em>Download my data</em> file, bringing back your marks</td></tr>
+      </tbody>
+    </table>
+    <p class="help-tip">💡 In lyrics file names, a <code>/</code> in the title becomes
+    <code>_</code>, and <code>&lt;&gt;:"\|?*</code> are left out.</p>
+
+    <h3 id="matching">🧩 What changes</h3>
+    <ul>
+      <li>Records are matched by their <code>uid</code> (exports carry one, so renamed records
+      are still found), or else by name.</li>
+      <li><strong>A key in a file wins; a key left out keeps what you have</strong>, so a file
+      only needs what it changes.</li>
+      <li>Ratings, notes, favorites, CD and vinyl ownership, videos, listen later marks,
+      playlists and plays are never touched by the YAML.</li>
+      <li>Lyrics, timed lyrics and tabs are copied into the library's own folder
+      (<code>local/bands/</code>), where the song page's buttons open them. An empty lyrics file
+      in the inbox changes nothing.</li>
+    </ul>
+    <p class="help-warning">⚠️ A broken file stops the whole import, and nothing changes. Fix it
+    and preview again.</p>
 {% endblock %}

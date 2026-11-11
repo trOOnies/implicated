@@ -13,9 +13,10 @@
 {%- endmacro %}
 
 {# The Help icon: a "?" linking to where Help explains this page or part of it, on Help's
-   `section` page (a slug of ``HELP_SECTIONS``, so "pages" for /help/pages) at the entry with id
+   `section` page (a slug of ``HELP_SECTIONS``, so "albums" for /help/albums) at the entry with id
    `anchor`, named `topic` in its tooltip. Use it anywhere, say beside a heading:
-   `{% from "_icons.html" import help_link %}`, then `{{ help_link('pages', 'tier-lists', 'Tier List') }}`. #}
+   `{% from "_icons.html" import help_link %}`, then `{{ help_link('albums', 'editions', 'Editions') }}`,
+   or `{{ help_link('albums', topic='Albums') }}` for the top of the page. #}
 {% macro help_link(section, anchor=None, topic=None) -%}
 <a class="help-link" href="{{ help_url(section, anchor) }}" title="{{ 'How ' ~ topic ~ ' works, in Help' if topic else 'Help' }}"
    aria-label="{{ 'Help: ' ~ topic if topic else 'Help' }}">{{ icon('help') }}</a>

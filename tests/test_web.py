@@ -1027,10 +1027,10 @@ def test_tier_list_pages(client: TestClient, client_lib: Library, web_sample: Sa
     page = client.get(f"/playlists/{pid}/tiers").text
     assert "has no tier list yet" in page and "Make a tier list" in page
     # How it works is in Help, which the page only links to, with the Help icon.
-    assert 'class="help-link" href="/help/pages#tier-lists"' in page
+    assert 'class="help-link" href="/help/tier-lists"' in page
     assert 'aria-label="Help: Tier List"' in page and "Drag the songs" not in page
-    help_page = client.get("/help/pages").text
-    assert 'id="tier-lists"' in help_page and "Fast assign" in help_page
+    help_page = client.get("/help/tier-lists").text
+    assert 'id="fast-assign"' in help_page and "Fast assign" in help_page
     assert client.get(f"/fragments/playlists/{pid}/tiers").status_code == 404
     created = client.post(f"/playlists/{pid}/tiers")
     assert created.headers["hx-redirect"] == f"/playlists/{pid}/tiers"
@@ -1362,21 +1362,37 @@ def test_song_rows_show_the_album_cover(
 def test_help_index_links_to_every_section(client: TestClient):
     page = client.get("/help").text
     assert 'id="index"' in page and "What is implicated?" in page
-    links = re.findall(r'href="(/help/[\w-]+)(?:#([\w-]+))?"', page)
-    assert {path for path, _ in links} == {
-        "/help/pages", "/help/actions", "/help/importing", "/help/backups", "/help/api",
-        "/help/license",
-    }  # fmt: skip
-    assert {"albums", "live-play", "rating"} <= {anchor for _, anchor in links}
-    for path, anchor in links:
-        section = client.get(path)
-        assert section.status_code == 200, path
+    links = re.findall(r'href="(/help/[\w-]+)"', page)
+    assert set(links) == {s["url"] for s in views.HELP_SECTIONS[1:]}
+    for group, _sections in views.HELP_GROUPS:  # pages come grouped
+        assert f'<h3 class="help-group">{group}</h3>' in page
+    for s in views.HELP_SECTIONS:
+        section = client.get(s["url"])
+        assert section.status_code == 200, s["url"]
         assert 'href="/help" aria-current="page"' in section.text
         assert 'id="index"' in section.text  # every page has the index
-        assert f'href="{path}" aria-current="page"' in section.text  # marking its own entry
-        if anchor:
-            assert section.text.count(f'id="{anchor}"') == 1, (path, anchor)
+        assert f'href="{s["url"]}" aria-current="page"' in section.text  # marking its own entry
+        assert f'<p class="help-group">{s["group"]}</p>' in section.text
+        # The index lists the entries of the page in view, each once on it, and no others'.
+        index = section.text.split('id="index"')[1].split("</nav>")[0]
+        entries = re.findall(rf'href="{s["url"]}#([\w-]+)"', index)
+        assert entries == [anchor for anchor, _name in s["entries"]], s["url"]
+        for anchor in entries:
+            assert section.text.count(f'id="{anchor}"') == 1, (s["url"], anchor)
+        others = [o for o in views.HELP_SECTIONS if o is not s and o["entries"]]
+        assert not any(f'href="{o["url"]}#' in index for o in others), s["url"]
     assert client.get("/help/nope").status_code == 404
+    assert client.get("/help/pages").status_code == 404  # split into smaller pages
+
+
+def test_help_links_between_pages_lead_somewhere(client: TestClient):
+    """Help's pages link to one another's entries (and their own): each one exists."""
+    pages = {s["url"]: client.get(s["url"]).text for s in views.HELP_SECTIONS}
+    for url, page in pages.items():
+        for path, anchor in re.findall(r'href="(/help(?:/[\w-]+)?)?#([\w-]+)"', page):
+            target = pages.get(path or url)
+            assert target is not None, (url, path)
+            assert f'id="{anchor}"' in target, (url, path, anchor)
 
 
 def test_help_icons_lead_to_help_entries_that_exist(client: TestClient):
@@ -1388,21 +1404,11 @@ def test_help_icons_lead_to_help_entries_that_exist(client: TestClient):
         if path.name != "_icons.html"
         for call in re.findall(r"help_link\((.*?)\)", path.read_text())
     ]
-    for entry in (
-        "tier-lists",
-        "albums",
-        "artists",
-        "songs",
-        "playlists",
-        "budget",
-        "concerts",
-        "duo",
-        "import",
-        "live-play",
-        "merged-songs",
-        "merged-albums",
-    ):
-        assert ("pages", entry) in calls, entry
+    for page in ("tier-lists", "albums", "artists", "songs", "playlists", "budget", "concerts"):
+        assert (page, None) in calls, page  # by a page's heading, the top of its Help page
+    assert {("duo", None), ("live-play", None), ("importing", "import-page")} <= set(calls)
+    assert {("songs", "same-song"), ("albums", "editions"), ("artists", "pictures")} <= set(calls)
+    assert ("getting-around", "showcase") in calls
     for entry in ("rating", "log-a-listen", "listen-later", "favorite"):  # on the Overview
         assert ("actions", entry) in calls, entry
     for section, anchor in calls:
@@ -1419,17 +1425,19 @@ def test_help_icons_lead_to_help_entries_that_exist(client: TestClient):
 def test_help_sections_link_to_their_neighbors(client: TestClient):
     landing = client.get("/help").text
     assert "<h2>🎧 What is implicated?</h2>" in landing  # the first page, not just an index
-    assert '<a href="/help" aria-current="page">What is implicated?</a>' in landing
+    assert '<a href="/help" aria-current="page">🎧 What is implicated?</a>' in landing
     assert 'rel="prev"' not in landing
-    assert 'href="/help/pages" rel="next"><span>Next →</span>Pages</a>' in landing
+    assert 'href="/help/getting-around" rel="next"><span>Next →</span>Getting around</a>' in landing
     page = client.get("/help/actions").text
     assert "<title>Everyday actions · Help · implicated</title>" in page
-    assert 'href="/help/pages" rel="prev"><span>← Previous</span>Pages</a>' in page
-    assert 'href="/help/importing" rel="next"><span>Next →</span>Importing from files</a>' in page
+    assert (
+        'href="/help/getting-around" rel="prev"><span>← Previous</span>Getting around</a>' in page
+    )
+    assert 'href="/help/artists" rel="next"><span>Next →</span>Artists</a>' in page
     assert "↑ Index" not in page
-    first = client.get("/help/pages").text
+    first = client.get("/help/getting-around").text
     assert 'href="/help" rel="prev"><span>← Previous</span>What is implicated?</a>' in first
-    assert 'href="/help/backups"' in first
+    assert 'href="/help/backups"' in first  # in the index
     last = client.get("/help/license").text
     assert 'rel="next"' not in last
     assert 'href="/help/api" rel="prev"' in last

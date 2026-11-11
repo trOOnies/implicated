@@ -1,29 +1,42 @@
 {% extends "help/_section.html" %}
 {% block section %}
-    <dl>
-      <dt id="favorite"><span class="symbol">♡</span> Favorite</dt>
-      <dd>Mark an artist, album or song. Favorites are listed first and on the overview.</dd>
-      <dt id="rating"><span class="symbol">★</span> Rating</dt>
-      <dd>Click the stars of an artist, album or song to rate it from <strong>1 to 5</strong>;
-      click its current rating again to take it away.</dd>
-      <dt id="listen-later"><span class="symbol">⧖</span> Listen later</dt>
-      <dd>Mark an artist, album or song to listen to later; the overview lists them, and the
-      Albums and Songs pages can show only them. A song loses its mark once you log a listen of
-      it, however you do it. An album loses its mark when you log a listen of the whole album
-      (its <em>▶ Played</em> button) or Live Play reaches its last song. An artist keeps its mark
-      until you take it off.</dd>
-      <dt id="log-a-listen"><span class="symbol">▶</span> Log a listen</dt>
-      <dd>Records that you played a song right now; it feeds the play charts and history. Song
-      pages have a <em>▶ Played</em> button too, and on an album page it logs a listen of every
-      song on the album.</dd>
-      <dt id="sorting">↕️ Sorting</dt>
-      <dd>Click a column header of a table to sort by it; click it again to reverse the
-      order. On the paged Songs list this sorts the page in view; the order selector above it
-      sorts all of them.</dd>
-      <dt id="edit-and-delete">✏️ Edit and delete</dt>
-      <dd>Buttons on each artist, album and song. Deleting an artist <strong>also deletes their
-      albums, songs and plays</strong>.</dd>
-      <dt id="song-lengths">⏱️ Song lengths</dt>
-      <dd>Type them as <code>3:45</code> or as plain seconds.</dd>
-    </dl>
+    <p class="help-lead">Buttons you'll find on artists, albums and songs alike.</p>
+
+    <h3 id="favorite"><span class="symbol">♡</span> Favorite</h3>
+    <p>Mark an artist, album or song. Favorites are listed first and on the Overview.</p>
+
+    <h3 id="rating"><span class="symbol">★</span> Rating</h3>
+    <p>Click the stars of an artist, album or song to rate it from <strong>1 to 5</strong>.
+    Click its current rating again to take it away.</p>
+
+    <h3 id="listen-later"><span class="symbol">⧖</span> Listen later</h3>
+    <p>Mark an artist, album or song to listen to later. The Overview lists them, and the Artists,
+    Albums and Songs pages can show only them. The mark goes away on its own:</p>
+    <ul>
+      <li>a <strong>song</strong>: once you log a listen of it, however you do it;</li>
+      <li>an <strong>album</strong>: when you log a listen of the whole album (its
+      <em>▶ Played</em> button), or Live Play reaches its last song;</li>
+      <li>an <strong>artist</strong>: never; take it off yourself.</li>
+    </ul>
+
+    <h3 id="log-a-listen"><span class="symbol">▶</span> Log a listen</h3>
+    <p>Records that you played a song right now. It feeds the play charts and history.</p>
+    <ul>
+      <li>Song pages have a <em>▶ Played</em> button too.</li>
+      <li>On an album page, it logs a listen of every song on the album.</li>
+      <li><a href="/help/live-play">Live Play</a> logs each song as it comes on.</li>
+    </ul>
+
+    <h3 id="sorting">↕️ Sorting</h3>
+    <p>Click a column header of a table to sort by it; click it again to reverse the order.</p>
+    <p class="help-tip">💡 On the Songs page this sorts the page in view. The order selector
+    above the list sorts all of them.</p>
+
+    <h3 id="edit-and-delete">✏️ Edit and delete</h3>
+    <p>Each artist, album and song has its buttons.</p>
+    <p class="help-warning">⚠️ Deleting an artist <strong>also deletes their albums, songs and
+    plays</strong>.</p>
+
+    <h3 id="song-lengths">⏱️ Song lengths</h3>
+    <p>Type them as <code>3:45</code>, or as plain seconds.</p>
 {% endblock %}

@@ -1,0 +1,60 @@
+{% extends "help/_section.html" %}
+{% block section %}
+    <p class="help-lead">Every song, a page at a time. Open <a href="/songs">Songs</a> from the
+    top bar.</p>
+
+    <h3 id="finding">🔎 Finding songs</h3>
+    <ul>
+      <li>Your favorites come first, in A–Z order; the order selector sorts them otherwise.</li>
+      <li>Search them by title, artist or album.</li>
+      <li>Show only favorites, listen later, or the ones <em>missing lyrics</em> (the Missing
+      lyrics column marks them).</li>
+      <li>On a song's page, the ‹ and › arrows step through its album.</li>
+    </ul>
+    <p class="help-tip">💡 Songs are added and edited on their album's page, not here.</p>
+
+    <h3 id="lyrics">📝 Lyrics</h3>
+    <p>Open a song to read its lyrics. To write them:</p>
+    <ol>
+      <li>Press <em>Open lyrics file</em>: it opens in your text editor.</li>
+      <li>Write and save the file.</li>
+      <li>Press <em>Reload lyrics</em>.</li>
+    </ol>
+    <p>Timed lyrics (<code>.lrc</code>) come in by <a href="/help/importing#files">importing</a>
+    and light up in <a href="/help/live-play#timed-lyrics">Live Play</a>.</p>
+
+    <h3 id="details">✏️ Details</h3>
+    <p><em>Edit details</em> on a song's page takes:</p>
+    <ul>
+      <li>your <strong>notes</strong>;</li>
+      <li>the song's <strong>music video</strong>;</li>
+      <li>the <strong>other artists it features</strong>: search for each one and pick it to
+      add it as a tag (✕ takes it away). They show as <em>feat.</em> next to the song's artist,
+      and the song shows in the <strong>Songs featured</strong> section of their own
+      pages;</li>
+      <li>whether it is <strong>explicit</strong>.</li>
+    </ul>
+
+    <h3 id="videos">🎬 Videos</h3>
+    <p>The <strong>Videos</strong> card holds as many other videos as you like (lessons, covers,
+    live takes), each with a title and where to start playing. Reorder them as you like.</p>
+    <p>Paste a YouTube link (<code>youtube.com/watch?v=…</code>, <code>youtu.be/…</code>, shorts,
+    embeds) or just the 11-character video id. A <code>t=</code> in a link sets the start.</p>
+
+    <h3 id="same-song">🔗 Same song</h3>
+    <p>The same song on two albums (say, a deluxe edition and the original) can be
+    <strong>merged</strong>, to count as one.</p>
+    <ul>
+      <li>Each stays on its own album, with its own lyrics, tab, videos and notes.</li>
+      <li>Their <strong>plays add up</strong>, on every version's play count.</li>
+      <li>The ♥ and ⧗ marks and the rating are <strong>shared</strong>: marking one marks them
+      all.</li>
+      <li>One is the <strong>main</strong> version: only it shows in Favorites, Listen Later,
+      the Overview and tier lists. The others are tagged <em>merged</em> in song lists.</li>
+    </ul>
+    <p>The <strong>Same song</strong> card of a song's page suggests the artist's songs with the
+    same title, finds any other song to merge, and lets you <em>Make main</em> another version
+    or <em>Unmerge</em> one. Deleting the main version makes the next one the main one.</p>
+    <p class="help-tip">💡 Merging two <a href="/help/albums#editions">editions</a> of an album
+    merges their songs for you.</p>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "help/_section.html" %}
+{% block section %}
+    <p class="help-lead">Lists of songs in the order you choose. Open
+    <a href="/playlists">Playlists</a> from the top bar.</p>
+
+    <h3 id="making">➕ Making a playlist</h3>
+    <p>Name it in <em>New playlist</em> and press <em>Create playlist</em>.</p>
+
+    <h3 id="adding">🎶 Adding songs</h3>
+    <ul>
+      <li>From a <strong>song's page</strong>, one at a time.</li>
+      <li>From an <strong>album's page</strong>, all of its songs. Songs already in the playlist
+      stay where they are.</li>
+      <li>With the <em>Add songs</em> form at the bottom of a playlist, several at once:</li>
+    </ul>
+    <ol>
+      <li>Search for a song and press <strong>+</strong> to list it.</li>
+      <li>Repeat for each song.</li>
+      <li>Press <em>Add songs</em>, or <em>Drop songs</em> to empty the list instead.</li>
+    </ol>
+
+    <h3 id="arranging">↕️ Arranging</h3>
+    <p>On a playlist, move songs with ↑ and ↓, or take them out with <em>Remove</em>. They stay
+    in your library.</p>
+    <p class="help-tip">💡 For a ranking of a playlist's songs, make it a
+    <a href="/help/tier-lists">tier list</a>. A playlist can also be a concert's
+    <a href="/help/concerts#setlists">setlist</a>.</p>
+
+    <h3 id="built-in">⭐ Favorites and Listen Later</h3>
+    <p>These two are built in, and cannot be renamed or deleted.</p>
+    <ul>
+      <li>They always hold the songs marked ♥ and ⧗.</li>
+      <li>Adding a song to them, or taking it out, sets or clears that mark.</li>
+    </ul>
+
+    <h3 id="copying">📑 Copying a playlist</h3>
+    <ol>
+      <li>Press the copy button by a playlist: <em>New playlist</em> turns into <em>Copy
+      playlist</em>, naming the one being copied.</li>
+      <li>Name the copy and press <em>Create playlist</em>. It gets the same songs, in the same
+      order.</li>
+    </ol>
+    <p><em>Cancel</em> turns it back into New playlist. A copy of Favorites or Listen Later is a
+    playlist of your own, which keeps its songs whatever you mark later.</p>
+{% endblock %}

@@ -16,7 +16,7 @@
 </ul>
 {% endmacro %}
 <section id="song-versions" class="card">
-  <div class="row"><h2>Same song</h2>{{ help_link('pages', 'merged-songs', 'Same song') }}</div>
+  <div class="row"><h2>Same song</h2>{{ help_link('songs', 'same-song', 'Same song') }}</div>
   {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
   {% if versions %}
   <p class="small">These count as one song, with {{ versions[0].play_count }} {{ 'play' if versions[0].play_count == 1 else 'plays' }}

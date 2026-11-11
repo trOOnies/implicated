@@ -3,7 +3,7 @@
 {% block title %}Playlists{% endblock %}
 {% block content %}
 {% from "_icons.html" import help_link %}
-<div class="page-head"><div class="row"><h1>Playlists</h1>{{ help_link('pages', 'playlists', 'Playlists') }}</div></div>
+<div class="page-head"><div class="row"><h1>Playlists</h1>{{ help_link('playlists', topic='Playlists') }}</div></div>
 <div class="layout">
   <section id="playlists" class="card" hx-get="/fragments/playlists"
            hx-trigger="playlists-changed from:body" hx-swap="innerHTML">

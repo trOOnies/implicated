@@ -1,0 +1,25 @@
+{% extends "help/_section.html" %}
+{% block section %}
+    <p class="help-lead">Follow an album or a playlist as you listen to it, with each song's
+    lyrics.</p>
+
+    <h3 id="starting">▶️ Starting</h3>
+    <p>Press <em>Live Play</em> on an album or a playlist. It shows the cover, the song and its
+    length, the artist, a ♡ and a ⧖ for the song, and its lyrics.</p>
+
+    <h3 id="controls">🎛️ The controls</h3>
+    <ul>
+      <li><strong>‹</strong> and <strong>›</strong> go to the previous and next song.</li>
+      <li>The middle button pauses and resumes the song.</li>
+      <li><strong>↺</strong> plays it again.</li>
+    </ul>
+    <p>Every song that comes on <strong>logs a listen</strong>. When its length has gone by, the
+    next one comes on by itself, unless it is paused. Reloading the page or the lyrics logs
+    nothing.</p>
+
+    <h3 id="timed-lyrics">🎤 Timed lyrics</h3>
+    <p>A song with a length and a timed lyrics file (<code>.lrc</code>) lights up its lines as
+    they go by.</p>
+    <p class="help-tip">💡 implicated plays no sound, so its clock starts when the song comes on
+    here. Click a line as you hear it to catch up with your music.</p>
+{% endblock %}

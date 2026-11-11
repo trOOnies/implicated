@@ -1,0 +1,36 @@
+{% extends "help/_section.html" %}
+{% block section %}
+    <p class="help-lead">Concerts you want to go to, are going to, or went to, upcoming ones
+    first, with the band's picture. Open <a href="/concerts">Concerts</a> from the top bar.</p>
+
+    <h3 id="the-file">📄 The concerts file</h3>
+    <p>The concerts live in <code>local/concerts.csv</code>, next to the library, with the
+    columns <code>date;band;tour;country;city;Want to go;Going</code>.</p>
+    <ul>
+      <li>The page reads it every time it opens, so you can also edit the file and reload.</li>
+      <li>Everything you change on the page is saved there.</li>
+    </ul>
+
+    <h3 id="going">✅ Going or not</h3>
+    <p>Set each concert to <em>Want to go</em> or <em>Going</em>. Once it is over, tick its
+    <em>Went</em> box.</p>
+
+    <h3 id="adding">➕ Adding concerts</h3>
+    <ul>
+      <li><em>Add concert</em> adds one to the file.</li>
+      <li><em>Add tour</em> keeps a band's tour, so Add concert offers it for each of its
+      dates.</li>
+      <li>The copy button at the end of a row fills Add concert with that concert: change what
+      you need and add it.</li>
+    </ul>
+
+    <h3 id="setlists">📜 Setlists</h3>
+    <p>A concert can have a <em>Setlist</em>: pick one of your
+    <a href="/help/playlists">playlists</a>, holding the songs played there.</p>
+    <ul>
+      <li>It is linked from the concert, and the playlist's page says which concerts it is the
+      setlist of.</li>
+      <li>The file keeps the playlist's name in a <code>Setlist</code> column; renaming the
+      playlist renames it there too.</li>
+    </ul>
+{% endblock %}

@@ -112,6 +112,29 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 2rem; }
   .help { grid-template-columns: minmax(0, 1fr); }
   .help-index { position: static; max-height: none; }
 }
+/* A Help page: a lead line, then short entries under h3s, in lists, tables and tip boxes */
+.help-section { line-height: 1.55; }
+.help-section > p, .help-section > ul, .help-section > ol, .help-section > dl { max-width: 68ch; }
+.help-section p { margin: .4rem 0 .6rem; }
+.help-section ul, .help-section ol { margin: .3rem 0 .7rem; padding-left: 1.4rem; }
+.help-section li + li { margin-top: .25rem; }
+.help-section li::marker { color: var(--muted); }
+.help-lead { font-size: 1.05rem; }
+p.help-group { margin: 0; font-size: .75rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.help h3 {
+  display: flex; align-items: center; gap: .4rem; margin: 1.6rem 0 .3rem; padding-top: .9rem;
+  font-size: 1.05rem; border-top: 1px solid var(--border);
+}
+.help-tip, .help-warning { padding: .5rem .75rem; border-radius: 6px; border-left: 3px solid var(--accent); background: var(--accent-soft); }
+.help-warning { border-left-color: var(--danger); background: transparent; box-shadow: inset 0 0 0 1px var(--border); }
+.help-table { border-collapse: collapse; margin: .4rem 0 .8rem; font-size: .92rem; max-width: 68ch; }
+.help-table th, .help-table td { padding: .3rem .7rem .3rem 0; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.help-table td:first-child { white-space: nowrap; padding-right: 1.2rem; }
+@media (max-width: 600px) { .help-table td:first-child { white-space: normal; } }
+.help kbd {
+  display: inline-block; padding: 0 .35rem; border: 1px solid var(--border); border-bottom-width: 2px;
+  border-radius: 4px; font: inherit; font-size: .85em; background: var(--bg);
+}
 .help dl { margin: 0; }
 .help dt { font-weight: 600; margin-top: .6rem; }
 .help dd { margin: .1rem 0 0; color: var(--muted); }
@@ -119,11 +142,19 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 2rem; }
 .help strong { color: var(--text); font-weight: 600; }
 .help h2 { display: flex; align-items: center; gap: .4rem; }
 .help [id] { scroll-margin-top: 1rem; }
-.help dt:target, .help section:target { animation: help-flash 1.6s ease-out; }
+.help h3:target, .help dt:target, .help section:target { animation: help-flash 1.6s ease-out; }
 @keyframes help-flash { from { background: var(--accent-soft); } }
-.help-index ol { margin: 0; padding-left: 1.4rem; columns: 2 14rem; column-gap: 2rem; }
-@media (min-width: 861px) { .help-index ol { columns: auto; } }
+.help-index h3.help-group { margin: .9rem 0 .25rem; font-size: .72rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.help-index h2 + h3.help-group { margin-top: .3rem; }
+.help-index ol { margin: 0; padding-left: 0; list-style: none; }
 .help-index li { break-inside: avoid; }
+.help-index ol > li { margin: .15rem 0; }
+/* Above the page on a narrow window, the groups flow in columns */
+@media (max-width: 860px) {
+  .help-index { columns: 2 13rem; column-gap: 2rem; }
+  .help-index h2 { column-span: all; }
+  .help-index h3.help-group { break-after: avoid; }
+}
 .help-index ul { margin: .1rem 0 .4rem; padding-left: 1.1rem; color: var(--muted); }
 .help-nav {
   display: grid; grid-template-columns: 1fr 1fr; align-items: end; gap: 1rem;

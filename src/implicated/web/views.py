@@ -482,19 +482,203 @@ def showcase_fragment(
     return render(request, "_showcase.html", **_showcase(lib, type, order))
 
 
-# Help: one page per section, in reading order, each with the index and links to the section
-# before and after it. The first one, What is implicated?, is /help itself.
+# Help: one short page per section, in reading order, each with the index (grouped, with the
+# entries of the page in view) and links to the section before and after it. The first one,
+# What is implicated?, is /help itself. Each entry is (id on its page, name in the index).
+HELP_GROUPS = (
+    (
+        "Start here",
+        (
+            ("", "🎧", "What is implicated?", ()),
+            (
+                "getting-around",
+                "🧭",
+                "Getting around",
+                (
+                    ("overview", "Overview"),
+                    ("showcase", "The showcase"),
+                    ("tabs", "The tabs"),
+                    ("help-icon", "The Help icon"),
+                    ("dark-mode", "Dark mode"),
+                    ("exit", "Exit"),
+                ),
+            ),
+            (
+                "actions",
+                "✨",
+                "Everyday actions",
+                (
+                    ("favorite", "Favorite"),
+                    ("rating", "Rating"),
+                    ("listen-later", "Listen later"),
+                    ("log-a-listen", "Log a listen"),
+                    ("sorting", "Sorting"),
+                    ("edit-and-delete", "Edit and delete"),
+                    ("song-lengths", "Song lengths"),
+                ),
+            ),
+        ),
+    ),
+    (
+        "Your library",
+        (
+            (
+                "artists",
+                "🎤",
+                "Artists",
+                (
+                    ("finding", "Finding artists"),
+                    ("adding", "Adding an artist"),
+                    ("artist-page", "An artist's page"),
+                    ("pictures", "Pictures"),
+                    ("profile-picture", "Profile picture"),
+                ),
+            ),
+            (
+                "albums",
+                "💿",
+                "Albums",
+                (
+                    ("finding", "Finding albums"),
+                    ("album-page", "An album's page"),
+                    ("lyrics", "Lyrics and explicit songs"),
+                    ("formats", "CD and vinyl"),
+                    ("covers", "Covers"),
+                    ("copying", "Copying an album"),
+                    ("editions", "Editions"),
+                ),
+            ),
+            (
+                "songs",
+                "🎵",
+                "Songs",
+                (
+                    ("finding", "Finding songs"),
+                    ("lyrics", "Lyrics"),
+                    ("details", "Details"),
+                    ("videos", "Videos"),
+                    ("same-song", "Same song"),
+                ),
+            ),
+        ),
+    ),
+    (
+        "Listening",
+        (
+            (
+                "playlists",
+                "📜",
+                "Playlists",
+                (
+                    ("making", "Making a playlist"),
+                    ("adding", "Adding songs"),
+                    ("arranging", "Arranging"),
+                    ("built-in", "Favorites and Listen Later"),
+                    ("copying", "Copying a playlist"),
+                ),
+            ),
+            (
+                "tier-lists",
+                "🏆",
+                "Tier lists",
+                (
+                    ("starting", "Starting one"),
+                    ("moving", "Moving songs"),
+                    ("levels", "Levels"),
+                    ("autoadd", "Autoadd"),
+                    ("locking", "Locking mode"),
+                    ("fast-assign", "Fast assign"),
+                    ("make-playlist", "Make playlist"),
+                ),
+            ),
+            (
+                "live-play",
+                "🔴",
+                "Live Play",
+                (
+                    ("starting", "Starting"),
+                    ("controls", "The controls"),
+                    ("timed-lyrics", "Timed lyrics"),
+                ),
+            ),
+        ),
+    ),
+    (
+        "Shops, shows and friends",
+        (
+            (
+                "budget",
+                "🛒",
+                "Budget",
+                (
+                    ("cart", "Filling the cart"),
+                    ("total", "The total"),
+                    ("saving", "Saving and buying"),
+                    ("saved", "Saved budgets"),
+                ),
+            ),
+            (
+                "concerts",
+                "🎟️",
+                "Concerts",
+                (
+                    ("the-file", "The concerts file"),
+                    ("going", "Going or not"),
+                    ("adding", "Adding concerts"),
+                    ("setlists", "Setlists"),
+                ),
+            ),
+            (
+                "duo",
+                "👥",
+                "Duo",
+                (
+                    ("swapping", "Swapping files"),
+                    ("together", "What you have in common"),
+                    ("your-own", "Your own file"),
+                ),
+            ),
+        ),
+    ),
+    (
+        "Your data",
+        (
+            (
+                "importing",
+                "📥",
+                "Importing from files",
+                (
+                    ("inbox", "The inbox"),
+                    ("import-page", "The Import page"),
+                    ("files", "What goes in it"),
+                    ("matching", "What changes"),
+                ),
+            ),
+            (
+                "backups",
+                "📦",
+                "Backups and exports",
+                (
+                    ("backup", "Backup"),
+                    ("export", "Export"),
+                ),
+            ),
+            ("api", "🔌", "API", ()),
+            ("license", "⚖️", "Source &amp; license", ()),
+        ),
+    ),
+)
 HELP_SECTIONS = tuple(
-    {"slug": slug, "emoji": emoji, "title": title, "url": f"/help/{slug}" if slug else "/help"}
-    for slug, emoji, title in (
-        ("", "🎧", "What is implicated?"),
-        ("pages", "🗺️", "Pages"),
-        ("actions", "✨", "Everyday actions"),
-        ("importing", "📥", "Importing from files"),
-        ("backups", "📦", "Backups and exports"),
-        ("api", "🔌", "API"),
-        ("license", "📦", "Source &amp; license"),
-    )
+    {
+        "slug": slug,
+        "emoji": emoji,
+        "title": title,
+        "group": group,
+        "entries": entries,
+        "url": f"/help/{slug}" if slug else "/help",
+    }
+    for group, sections in HELP_GROUPS
+    for slug, emoji, title, entries in sections
 )
 
 
@@ -516,6 +700,7 @@ def _help_page(request: Request, i: int) -> HTMLResponse:
         request,
         f"help/{HELP_SECTIONS[i]['slug'] or 'about'}.html",
         sections=HELP_SECTIONS,
+        groups=[group for group, _sections in HELP_GROUPS],
         section=HELP_SECTIONS[i],
         prev=HELP_SECTIONS[i - 1] if i else None,
         next=HELP_SECTIONS[i + 1] if i + 1 < len(HELP_SECTIONS) else None,

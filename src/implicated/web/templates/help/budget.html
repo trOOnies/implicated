@@ -1,0 +1,52 @@
+{% extends "help/_section.html" %}
+{% block section %}
+    <p class="help-lead">A cart of the CDs and vinyls you plan to buy, and what they cost
+    together. Open <a href="/budget">Budget</a> from the top bar.</p>
+
+    <h3 id="cart">🛒 Filling the cart</h3>
+    <ol>
+      <li>Pick the <strong>band</strong>; your favorites come first.</li>
+      <li>Pick the <strong>album</strong>, split into <em>Wanted</em>, <em>Neither</em> and
+      <em>Owned</em>.</li>
+      <li>Pick the <strong>format</strong>.</li>
+      <li>Type its <strong>price</strong> (<code>24.99</code> or <code>24,99</code>), how many
+      copies, and if you like a link to it on a shop's website.</li>
+    </ol>
+    <ul>
+      <li><strong>−</strong> and <strong>+</strong> change how many copies; − on the last copy
+      asks before taking it out.</li>
+      <li>Albums you already own on that format can go in too, but they are flagged
+      <span class="warning">⚠ You already own this</span>.</li>
+    </ul>
+
+    <h3 id="total">🧮 The total</h3>
+    <p>The cart adds up the albums, plus the <strong>Shipping</strong> and minus the optional
+    <strong>Discount</strong> you type under them (<code>0.00</code> until you do). Both are
+    saved with the budget.</p>
+    <ul>
+      <li>A discount can take the total down to <code>0.00</code>, no further.</li>
+      <li>Prices show with a generic <code>$</code>, whatever currency the shops use.</li>
+    </ul>
+
+    <h3 id="saving">💾 Saving and buying</h3>
+    <p>Under the cart:</p>
+    <ul>
+      <li><em>Make Budget</em> saves it under the name you give, and empties the cart.</li>
+      <li><em>Buy</em> marks every album in it owned on its format, and keeps it as a bought
+      budget.</li>
+      <li><em>Delete</em> empties the cart.</li>
+    </ul>
+
+    <h3 id="saved">🗂️ Saved budgets</h3>
+    <p>They are listed below the cart, with their totals. For each one:</p>
+    <ul>
+      <li><em>Buy</em> it when you got its albums.</li>
+      <li><em>Edit</em> it to load it into the cart, then press <em>Save Budget</em> there to
+      keep the changes, or <em>Delete</em> to drop them.</li>
+      <li><em>Delete</em> it.</li>
+    </ul>
+    <p>Bought budgets stay as a record of what you spent.</p>
+    <p class="help-tip">💡 When you buy albums that other budgets still hold on the same format,
+    you are asked first whether to drop them from those budgets. A budget left empty is
+    deleted.</p>
+{% endblock %}

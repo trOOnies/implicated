@@ -5,7 +5,7 @@
 {% from "_icons.html" import help_link %}
 <p class="crumbs"><a href="/artists">Artists</a> / <a href="/artists/{{ artist.id }}">{{ artist.name }}</a> /</p>
 <div class="page-head">
-  <div class="row"><h1>Pictures</h1>{{ help_link('pages', 'artists', 'Pictures') }}</div>
+  <div class="row"><h1>Pictures</h1>{{ help_link('artists', 'pictures', 'Pictures') }}</div>
   <form id="picture-filters" class="filters" hx-get="/fragments/artists/{{ artist.id }}/pictures"
         hx-target="#pictures" hx-swap="innerHTML" hx-trigger="input changed delay:300ms, change, search">
     <input type="search" name="q" value="{{ q }}" placeholder="Search names, descriptions and tags…"
