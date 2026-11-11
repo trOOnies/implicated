@@ -368,6 +368,7 @@ ALBUMS_WHERE = f"""
    WHERE (:artist_id IS NULL OR al.artist_id = :artist_id)
      AND (:favorites = 0 OR al.favorite = 1)
      AND (:listen_later = 0 OR al.listen_later = 1)
+     AND (:mains_only = 0 OR al.main_id IS NULL)
      AND (:cd IS NULL OR al.cd = :cd)
      AND (:vinyl IS NULL OR al.vinyl = :vinyl)
      AND (:missing_lyrics = 0 OR EXISTS (SELECT 1 FROM songs WHERE album_id = al.id
@@ -726,12 +727,20 @@ class Library:
         language: str | None = None,
         favorites: bool = False,
         listen_later: bool = False,
+        order: str = "name",
         limit: int | None = None,
         offset: int = 0,
     ) -> list[ArtistSummary]:
         """Artists, optionally only those from ``country`` or with ``genre`` or ``language``
         among theirs (all ignoring case), the favorites or the ones marked to listen to later,
-        and only ``limit`` of them after the first ``offset``."""
+        and only ``limit`` of them after the first ``offset``. They go by name, favorites first,
+        or with ``order="plays"`` the most played first, or ``order="rating"`` the highest
+        rated first (the unrated last)."""
+        order_by = {
+            "name": "a.favorite DESC",
+            "plays": "x_plays DESC",
+            "rating": "a.rating IS NULL, a.rating DESC",
+        }[order]
         sql = f"""
             SELECT a.*,
                    (SELECT COUNT(*) FROM albums WHERE artist_id = a.id) AS x_albums,
@@ -739,7 +748,7 @@ class Library:
                    (SELECT COUNT(*) FROM plays p JOIN songs s ON s.id = p.song_id
                      WHERE s.artist_id = a.id) AS x_plays
               {ARTISTS_WHERE}
-             ORDER BY a.favorite DESC, a.name COLLATE NOCASE, a.id
+             ORDER BY {order_by}, a.name COLLATE NOCASE, a.id
              LIMIT :limit OFFSET :offset
         """
         params = {
@@ -1156,6 +1165,7 @@ class Library:
         listen_later: bool = False,
         missing_lyrics: bool = False,
         no_own_cover: bool = False,
+        mains_only: bool = False,
         order: str = "year",
         favorites_first: bool = False,
         limit: int | None = None,
@@ -1165,9 +1175,19 @@ class Library:
         ``OWNERSHIP``), the favorites, the ones marked to listen to later, the ones with songs
         still missing their lyrics or the ones without a cover of their own (none, or the same
         image as another album), and only ``limit`` of them after the first ``offset``. They go
-        from the oldest to the newest, or the other way with ``order="latest"``, and
-        ``favorites_first`` goes before either."""
-        year = {"year": "al.year", "latest": "al.year DESC"}[order]
+        from the oldest to the newest, or the other way with ``order="latest"``; or with
+        ``order="plays"`` the most played first, ``order="recent"`` the last played first (the
+        never played last) or ``order="rating"`` the highest rated first (the unrated last).
+        ``favorites_first`` goes before any of them, and ``mains_only`` leaves out the editions
+        merged into a main one."""
+        year = "al.year IS NULL, " + ("al.year DESC" if order == "latest" else "al.year")
+        order_by = {
+            "year": year,
+            "latest": year,
+            "plays": f"x_plays DESC, {year}",
+            "recent": "x_last_played IS NULL, x_last_played DESC",
+            "rating": f"al.rating IS NULL, al.rating DESC, {year}",
+        }[order]
         sql = f"""
             SELECT al.*, ar.name AS x_artist,
                    (SELECT COUNT(*) FROM songs WHERE album_id = al.id) AS x_songs,
@@ -1175,6 +1195,8 @@ class Library:
                      WHERE album_id = al.id) AS x_seconds,
                    (SELECT COUNT(*) FROM plays p JOIN songs s ON s.id = p.song_id
                      WHERE s.album_id = al.id) AS x_plays,
+                   (SELECT MAX(p.played_at) FROM plays p JOIN songs s ON s.id = p.song_id
+                     WHERE s.album_id = al.id) AS x_last_played,
                    (SELECT COUNT(*) FROM songs WHERE album_id = al.id
                        AND lyrics IS NOT NULL AND no_lyrics = 0) AS x_lyrics,
                    (SELECT COUNT(*) FROM songs WHERE album_id = al.id
@@ -1183,13 +1205,14 @@ class Library:
                               AND {SAME_COVER}) AS x_shared_cover
               {ALBUMS_WHERE}
              ORDER BY {"al.favorite DESC," if favorites_first else ""}
-                      al.year IS NULL, {year}, al.title COLLATE NOCASE, al.id
+                      {order_by}, al.title COLLATE NOCASE, al.id
              LIMIT :limit OFFSET :offset
         """
         params = {
             **self._album_filters(
                 artist_id, favorites, q, cd, vinyl, listen_later, missing_lyrics, no_own_cover
             ),
+            "mains_only": int(mains_only),
             "limit": -1 if limit is None else limit,
             "offset": offset,
         }
@@ -1208,6 +1231,7 @@ class Library:
                     extra["lyrics"],
                     extra["no_lyrics"],
                     bool(extra["shared_cover"]),
+                    extra["last_played"],
                 )
             )
         return out
@@ -1229,7 +1253,9 @@ class Library:
             artist_id, favorites, q, cd, vinyl, listen_later, missing_lyrics, no_own_cover
         )
         with self.connect() as conn:
-            return conn.execute(f"SELECT COUNT(*) {ALBUMS_WHERE}", params).fetchone()[0]
+            return conn.execute(
+                f"SELECT COUNT(*) {ALBUMS_WHERE}", {**params, "mains_only": 0}
+            ).fetchone()[0]
 
     @staticmethod
     def _album_filters(
@@ -1474,6 +1500,7 @@ class Library:
             "track": "s.track_number IS NULL, s.track_number, s.title COLLATE NOCASE",
             "plays": "x_plays DESC, s.title COLLATE NOCASE",
             "recent": "x_last_played IS NULL, x_last_played DESC",
+            "rating": "s.rating IS NULL, s.rating DESC, x_plays DESC, s.title COLLATE NOCASE",
             "playlist": "ps.position",
             "album": "al.id IS NULL, al.year IS NULL, al.year, al.title COLLATE NOCASE, al.id, "
             "s.track_number IS NULL, s.track_number, s.title COLLATE NOCASE",

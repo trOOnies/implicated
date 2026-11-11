@@ -237,7 +237,7 @@ def test_same_song_card(client, client_lib: Library, web_sample: Sample):
     client_lib.toggle_favorite("song", first)
     album_songs = client.get(f"/fragments/albums/{album}/songs").text
     assert album_songs.count(">merged</span>") == 1
-    view = client.get("/fragments/view").text
+    view = client.get("/fragments/view", params={"type": "song", "order": "favorites"}).text
     assert view.count(f'href="/songs/{first}"') >= 1 and f'href="/songs/{d_first}"' not in view
 
     # Search, then make main and unmerge from the page of another version.
@@ -327,9 +327,8 @@ def test_album_merges_round_trip_and_the_overview(client, client_lib: Library, w
     album, _songs = deluxe(client_lib, web_sample)
     client_lib.toggle("album", album, "favorite")
     client_lib.merge_albums(album, web_sample.album_id)
-    view = client.get("/fragments/view").text
-    favorites = view[view.index("Favorite albums") : view.index("Favorite songs")]
-    assert f'href="/albums/{web_sample.album_id}">Dummy</a>' in favorites
+    favorites = client.get("/fragments/showcase", params={"order": "favorites"}).text
+    assert f'href="/albums/{web_sample.album_id}">' in favorites
     assert f'href="/albums/{album}"' not in favorites
 
     data = export_data(client_lib)

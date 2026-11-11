@@ -2,7 +2,8 @@
 {% set active = 'home' %}
 {% block title %}Overview{% endblock %}
 {% block content %}
-<section id="view" hx-get="/fragments/view" hx-trigger="library-changed from:body" hx-swap="innerHTML">
+<section id="view" hx-get="/fragments/view" hx-trigger="library-changed from:body" hx-swap="innerHTML"
+         hx-include="#showcase-filters">
   {% include "_view.html" %}
 </section>
 {% endblock %}

@@ -1,0 +1,52 @@
+{# The Overview's showcase: `tiles` of the `showcase_kind` records in `showcase_order`, picked
+   with its Type and Order selectors (see ``_showcase`` in views.py). Each tile's badge, on its
+   picture, shows what the order goes by: the ♡ or ⧖ (which can take the mark off), the plays,
+   when it was last played, the rating or the year. #}
+{% from "_icons.html" import help_link %}
+<section id="showcase" class="card">
+  <form id="showcase-filters" class="row wrap" hx-get="/fragments/showcase" hx-target="#showcase"
+        hx-swap="outerHTML" hx-trigger="change">
+    <label>Type
+      <select name="type">
+        {% for key, label in showcase_types.items() %}<option value="{{ key }}"{% if key == showcase_kind %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Order
+      <select name="order">
+        {% for key, label in showcase_orders.items() %}<option value="{{ key }}"{% if key == showcase_order %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <span class="showcase-help">
+    {% if showcase_order == 'favorites' %}{{ help_link('actions', 'favorite', 'Favorite') }}
+    {% elif showcase_order == 'later' %}{{ help_link('actions', 'listen-later', 'Listen later') }}
+    {% elif showcase_order in ('recent', 'plays') %}{{ help_link('actions', 'log-a-listen', 'Log a listen') }}
+    {% elif showcase_order == 'rating' %}{{ help_link('actions', 'rating', 'Rating') }}
+    {% else %}{{ help_link('pages', 'albums', 'Albums') }}{% endif %}
+    </span>
+  </form>
+  {% if tiles %}
+  <ul class="showcase">
+    {% for tile in tiles %}
+    <li>
+      {% if showcase_order == 'favorites' %}{% with kind=tile.kind, record_id=tile.id, favorite=tile.favorite %}{% include "_fav.html" %}{% endwith %}
+      {% elif showcase_order == 'later' %}{% with kind=tile.kind, record_id=tile.id, later=tile.later %}{% include "_later.html" %}{% endwith %}
+      {% elif showcase_order == 'plays' %}<span class="badge" title="{{ tile.plays }} {{ 'play' if tile.plays == 1 else 'plays' }}">▶ {{ tile.plays }}</span>
+      {% elif showcase_order == 'recent' %}<span class="badge" title="Last played {{ tile.last_played | when }}">{{ tile.last_played | ago }}</span>
+      {% elif showcase_order == 'rating' %}<span class="badge" title="Rated {{ tile.rating }} of 5">★ {{ tile.rating }}</span>
+      {% elif tile.year %}<span class="badge" title="Released in {{ tile.year }}">{{ tile.year }}</span>{% endif %}
+      <a href="{{ tile.href }}">
+      {% if tile.image %}<img class="cover" src="{{ tile.image }}" alt="" loading="lazy">{% else %}<span class="cover none" aria-hidden="true">♪</span>{% endif %}
+      <strong>{{ tile.name }}</strong>
+      {% if tile.note %}<small>{{ tile.note }}</small>{% endif %}
+    </a></li>
+    {% endfor %}
+  </ul>
+  {% if see_more %}<p class="see-more"><a href="{{ see_more }}">See more...</a></p>{% endif %}
+  {% else %}
+  <p class="empty">{% if showcase_order == 'favorites' %}Mark {{ showcase_kind }}s with ♡ to see them here.
+    {%- elif showcase_order == 'later' %}Mark {{ showcase_kind }}s with ⧖ to listen to them later.
+    {%- elif showcase_order in ('recent', 'plays') %}No {{ showcase_kind }}s played yet.
+    {%- elif showcase_order == 'rating' %}Rate {{ showcase_kind }}s to see them here.
+    {%- else %}No {{ showcase_kind }}s here yet.{% endif %}</p>
+  {% endif %}
+</section>

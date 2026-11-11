@@ -267,6 +267,30 @@ a.tile:hover { text-decoration: none; border-color: var(--accent); }
 .cover.mini.none { font-size: .8rem; }
 .album-link { display: inline-flex; align-items: center; gap: .5rem; }
 .cover.tile.none { font-size: 2.5rem; }
+/* The Overview's showcase (_showcase.html): small square tiles, a name and one line under it */
+#showcase-filters { margin-bottom: .75rem; }
+#showcase-filters > label { flex: none; }
+.showcase-help { align-self: center; padding-top: 1rem; }
+/* 30 tiles: 10 columns of 3 at full width, 6 of 5 at about half a screen, 3 on a phone */
+.showcase { list-style: none; padding: 0; margin: 0; display: grid; gap: .75rem; grid-template-columns: repeat(10, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .showcase { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .showcase { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.showcase li { position: relative; min-width: 0; }
+.showcase .badge, .showcase button.fav, .showcase button.later { position: absolute; top: .25rem; left: .25rem; z-index: 1; }
+.showcase .badge {
+  padding: .05rem .4rem; border-radius: 999px; font-size: .7rem; font-weight: 600; white-space: nowrap;
+  background: var(--surface); color: var(--text); box-shadow: 0 0 0 1px var(--border);
+}
+.showcase button.fav, .showcase button.later {
+  width: 1.6rem; height: 1.6rem; padding: 0; border-radius: 50%;
+  background: var(--surface); box-shadow: 0 0 0 1px var(--border);
+}
+.showcase a { display: flex; flex-direction: column; gap: .2rem; color: var(--text); }
+.showcase a:hover strong { text-decoration: underline; }
+.showcase .cover { width: 100%; height: auto; aspect-ratio: 1; }
+.showcase .cover.none { font-size: 1.75rem; }
+.showcase strong, .showcase small { font-size: .8rem; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.showcase small { color: var(--muted); }
 .album-grid { list-style: none; padding: 0; margin: 0; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .album-grid li { position: relative; display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
 /* The heart sits on the cover, and has to show on any image */

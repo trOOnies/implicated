@@ -21,7 +21,7 @@ import os
 import tempfile
 from collections.abc import Iterable
 from dataclasses import fields, replace
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from html import escape
 from math import ceil
 from pathlib import Path
@@ -114,6 +114,23 @@ def when(timestamp: str | None) -> str:
     return datetime.fromisoformat(timestamp).strftime("%Y-%m-%d %H:%M")
 
 
+def ago(timestamp: str | None) -> str:
+    """How long ago ``timestamp`` was, short enough for a tile: ``5m``, ``3h``, ``2d``, ``6w``,
+    then the month (``Mar 2025``)."""
+    if not timestamp:
+        return "never"
+    then = datetime.fromisoformat(timestamp)
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=timezone.utc)
+    minutes = max(int((datetime.now(timezone.utc) - then).total_seconds() // 60), 0)
+    if minutes >= 60 * 24 * 7 * 9:
+        return then.strftime("%b %Y")
+    for size, unit in ((60 * 24 * 7, "w"), (60 * 24, "d"), (60, "h"), (1, "m")):
+        if minutes >= size:
+            return f"{minutes // size}{unit} ago"
+    return "just now"
+
+
 def tenure(member: Member) -> str:
     """``2002–``, ``2001–2004`` or ``–2017``; empty when the years are unknown."""
     if member.from_year is None and member.to_year is None:
@@ -161,6 +178,7 @@ templates.env.filters.update(
     duration=duration,
     stars=stars,
     when=when,
+    ago=ago,
     tenure=tenure,
     percent=percent,
     formats=formats,
@@ -327,35 +345,140 @@ def song_in(song: Song) -> SongIn:
 # Dashboard
 
 
-# How many records each list of the overview shows; the rest are a See more... link away.
-OVERVIEW_LIST = 10
+# The Overview's showcase: a grid of artists, albums or songs (its Type) in one of the Orders
+# of that type, the first one unless asked for another. Each Order is (label, how the library
+# sorts them, the list page with the rest of them or None). "plays", "recent" and "rating" show
+# only the played or rated ones.
+SHOWCASE_ORDERS = {
+    "album": {
+        "latest": ("Latest releases", "latest", "/albums?order=latest"),
+        "favorites": ("Favorites", "latest", "/albums?favorites=1"),
+        "later": ("Listen Later", "latest", "/albums?later=1"),
+        "recent": ("Recently played", "recent", None),
+        "plays": ("Most played", "plays", None),
+        "rating": ("Highest rated", "rating", None),
+    },
+    "artist": {
+        "favorites": ("Favorites", "name", "/artists?favorites=1"),
+        "later": ("Listen Later", "name", "/artists?later=1"),
+        "plays": ("Most played", "plays", None),
+        "rating": ("Highest rated", "rating", None),
+    },
+    "song": {
+        "favorites": ("Favorites", "plays", "/songs?favorites=1&order=plays"),
+        "later": ("Listen Later", "title", "/songs?later=1"),
+        "recent": ("Recently played", "recent", "/songs?order=recent"),
+        "plays": ("Most played", "plays", "/songs?order=plays"),
+        "rating": ("Highest rated", "rating", None),
+    },
+}
+SHOWCASE_TYPES = {"artist": "Artist", "album": "Album", "song": "Song"}
+# How many records the showcase shows; the rest are a See more... link away, where there is one.
+SHOWCASE_SIZE = 30  # 10 columns of 3 at full width, 6 of 5 at half
 
 
-def _view_context(lib: Library) -> dict:
-    albums = lib.list_albums()
-    artists = lib.list_artists()
+def _showcase(lib: Library, kind: str | None, order: str | None) -> dict:
+    """The showcase of ``kind`` records (an album when not one of ``SHOWCASE_TYPES``) in
+    ``order`` (the first of that type's when not one of them), each as a tile: its page, its
+    picture or cover (``None`` for the ♪ placeholder), its name and the line under it."""
+    kind = kind if kind in SHOWCASE_TYPES else "album"
+    order = order if order in SHOWCASE_ORDERS[kind] else next(iter(SHOWCASE_ORDERS[kind]))
+    filters = {"favorites": order == "favorites", "listen_later": order == "later"}
+    label, sort, more = SHOWCASE_ORDERS[kind][order]
+    limit = SHOWCASE_SIZE + 1
+    if kind == "artist":
+        records = lib.list_artists(**filters, order=sort, limit=limit)
+        tiles = [
+            {
+                "href": f"/artists/{a.artist.id}",
+                "image": a.artist.image and f"/api/artists/{a.artist.id}/image?v={a.artist.image}",
+                "name": a.artist.name,
+                "note": None,
+                "kind": "artist",
+                "id": a.artist.id,
+                "favorite": a.artist.favorite,
+                "later": a.artist.listen_later,
+                "plays": a.play_count,
+                "last_played": None,
+                "rating": a.artist.rating,
+                "year": None,
+            }
+            for a in records
+        ]
+    elif kind == "album":
+        records = lib.list_albums(**filters, order=sort, mains_only=True, limit=limit)
+        tiles = [
+            {
+                "href": f"/albums/{a.album.id}",
+                "image": a.album.cover and f"/api/albums/{a.album.id}/cover?v={a.album.cover}",
+                "name": a.album.title,
+                "note": a.artist_name,
+                "kind": "album",
+                "id": a.album.id,
+                "favorite": a.album.favorite,
+                "later": a.album.listen_later,
+                "plays": a.play_count,
+                "last_played": a.last_played,
+                "rating": a.album.rating,
+                "year": a.album.year,
+            }
+            for a in records
+        ]
+    else:
+        records = lib.list_songs(**filters, order=sort, mains_only=True, limit=limit)
+        tiles = [
+            {
+                "href": f"/songs/{s.song.id}",
+                "image": s.song.album_id
+                and s.album_cover
+                and f"/api/albums/{s.song.album_id}/cover?v={s.album_cover}",
+                "name": s.song.title,
+                "note": s.artist_name,
+                "kind": "song",
+                "id": s.song.id,
+                "favorite": s.song.favorite,
+                "later": s.song.listen_later,
+                "plays": s.play_count,
+                "last_played": s.last_played,
+                "rating": s.song.rating,
+                "year": None,
+            }
+            for s in records
+        ]
+    # Sorted, so the unplayed or unrated ones come last: dropping them leaves the right ones.
+    if order in ("plays", "recent"):
+        tiles = [tile for tile in tiles if tile["plays"]]
+    elif order == "rating":
+        tiles = [tile for tile in tiles if tile["rating"]]
     return {
-        "stats": lib.stats(),
-        "overview_list": OVERVIEW_LIST,
-        "latest_albums": lib.list_albums(order="latest", limit=OVERVIEW_LIST + 1),
-        "favorite_artists": [a for a in artists if a.artist.favorite],
-        "favorite_albums": [a for a in albums if a.album.favorite and not a.album.main_id],
-        "favorite_songs": lib.list_songs(favorites=True, mains_only=True, order="plays"),
-        "later_artists": [a for a in artists if a.artist.listen_later],
-        "later_albums": [a for a in albums if a.album.listen_later and not a.album.main_id],
-        "later_songs": lib.list_songs(listen_later=True, mains_only=True),
-        "recent": lib.recent_plays(8),
+        "showcase_types": SHOWCASE_TYPES,
+        "showcase_orders": {key: o[0] for key, o in SHOWCASE_ORDERS[kind].items()},
+        "showcase_kind": kind,
+        "showcase_order": order,
+        "tiles": tiles[:SHOWCASE_SIZE],
+        "see_more": more if len(tiles) > SHOWCASE_SIZE else None,
     }
 
 
+def _view_context(lib: Library, kind: str | None = None, order: str | None = None) -> dict:
+    return {"stats": lib.stats(), **_showcase(lib, kind, order)}
+
+
 @router.get("/")
-def index(request: Request, lib: Lib):
-    return render(request, "index.html", **_view_context(lib))
+def index(request: Request, lib: Lib, type: str | None = None, order: str | None = None):
+    return render(request, "index.html", **_view_context(lib, type, order))
 
 
 @router.get("/fragments/view")
-def view_fragment(request: Request, lib: Lib):
-    return render(request, "_view.html", **_view_context(lib))
+def view_fragment(request: Request, lib: Lib, type: str | None = None, order: str | None = None):
+    return render(request, "_view.html", **_view_context(lib, type, order))
+
+
+@router.get("/fragments/showcase")
+def showcase_fragment(
+    request: Request, lib: Lib, type: str | None = None, order: str | None = None
+):
+    return render(request, "_showcase.html", **_showcase(lib, type, order))
 
 
 # Help: one page per section, in reading order, each with the index and links to the section

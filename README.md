@@ -37,7 +37,7 @@ Then open **<http://127.0.0.1:8000>** and enjoy! The JSON API docs are at **`/do
 
 | Page | What you can do there |
 | --- | --- |
-| 📊 **Overview** | See your totals, charts, latest releases, favorites and listen later lists |
+| 📊 **Overview** | Browse your artists, albums or songs by favorites, listen later, plays, rating or release, and see charts of your library |
 | 🎤 **Artists** | Browse artist cards and filter them by origin, genre, language, favorites or listen later |
 | 💿 **Albums** | Browse covers, filter by CD or vinyl, and spot missing lyrics or covers |
 | 🎵 **Songs** | Search every song, sort it, open its lyrics, tab and videos, and merge the same song on several albums (a deluxe edition, say) so it counts as one |

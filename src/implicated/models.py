@@ -381,6 +381,8 @@ class AlbumSummary:
     no_lyrics_count: int = 0
     # The cover is the same image as another album's (``album.cover`` is ``None`` without one).
     shared_cover: bool = False
+    # When a song of it was last played, if ever.
+    last_played: str | None = None
 
 
 @dataclass

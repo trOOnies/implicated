@@ -3,7 +3,7 @@ import os
 import re
 import signal
 from dataclasses import replace
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -27,6 +27,7 @@ from implicated.models import (
 from implicated.web import editor, shutdown, views
 from implicated.web.views import (
     _fingerprint,
+    ago,
     days_until,
     duration,
     help_url,
@@ -92,20 +93,122 @@ def test_empty_library_overview(client: TestClient):
 
 def test_overview_needs_no_plays(client: TestClient, client_lib: Library, web_sample: Sample):
     page = client.get("/").text
-    assert "Latest releases" in page and "Dummy" in page
+    assert 'class="tile"' not in page  # no totals at the top
+    # The showcase starts on the latest albums
+    assert '<option value="album" selected>Album</option>' in page
+    assert '<option value="latest" selected>Latest releases</option>' in page
+    assert f'href="/albums/{web_sample.album_id}">' in page and "<strong>Dummy</strong>" in page
     assert "Songs per artist" in page and "Genres" in page and "Trip hop" in page
     assert "Album ratings" in page  # Dummy is rated
-    assert "Plays, last 30 days" not in page and "Recently played" not in page
-    assert "Favorite artists" not in page
+    assert "Plays, last 30 days" not in page
+    for gone in ("Latest releases", "Recently played", "Favorite artists", "Artists to listen to"):
+        assert f"<h2>{gone}</h2>" not in page, gone  # one showcase instead
+    assert "Most played artists" not in page
 
     client_lib.record_play(web_sample.song_ids[0])
-    client_lib.toggle_favorite("artist", web_sample.artist_id)
     page = client.get("/fragments/view").text
-    assert "Plays, last 30 days" in page and "Recently played" in page and "Mysterons" in page
-    assert "Favorite artists" in page and "No favorite albums yet" in page
-    # Help icons by the charts and lists, leading to the actions they come from
-    for entry in ("rating", "log-a-listen", "favorite"):
+    assert "Plays, last 30 days" in page
+    # Help icons by the charts, leading to the actions they come from
+    for entry in ("rating", "log-a-listen"):
         assert f'class="help-link" href="/help/actions#{entry}"' in page, entry
+
+
+def test_overview_showcase_types_and_orders(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    def showcase(kind: str, order: str) -> str:
+        return client.get("/fragments/showcase", params={"type": kind, "order": order}).text
+
+    def orders(page: str) -> list[str]:
+        select = page.split('name="order"')[1].split("</select>")[0]
+        return re.findall(r'<option value="\w+"[^>]*>([^<]+)</option>', select)
+
+    assert orders(showcase("artist", "")) == [
+        "Favorites",
+        "Listen Later",
+        "Most played",
+        "Highest rated",
+    ]
+    assert orders(showcase("album", "")) == [
+        "Latest releases",
+        "Favorites",
+        "Listen Later",
+        "Recently played",
+        "Most played",
+        "Highest rated",
+    ]
+    assert orders(showcase("song", "")) == [
+        "Favorites",
+        "Listen Later",
+        "Recently played",
+        "Most played",
+        "Highest rated",
+    ]
+    # An order the type lacks falls back to its first one, an unknown type to albums.
+    assert '<option value="favorites" selected>' in showcase("artist", "latest")
+    assert '<option value="album" selected>' in showcase("nope", "plays")
+
+    artist, song = (
+        f'href="/artists/{web_sample.artist_id}"',
+        f'href="/songs/{web_sample.song_ids[0]}"',
+    )
+    assert artist not in showcase("artist", "favorites")
+    assert "Mark artists with ♡" in showcase("artist", "favorites")
+    client_lib.toggle_favorite("artist", web_sample.artist_id)
+    assert artist in showcase("artist", "favorites")
+    assert 'href="/help/actions#favorite"' in showcase("artist", "favorites")
+    assert "No songs played yet" in showcase("song", "plays")
+    client_lib.record_play(web_sample.song_ids[0])
+    played = showcase("song", "plays")
+    assert (
+        played.count('href="/songs/') == 1
+        and song in played
+        and "<small>Portishead</small>" in played
+    )
+    assert 'href="/help/actions#log-a-listen"' in played
+    assert f'href="/albums/{web_sample.album_id}"' in showcase("album", "recent")
+    assert artist in showcase("artist", "plays")
+    rated = showcase("album", "rating")  # Dummy is rated
+    assert (
+        f'href="/albums/{web_sample.album_id}"' in rated and 'href="/help/actions#rating"' in rated
+    )
+    assert "Rate artists to see them here" in showcase("artist", "rating")
+    # The page opens on the type and order asked for, and keeps them when it refreshes.
+    assert song in client.get("/", params={"type": "song", "order": "plays"}).text
+    assert song in client.get("/fragments/view", params={"type": "song", "order": "plays"}).text
+    assert 'hx-include="#showcase-filters"' in client.get("/").text
+
+
+def test_overview_showcase_badges_follow_the_order(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    def showcase(kind: str, order: str) -> str:
+        return client.get("/fragments/showcase", params={"type": kind, "order": order}).text
+
+    song = web_sample.song_ids[0]
+    client_lib.toggle_favorite("song", song)
+    client_lib.toggle("song", song, "listen_later")
+    favorites = showcase("song", "favorites")
+    assert f'hx-post="/favorite/song/{song}"' in favorites and 'class="fav on"' in favorites
+    later = showcase("song", "later")
+    assert f'hx-post="/later/song/{song}"' in later and 'class="later on"' in later
+    client_lib.record_play(song)
+    client_lib.record_play(song)
+    assert '<span class="badge" title="2 plays">▶ 2</span>' in showcase("song", "plays")
+    assert ">just now</span>" in showcase("album", "recent")
+    assert 'title="Rated' in showcase("album", "rating") and "★ " in showcase("album", "rating")
+    assert 'title="Released in 1994">1994</span>' in showcase("album", "latest")
+
+
+def test_ago_is_short():
+    now = datetime.now(timezone.utc)
+    assert ago(None) == "never" and ago(now.isoformat()) == "just now"
+    assert ago((now - timedelta(minutes=5)).isoformat()) == "5m ago"
+    assert ago((now - timedelta(hours=3)).isoformat()) == "3h ago"
+    assert ago((now - timedelta(days=2)).isoformat()) == "2d ago"
+    assert ago((now - timedelta(weeks=6)).isoformat()) == "6w ago"
+    old = now - timedelta(days=400)
+    assert ago(old.isoformat()) == old.strftime("%b %Y")
 
 
 def test_albums_page(client: TestClient, client_lib: Library, web_sample: Sample, image):
@@ -559,10 +662,14 @@ def test_listen_later_toggle(client: TestClient, client_lib: Library, web_sample
         assert 'aria-pressed="true"' in on.text
         assert "library-changed" in on.headers["hx-trigger"]
     assert client_lib.get_album(web_sample.album_id).listen_later
-    overview = client.get("/").text
-    assert "Artists to listen to" in overview and "Songs to listen to" in overview
-    assert 'class="help-link" href="/help/actions#listen-later"' in overview
-    assert f'href="/songs/{web_sample.song_ids[0]}">Mysterons' in overview
+    for kind, record_id in [
+        ("artist", web_sample.artist_id),
+        ("album", web_sample.album_id),
+        ("song", web_sample.song_ids[0]),
+    ]:
+        overview = client.get("/", params={"type": kind, "order": "later"}).text
+        assert f'href="/{kind}s/{record_id}"' in overview, kind
+        assert 'class="help-link" href="/help/actions#listen-later"' in overview
     assert 'aria-pressed="false"' in client.post(f"/later/album/{web_sample.album_id}").text
     assert client.post("/later/playlist/1").status_code == 404
     assert client.post("/later/song/99").status_code == 404
@@ -1251,8 +1358,20 @@ def test_help_icons_lead_to_help_entries_that_exist(client: TestClient):
         if path.name != "_icons.html"
         for call in re.findall(r"help_link\((.*?)\)", path.read_text())
     ]
-    for entry in ("tier-lists", "albums", "artists", "songs", "playlists", "budget", "concerts",
-                  "duo", "import", "live-play", "merged-songs", "merged-albums"):
+    for entry in (
+        "tier-lists",
+        "albums",
+        "artists",
+        "songs",
+        "playlists",
+        "budget",
+        "concerts",
+        "duo",
+        "import",
+        "live-play",
+        "merged-songs",
+        "merged-albums",
+    ):
         assert ("pages", entry) in calls, entry
     for entry in ("rating", "log-a-listen", "listen-later", "favorite"):  # on the Overview
         assert ("actions", entry) in calls, entry
@@ -2040,10 +2159,13 @@ def test_the_logo_replaces_the_overview_tab(client: TestClient):
     assert 'favicon.svg" width="26"' in page and ">Overview</a>" not in page
 
 
-def test_overview_lists_stop_at_ten(client: TestClient, client_lib: Library):
+def test_overview_showcase_stops_at_its_size(client: TestClient, client_lib: Library):
+    size = views.SHOWCASE_SIZE
     artist = client_lib.create_artist(ArtistIn("Air"))
-    albums = [client_lib.create_album(AlbumIn(artist.id, f"A{n}", 1990 + n)) for n in range(11)]
-    songs = [client_lib.create_song(SongIn(artist.id, title=f"S{n}")) for n in range(11)]
+    albums = [
+        client_lib.create_album(AlbumIn(artist.id, f"A{n}", 1900 + n)) for n in range(size + 1)
+    ]
+    songs = [client_lib.create_song(SongIn(artist.id, title=f"S{n}")) for n in range(size + 1)]
     for album in albums:
         client_lib.toggle_favorite("album", album.id)
         client_lib.toggle("album", album.id, "listen_later")
@@ -2052,34 +2174,35 @@ def test_overview_lists_stop_at_ten(client: TestClient, client_lib: Library):
         client_lib.toggle("song", song.id, "listen_later")
 
     page = client.get("/fragments/view").text
-    latest = page.split("Latest releases")[1].split('<div class="grid">')[0]
-    assert latest.count('<a href="/albums/') == 10 and ">A10<" in latest and ">A0<" not in latest
-    assert f'<a href="/songs/{songs[0].id}">S0</a>' in page.split("Favorite songs")[1]
-    for href in (
-        "/albums?order=latest",
-        "/albums?later=1",
-        "/songs?later=1",
-        "/albums?favorites=1",
-        "/songs?favorites=1&amp;order=plays",
+    assert page.count('<a href="/albums/') == size
+    assert f"<strong>A{size}</strong>" in page and "<strong>A0</strong>" not in page
+    for kind, order, href in (
+        ("album", "latest", "/albums?order=latest"),
+        ("album", "later", "/albums?later=1"),
+        ("album", "favorites", "/albums?favorites=1"),
+        ("song", "later", "/songs?later=1"),
+        ("song", "favorites", "/songs?favorites=1&amp;order=plays"),
     ):
-        assert f'<a href="{href}">See more...</a>' in page
-    assert page.split("Favorite songs")[1].count('<a href="/songs/') == 10
-    assert "/artists?favorites=1" not in page  # no favorite artists, and so no more of them
+        shown = client.get("/fragments/showcase", params={"type": kind, "order": order}).text
+        assert f'<a href="{href}">See more...</a>' in shown, href
+    assert "See more" not in client.get("/fragments/showcase", params={"type": "artist"}).text
 
     client_lib.delete_album(albums[0].id)
     page = client.get("/fragments/view").text
-    assert "/albums?favorites=1" not in page and "/albums?order=latest" not in page  # ten fit
+    assert "See more" not in page  # they all fit
 
 
 def test_see_more_of_artists_opens_them_filtered(client: TestClient, client_lib: Library):
-    artists = [client_lib.create_artist(ArtistIn(f"Band {n:02}")) for n in range(11)]
+    artists = [
+        client_lib.create_artist(ArtistIn(f"Band {n:02}")) for n in range(views.SHOWCASE_SIZE + 1)
+    ]
     other = client_lib.create_artist(ArtistIn("Other"))
     for artist in artists:
         client_lib.toggle_favorite("artist", artist.id)
         client_lib.toggle("artist", artist.id, "listen_later")
-    page = client.get("/fragments/view").text
-    assert '<a href="/artists?favorites=1">See more...</a>' in page
-    assert '<a href="/artists?later=1">See more...</a>' in page
+    for order in ("favorites", "later"):
+        page = client.get("/fragments/showcase", params={"type": "artist", "order": order}).text
+        assert f'<a href="/artists?{order}=1">See more...</a>' in page
 
     for params in ({"favorites": "1"}, {"later": "1"}):
         full = client.get("/artists", params=params).text
