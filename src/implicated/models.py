@@ -40,7 +40,7 @@ TIER_NAMES = ("S", "A", "B", "C", "D")
 TIER_LETTERS = "SABCDEFGHIJKLMNOPQRTUVWXYZ"
 MIN_TIERS = 3
 MAX_TIERS = 10
-TIER_NAME_LENGTH = 20
+TIER_NAME_LENGTH = 32
 
 # Any language edition, desktop or mobile: en.wikipedia.org, pt-br.m.wikipedia.org, ...
 WIKI_HOST = re.compile(r"[a-z]{2,3}(?:-[a-z0-9]{1,8})*(?:\.m)?\.wikipedia\.org")

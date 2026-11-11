@@ -826,9 +826,14 @@ def test_tier_list_levels(lib: Library, sample: Sample):
     with pytest.raises(ValueError, match="at most 10"):
         lib.add_tier("playlist", playlist.id)
 
-    for bad, message in (("  ", "needs a name"), ("a", "already a level"), ("x" * 21, "at most")):
+    for bad, message in (
+        ("  ", "needs a name"),
+        ("a", "already a level"),
+        ("x" * 33, "at most 32"),
+    ):
         with pytest.raises(ValueError, match=message):
             lib.rename_tier(s_tier.id, bad)
+    assert lib.rename_tier(s_tier.id, "y" * 32).name == "y" * 32  # the longest
     assert lib.rename_tier(s_tier.id, "Top   tier").name == "Top tier"
     assert lib.rename_tier(s_tier.id, "top TIER").name == "top TIER"  # its own name is fine
 

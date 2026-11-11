@@ -1043,11 +1043,23 @@ def test_tier_list_pages(client: TestClient, client_lib: Library, web_sample: Sa
     assert "Unassigned <span" in page and "Mysterons" in page
     assert "data-select-all" in page and "data-clear-selection" in page
     assert "Autoadd</button>" in page and "No song is a favorite, on a favorite album" in page
+    # The tools in order: Autoadd (+), Fast assign (⚡), Make playlist, Locking mode.
+    tools = page.split('class="row wrap tier-tools"')[1].split('<div class="tiers">')[0]
+    order = ['id="tier-autoadd"', "data-fast-assign", "tier-make-playlist", "tier-locking"]
+    assert sorted(order, key=tools.index) == order
+    assert '<path d="M12 5v14M5 12h14"/>' in tools.split("Autoadd</button>")[0]  # its +
+    assert '<path d="M13 2 4 14h7l-1 8 9-12h-7z"' in tools.split("Fast assign</button>")[0]
+    # Below the last level, a dotted Add Tier, and the count of levels.
+    levels = page.split('<div class="tiers">')[1].split("tier-unassigned-title")[0]
+    assert levels.index('class="tier-add"') > levels.rindex('class="tier-label"')
+    assert f'hx-post="/playlists/{pid}/tiers/levels"' in levels and "Add Tier</button>" in levels
+    assert "5 of 10 levels · at least 3" in levels and "Add level" not in page
 
     # Levels: add, rename, delete, within 3 to 10.
     for _ in range(5):
         board = client.post(f"/playlists/{pid}/tiers/levels")
-    assert board.text.count('class="tier-label"') == 10 and "at most 10 levels" in board.text
+    assert board.text.count('class="tier-label"') == 10 and 'class="tier-add"' not in board.text
+    assert "10 of 10 levels: the most a tier list can have" in board.text
     refused = client.post(f"/playlists/{pid}/tiers/levels")
     assert refused.status_code == 422 and 'role="alert">a tier list has at most' in refused.text
     edit = client.get(f"/fragments/playlists/{pid}/tiers", params={"edit": tiers[0]}).text
@@ -2604,26 +2616,31 @@ def test_tier_list_makes_a_playlist_of_its_top_levels(
     assert '<option value="0">S (1 song)</option>' in page
     assert '<option value="1">A (2 songs)</option>' in page
 
-    # Only the top level: S.
+    def playlist_named(name: str):
+        return next(p.playlist for p in client_lib.list_playlists() if p.playlist.name == name)
+
+    # Only the top level: S. Named after what is ranked, to rename on its page.
     made = client.post(url, data={"last": "0"}).text
-    name = f"{tier_list.name} tier list: S"
-    assert "Made" in made and name in made and "with 1 song." in made
-    top = next(p.playlist for p in client_lib.list_playlists() if p.playlist.name == name)
+    name = f"{tier_list.name} (Tier list)"
+    assert "Made" in made and name in made and "with 1 song:" in made and "Rename it" in made
+    top = playlist_named(name)
     assert client_lib.playlist_song_ids(top.id) == [second]
 
-    # From S down to B, B included: the songs in level order, top first.
+    # From S down to B, B included: the songs in level order, top first, in a new playlist.
     made = client.post(url, data={"last": "2"}).text
-    name = f"{tier_list.name} tier list: S to B"
-    assert "Made" in made and "with 2 songs." in made
-    playlist = next(p.playlist for p in client_lib.list_playlists() if p.playlist.name == name)
+    assert "Made" in made and "with 2 songs:" in made
+    playlist = playlist_named(f"{name} 2")
     assert client_lib.playlist_song_ids(playlist.id) == [second, first]
 
-    # Making it again refills the same playlist with the levels as they are now.
+    # A copy, not a link: changing or deleting the tier list leaves the playlists as they are,
+    # and making another one makes a new playlist, never refilling an old one.
     client_lib.place_song("album", album, first, None)
-    again = client.post(url, data={"last": "2"}).text
-    assert "Refilled" in again and "with 1 song." in again
-    assert client_lib.playlist_song_ids(playlist.id) == [second]
-    assert sum(p.playlist.name == name for p in client_lib.list_playlists()) == 1
+    assert client_lib.playlist_song_ids(playlist.id) == [second, first]
+    client.post(url, data={"last": "2"})
+    assert client_lib.playlist_song_ids(playlist_named(f"{name} 3").id) == [second]
+    client.post(f"/albums/{album}/tiers/delete")
+    assert client_lib.playlist_song_ids(top.id) == [second]
+    assert client_lib.playlist_song_ids(playlist.id) == [second, first]
 
 
 def test_locked_songs_look_decided(client: TestClient):

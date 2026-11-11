@@ -16,6 +16,7 @@ so they refresh themselves:
 from __future__ import annotations
 
 import hashlib
+import itertools
 import logging
 import os
 import tempfile
@@ -2544,17 +2545,23 @@ async def tier_lock(request: Request, lib: Lib, owners: str, owner_id: int):
     return _tier_board(request, lib, kind, owner_id)
 
 
-def _tier_playlist_name(tier_list: TierList, last: int) -> str:
-    """The name of the playlist of a tier list's levels from the top one to ``last``."""
-    top, bottom = tier_list.tiers[0].tier.name, tier_list.tiers[last].tier.name
-    levels = top if last == 0 else f"{top} to {bottom}"
-    return f"{tier_list.name} tier list: {levels}"
+def _tier_playlist_name(lib: Library, tier_list: TierList) -> str:
+    """A new playlist's name for a tier list's songs: "Dummy (Tier list)", or "Dummy (Tier list)
+    2" and on when one of your playlists has it. Rename it on its page."""
+    base = f"{tier_list.name} (Tier list)"
+    taken = {p.playlist.name.casefold() for p in lib.list_playlists()}
+    return next(
+        name
+        for name in (base if n == 1 else f"{base} {n}" for n in itertools.count(1))
+        if name.casefold() not in taken
+    )
 
 
 @router.post("/{owners}/{owner_id}/tiers/playlist")
 async def tier_playlist(request: Request, lib: Lib, owners: str, owner_id: int):
-    """Make (or refill) a playlist of the tier list's songs, in order, from the top level down
-    to the level at position ``last``, that one included."""
+    """Make a new playlist of the tier list's songs, in order, from the top level down to the
+    level at position ``last``, that one included. It is a copy of them as they are now: nothing
+    links it to the tier list, which can change or go while the playlist stays as it is."""
     kind = _tier_owner(owners)
     tier_list = found(lib.get_tier_list, kind, owner_id)
     last = _id(await request.form(), "last")
@@ -2568,21 +2575,9 @@ async def tier_playlist(request: Request, lib: Lib, owners: str, owner_id: int):
             status_code=422,
             error="Those levels have no songs yet: put some in them first.",
         )
-    name = _tier_playlist_name(tier_list, last)
-    existing = next(
-        (p.playlist for p in lib.list_playlists()
-         if not p.playlist.kind and p.playlist.name.casefold() == name.casefold()),
-        None,
-    )  # fmt: skip
-    playlist = existing or lib.create_playlist(PlaylistIn(name))
+    playlist = lib.create_playlist(PlaylistIn(_tier_playlist_name(lib, tier_list)))
     lib.set_playlist_songs(playlist.id, song_ids)
-    return render(
-        request,
-        "_tier_playlist.html",
-        playlist=playlist,
-        count=len(song_ids),
-        refilled=existing is not None,
-    )
+    return render(request, "_tier_playlist.html", playlist=playlist, count=len(song_ids))
 
 
 @router.post("/{owners}/{owner_id}/tiers/auto")

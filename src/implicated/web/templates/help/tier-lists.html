@@ -35,13 +35,14 @@
 
     <h3 id="levels">📶 Levels</h3>
     <ul>
-      <li><em>Add level</em> adds one at the bottom, named after the next free letter.</li>
-      <li>Click a level's name (or ✎) to rename it.</li>
+      <li><em>+ Add Tier</em>, the dotted row below the last level, adds one at the bottom, named
+      after the next free letter.</li>
+      <li>Click a level's name (or ✎) to rename it, up to 32 characters.</li>
       <li>✕ deletes it; its songs go back to the unassigned ones.</li>
-      <li>A tier list has 3 to 10 levels.</li>
+      <li>A tier list has 3 to 10 levels; the count is under the levels.</li>
     </ul>
 
-    <h3 id="autoadd">🪄 Autoadd</h3>
+    <h3 id="autoadd">➕ Autoadd</h3>
     <p>After asking, it empties the levels and fills the first three, each by plays, most
     first:</p>
     <ol>
@@ -71,23 +72,31 @@
     <p>Places the unassigned (unlocked) songs one by one, asking you which of two songs is
     better. It searches like a binary search: first against the levels' top and bottom songs to
     find the song's level, then within that level.</p>
+    <p>It first asks whether you will <strong>listen</strong> to each song as you rank it. If so,
+    each song logs a listen the first time it comes up, once, whatever you undo.</p>
     <table class="help-table">
       <tbody>
-        <tr><td>Left song is better</td><td>Click it, or <kbd>←</kbd> or <kbd>1</kbd></td></tr>
-        <tr><td>Right song is better</td><td>Click it, or <kbd>→</kbd> or <kbd>2</kbd></td></tr>
+        <tr><td>Left song is better</td><td>Click it, or <kbd>A</kbd> or <kbd>←</kbd></td></tr>
+        <tr><td>Right song is better</td><td>Click it, or <kbd>D</kbd> or <kbd>→</kbd></td></tr>
+        <tr><td>Not sure</td><td><em>idk</em>, or <kbd>S</kbd> or <kbd>↓</kbd></td></tr>
         <tr><td>Take back the last answer</td><td><em>Undo</em>, or <kbd>Backspace</kbd></td></tr>
-        <tr><td>Leave the song unassigned</td><td><em>Skip song</em>, or <kbd>S</kbd></td></tr>
+        <tr><td>Leave the song unassigned</td><td><em>Skip song</em></td></tr>
         <tr><td>Close it</td><td><kbd>Escape</kbd></td></tr>
       </tbody>
     </table>
+    <p><strong>idk</strong> asks about another song close by first. It works while another song
+    can still decide the place; the last one that can has to be answered.</p>
     <p>When a song falls between two levels, a last question asks which border it is: the bottom
-    of the upper level or the top of the lower one. Empty levels between them are options too;
-    press their number to pick one. With no song to place, it only warns you.</p>
+    of the upper level or the top of the lower one. Empty levels between them are options too:
+    move between them with <kbd>A</kbd>/<kbd>←</kbd> and <kbd>D</kbd>/<kbd>→</kbd>, and press
+    <kbd>Enter</kbd> (or click one). With no song to place, it only warns you.</p>
 
     <h3 id="make-playlist">📜 Make playlist</h3>
-    <p>Makes a playlist of the ranked songs, in order, from the top level down to the one you
-    pick (that one included). It is named after the tier list and those levels; making it again
-    refills it.</p>
+    <p>Makes a <strong>new</strong> playlist of the ranked songs, in order, from the top level
+    down to the one you pick (that one included). It is named after what is ranked, like
+    <em>Dummy (Tier list)</em>; rename it on its page.</p>
+    <p>It is a copy of the songs as they are then, not linked to the tier list: changing or
+    deleting the tier list leaves it as it is, and making another one makes another playlist.</p>
     <p class="help-tip">💡 A song that leaves the playlist, album or artist leaves its tier list
     too, and <em>Delete tier list</em> leaves the songs as they were.</p>
 {% endblock %}

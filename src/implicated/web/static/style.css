@@ -626,12 +626,23 @@ button.feat-remove:hover { color: var(--danger); }
   --tier-decided: #c4c0b6;
 }
 .row.wrap.tier-tools { margin-bottom: .75rem; align-items: center; }
+button.with-icon { display: inline-flex; align-items: center; gap: .35rem; }
+button.with-icon svg { width: 1rem; height: 1rem; flex: none; }
 .tier-make-playlist { margin: 0; gap: .35rem; }
 .tier-make-playlist label { flex: none; flex-direction: row; align-items: center; gap: .35rem; margin: 0; }
 #tier-playlist:empty { display: none; }
 .tiers { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-.tier { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) auto; min-height: calc(var(--tier-song) + .5rem); }
+.tier { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr) auto; min-height: calc(var(--tier-song) + .5rem); }
 .tier + .tier { border-top: 1px solid var(--border); }
+/* Below the last level, a dotted row adds another */
+.tier-add {
+  display: flex; align-items: center; justify-content: center; gap: .4rem; width: 100%; padding: .7rem;
+  border: none; border-top: 2px dashed var(--border); border-radius: 0; background: transparent;
+  color: var(--muted); font-weight: 600;
+}
+.tier-add:hover, .tier-add:focus-visible { color: var(--accent); background: var(--accent-soft); }
+.tier-add svg { width: 1.1rem; height: 1.1rem; }
+.tier-count { margin: .35rem 0 0; text-align: right; color: var(--muted); }
 .tier-0 { --tier: var(--tier-0); } .tier-1 { --tier: var(--tier-1); } .tier-2 { --tier: var(--tier-2); }
 .tier-3 { --tier: var(--tier-3); } .tier-4 { --tier: var(--tier-4); } .tier-5 { --tier: var(--tier-5); }
 .tier-6 { --tier: var(--tier-6); } .tier-7 { --tier: var(--tier-7); } .tier-8 { --tier: var(--tier-8); }
@@ -653,6 +664,7 @@ button.feat-remove:hover { color: var(--danger); }
   overflow-wrap: anywhere;
 }
 button.tier-label:hover { filter: brightness(.93); }
+.tier-label.long { font-size: .95rem; }
 .tier-label.editing { gap: .35rem; align-content: center; }
 .tier-label.editing input { width: 100%; font-size: .9rem; padding: .2rem .3rem; }
 .tier-label.editing button { padding: .15rem .5rem; font-size: .8rem; }
@@ -725,8 +737,9 @@ button.tier-label:hover { filter: brightness(.93); }
 @media (max-width: 600px) {
   .tier-board { --tier-song: 4.75rem; }
   .tier-song-name { font-size: .62rem; padding: .15rem .2rem .5rem; }
-  .tier { grid-template-columns: 3.75rem minmax(0, 1fr) auto; }
+  .tier { grid-template-columns: 4.5rem minmax(0, 1fr) auto; }
   .tier-label { font-size: 1.05rem; }
+  .tier-label.long { font-size: .75rem; }
   .tier-actions { padding: 0 .2rem; }
 }
 
@@ -816,6 +829,9 @@ a.help-link:hover, a.help-link:focus-visible { color: var(--accent); text-decora
 .tier-fast-options:empty { display: none; }
 .tier-fast-options.versus { flex-wrap: nowrap; }
 .tier-fast-vs { align-self: center; font-weight: 700; color: var(--muted); }
+.tier-fast-middle { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .6rem; flex: none; }
+.tier-fast-idk { padding: .3rem .7rem; font-size: .85rem; white-space: nowrap; }
+.tier-fast-idk:disabled { opacity: .35; cursor: not-allowed; }
 .tier-fast-option {
   flex: 1 1 0;
   min-width: 0;

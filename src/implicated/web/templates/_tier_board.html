@@ -5,20 +5,22 @@
 {% set locked_count = tier_list.locked | length %}
 <div id="tier-board" class="tier-board{% if tier_list.locking %} locking{% endif %}" hx-get="{{ board }}" hx-trigger="playlists-changed from:body, songs-changed from:body, library-changed from:body"
      hx-target="this" hx-swap="outerHTML" data-place="{{ owner_url }}/tiers/place" data-lock="{{ owner_url }}/tiers/lock" data-board="{{ board }}">
+  {% from "_icons.html" import icon %}
   <div class="row wrap tier-tools">
-    <button type="button" hx-post="{{ owner_url }}/tiers/levels" hx-target="#tier-board" hx-swap="outerHTML"
-            {% if levels >= max_tiers %}disabled title="A tier list has at most {{ max_tiers }} levels"{% else %}title="Add a level at the bottom"{% endif %}>Add level</button>
     {% set auto_total = auto_counts | sum %}
     {% set names = (tier_list.tiers | map(attribute='tier.name') | list) + ['a new level'] %}
     {% macro songs(n) %}{{ n }} {{ 'song' if n == 1 else 'songs' }}{% endmacro %}
     {# Its counts leave locked songs out: tiers.js reloads it alone after a lock. #}
-    <button type="button" id="tier-autoadd" class="secondary" hx-post="{{ owner_url }}/tiers/auto" hx-target="#tier-board" hx-swap="outerHTML"
+    <button type="button" id="tier-autoadd" class="secondary with-icon" hx-post="{{ owner_url }}/tiers/auto" hx-target="#tier-board" hx-swap="outerHTML"
             hx-confirm="Autoadd? This empties the levels, then puts the {{ songs(auto_counts[0]) }} marked favorite in {{ names[0] }}, the {{ songs(auto_counts[1]) }} on favorite albums in {{ names[1] }}, and the {{ songs(auto_counts[2]) }} played at least once in {{ names[2] }}, each level's by plays, most first. The rest stay unassigned.{% if tier_list.locking and locked_count %} The {{ songs(locked_count) }} locked stay where they are.{% endif %}"
-            {% if not auto_total %}disabled title="No song is a favorite, on a favorite album, or played yet"{% else %}title="Favorites, then songs on favorite albums, then played songs, each by plays"{% endif %}>Autoadd</button>
-    {# A playlist of the songs ranked from the top level down to the one picked, that one included. #}
+            {% if not auto_total %}disabled title="No song is a favorite, on a favorite album, or played yet"{% else %}title="Favorites, then songs on favorite albums, then played songs, each by plays"{% endif %}>{{ icon('plus') }} Autoadd</button>
+    {# Ranks the unassigned songs one by one, by A/B questions: tiers.js. #}
+    <button type="button" class="secondary with-icon" data-fast-assign title="Place each unassigned song by picking the better of two songs, until it finds its place">{{ icon('bolt') }} Fast assign</button>
+    {# A new playlist of the songs ranked from the top level down to the one picked, that one
+       included: a copy of them as they are now, not linked to the tier list. #}
     {% set ranked = namespace(n=0) %}
     <form class="row tier-make-playlist" hx-post="{{ owner_url }}/tiers/playlist" hx-target="#tier-playlist" hx-swap="innerHTML">
-      <button type="submit" class="secondary" title="A playlist of the songs in the levels from {{ tier_list.tiers[0].tier.name }} down to the one picked, in order">Make playlist</button>
+      <button type="submit" class="secondary" title="A new playlist of the songs in the levels from {{ tier_list.tiers[0].tier.name }} down to the one picked, in order">Make playlist</button>
       <label class="small">down to
         <select name="last" aria-label="The last level to take, included">
           {% for row in tier_list.tiers %}
@@ -27,20 +29,17 @@
           {% endfor %}
         </select></label>
     </form>
-    {# Ranks the unassigned songs one by one, by A/B questions: tiers.js. #}
-    <button type="button" class="secondary" data-fast-assign title="Place each unassigned song by picking the better of two songs, until it finds its place">Fast assign</button>
-    {# Filled in by tiers.js while songs are selected. #}
-    <span class="tier-selection small" aria-live="polite" hidden><span data-selection-count></span>
-      {% if tier_list.locking %}<button type="button" class="link" data-lock-selection title="Lock the selected songs where they are">Lock</button>{% endif %}
-      <button type="button" class="link" data-clear-selection>Clear</button></span>
-    <span class="spacer"></span>
     {# Locking mode: locks show and hold while on; off, every song moves freely, and the locks
        are kept for when it is on again. #}
     <label class="check tier-locking" title="{{ 'Locked songs cannot be moved. Turn it off to move every song freely: the locks are kept.' if tier_list.locking else 'Turn it on to lock songs where they are; songs locked before are locked again where they are now.' }}">
       <input type="checkbox" name="on" value="1"{% if tier_list.locking %} checked{% endif %}
              hx-post="{{ owner_url }}/tiers/locking" hx-trigger="change" hx-target="#tier-board" hx-swap="outerHTML">
       Locking mode <span class="small" data-locked-count>{% if locked_count %}({{ locked_count }} locked){% endif %}</span></label>
-    <span class="small">{{ levels }} levels (from {{ min_tiers }} to {{ max_tiers }})</span>
+    <span class="spacer"></span>
+    {# Filled in by tiers.js while songs are selected. #}
+    <span class="tier-selection small" aria-live="polite" hidden><span data-selection-count></span>
+      {% if tier_list.locking %}<button type="button" class="link" data-lock-selection title="Lock the selected songs where they are">Lock</button>{% endif %}
+      <button type="button" class="link" data-clear-selection>Clear</button></span>
   </div>
   {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
   <p class="warning tier-warning" role="alert" hidden></p>
@@ -60,7 +59,7 @@
         </div>
       </form>
       {% else %}
-      <button type="button" class="tier-label" hx-get="{{ board }}?edit={{ tier.id }}" hx-target="#tier-board" hx-swap="outerHTML"
+      <button type="button" class="tier-label{% if tier.name | length > 8 %} long{% endif %}" hx-get="{{ board }}?edit={{ tier.id }}" hx-target="#tier-board" hx-swap="outerHTML"
               title="Rename the level {{ tier.name }}">{{ tier.name }}</button>
       {% endif %}
       <div class="tier-drop" data-tier="{{ tier.id }}" tabindex="0" aria-label="Level {{ tier.name }}, {{ row.songs | length }} songs">
@@ -76,7 +75,13 @@
       </div>
     </div>
     {% endfor %}
+    {# Below the last level: a new one, while there is room for it. #}
+    {% if levels < max_tiers %}
+    <button type="button" class="tier-add" hx-post="{{ owner_url }}/tiers/levels" hx-target="#tier-board" hx-swap="outerHTML"
+            title="Add a level at the bottom">{{ icon('plus') }} Add Tier</button>
+    {% endif %}
   </div>
+  <p class="tier-count small">{{ levels }} of {{ max_tiers }} levels{% if levels >= max_tiers %}: the most a tier list can have{% endif %} · at least {{ min_tiers }}</p>
   <div class="row tier-unassigned-title">
     <h2>Unassigned <span class="small">{{ tier_list.unassigned | length }} {{ 'song' if tier_list.unassigned | length == 1 else 'songs' }}</span></h2>
     {% if tier_list.unassigned %}<button type="button" class="link" data-select-all title="Select every unassigned song">Select all</button>{% endif %}

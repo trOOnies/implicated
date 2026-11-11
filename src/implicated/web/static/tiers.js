@@ -349,10 +349,14 @@
 // When it falls between two levels, it would be a new border of either one, so a last question
 // asks which: "the bottom of Super, or the top of Meh?" (empty levels between them are options too).
 // Then it is placed there through the board's `data-place`, and the next song's questions start.
-// Undo takes back the last answer, Skip leaves the song unassigned. With no song to place, it
-// says so by the tools instead.
+// Not sure about a match ("idk")? While another song could still decide it, it asks about one close
+// by first. Undo takes back the last answer, Skip leaves the song unassigned. With no song to
+// place, it says so by the tools instead.
+//
+// It first asks whether you will listen to each song as you go: then each song logs a listen the
+// first time it is asked about (once, whatever Undo does).
 (() => {
-  let run = null; // { song, levels, answers, skipped, placed, total, busy, note }
+  let run = null; // { listen, listened, song, levels, answers, skipped, placed, total, busy, note }
   let dialog = null;
 
   const boardNow = () => document.querySelector("#tier-board");
@@ -379,9 +383,34 @@
       (song) => !skipped.has(song.dataset.song),
     );
 
+  // How many of `candidates` (songs ranked best first, as `{ song, level, at }`) are better than
+  // the song, by a binary search: it yields each match, `{ kind: "match", against, canIdk }`, and
+  // takes its answer: true when the song is the better one, false when not, or "idk". Not sure
+  // ("idk"), it asks about the candidate nearest the middle it was not sure about yet; there must be
+  // one left (`canIdk`), as the last song that can decide it has to be answered.
+  function* bisect(candidates) {
+    let low = 0;
+    let high = candidates.length;
+    const unsure = new Set();
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      const open = [];
+      for (let i = low; i < high; i += 1) if (!unsure.has(i)) open.push(i);
+      const pool = open.length ? open : [...Array(high - low).keys()].map((i) => low + i);
+      const pick = pool.reduce((best, i) => (Math.abs(i - middle) < Math.abs(best - middle) ? i : best));
+      const canIdk = open.some((i) => i !== pick);
+      const answer = yield { kind: "match", against: candidates[pick], canIdk };
+      if (answer === "idk") {
+        if (canIdk) unsure.add(pick);
+      } else if (answer) high = pick;
+      else low = pick + 1;
+    }
+    return low;
+  }
+
   // The questions to place a song in `levels`: it yields each one, and takes its answer (for a
-  // match, whether the song is the better one; for a level, which option), then returns where the
-  // song goes, `{ level, position }`.
+  // match, see `bisect`; for a level, which option), then returns where the song goes,
+  // `{ level, position }`.
   function* search(levels) {
     const borders = [];
     for (const level of levels) {
@@ -391,27 +420,14 @@
       if (songs.length > 1) borders.push({ song: songs.at(-1), level, at: songs.length - 1 });
     }
     // How many borders are better than the song.
-    let low = 0;
-    let high = borders.length;
-    while (low < high) {
-      const middle = (low + high) >> 1;
-      if (yield { kind: "match", against: borders[middle] }) high = middle;
-      else low = middle + 1;
-    }
+    const low = yield* bisect(borders);
     const above = borders[low - 1];
     const below = borders[low];
     if (above && below && above.level === below.level) {
       // Inside a level: on with its songs between the top and the bottom ones.
       const { level } = above;
-      const inner = level.songs.slice(1, -1);
-      let from = 0;
-      let to = inner.length;
-      while (from < to) {
-        const middle = (from + to) >> 1;
-        if (yield { kind: "match", against: { song: inner[middle], level, at: middle + 1 } }) to = middle;
-        else from = middle + 1;
-      }
-      return { level, position: from + 1 };
+      const inner = level.songs.slice(1, -1).map((song, i) => ({ song, level, at: i + 1 }));
+      return { level, position: (yield* bisect(inner)) + 1 };
     }
     // Between two levels (or above the first songs, or below the last): a new border of which?
     const options = [];
@@ -499,7 +515,7 @@
       <p class="warning" data-note hidden></p>
       <div class="row wrap tier-fast-foot">
         <button type="button" class="secondary" data-undo title="Take back the last answer (Backspace)">Undo</button>
-        <button type="button" class="secondary" data-skip title="Leave this song unassigned, and go on with the next one (S)">Skip song</button>
+        <button type="button" class="secondary" data-skip title="Leave this song unassigned, and go on with the next one">Skip song</button>
         <span class="spacer"></span>
         <span class="small" data-keys></span>
       </div>`;
@@ -508,30 +524,81 @@
       if (event.target === dialog || event.target.closest("[data-close]")) dialog.close(); // the backdrop too
       else if (event.target.closest("[data-undo]")) undo();
       else if (event.target.closest("[data-skip]")) skip();
+      else if (event.target.closest("[data-listen]")) start(event.target.closest("[data-listen]").dataset.listen === "1");
+      else if (event.target.closest("[data-idk]")) answer("idk");
       else {
         const option = event.target.closest(".tier-fast-option");
         if (option) answer(Number(option.dataset.answer));
       }
     });
+    // Keys: A or ← for the left one, D or → for the right one, S or ↓ for "idk", Backspace to undo.
+    // With more than two places to pick from, ←/→ (A/D) move between them and Enter picks.
     dialog.addEventListener("keydown", (event) => {
       if (!run || event.ctrlKey || event.metaKey || event.altKey) return;
-      const options = [...dialog.querySelectorAll(".tier-fast-option")];
-      let pick = null;
-      if (/^[1-9]$/.test(event.key)) pick = Number(event.key) - 1;
-      else if (event.key === "ArrowLeft" || event.key === "ArrowUp") pick = 0;
-      else if ((event.key === "ArrowRight" || event.key === "ArrowDown") && options.length === 2) pick = 1;
-      if (pick !== null && options[pick]) {
+      const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+      const left = key === "ArrowLeft" || key === "a";
+      const right = key === "ArrowRight" || key === "d";
+      const options = [...dialog.querySelectorAll(".tier-fast-option, [data-listen]")];
+      if ((left || right) && options.length > 2) {
         event.preventDefault();
-        options[pick].click();
-      } else if (event.key === "Backspace") {
+        const at = options.indexOf(document.activeElement);
+        const to = at === -1 ? (left ? options.length - 1 : 0) : at + (left ? -1 : 1);
+        options[Math.max(0, Math.min(options.length - 1, to))].focus();
+      } else if (left || right) {
+        event.preventDefault();
+        options[left ? 0 : 1]?.click();
+      } else if (key === "ArrowDown" || key === "s") {
+        event.preventDefault();
+        const idk = dialog.querySelector("[data-idk]");
+        if (idk && !idk.disabled) idk.click();
+      } else if (key === "Backspace") {
         event.preventDefault();
         undo();
-      } else if (event.key === "s" || event.key === "S") {
-        event.preventDefault();
-        skip();
       }
     });
     document.body.append(dialog);
+  }
+
+  // Before the first song: will you listen to each one as you go?
+  function askListen() {
+    const question = dialog.querySelector("[data-question]");
+    const options = dialog.querySelector("[data-options]");
+    dialog.querySelector("[data-progress]").textContent = "";
+    dialog.querySelector("[data-undo]").disabled = true;
+    dialog.querySelector("[data-skip]").disabled = true;
+    dialog.querySelector("[data-note]").hidden = true;
+    question.textContent = "Will you listen to each unassigned song as you rank it?";
+    options.classList.remove("versus");
+    const yes = element("button", "tier-fast-option tier-fast-place", "");
+    yes.type = "button";
+    yes.dataset.listen = "1";
+    yes.append(element("strong", "", "Yes, I'll listen"), element("span", "small", "Each song logs a listen the first time it comes up"));
+    const no = element("button", "tier-fast-option tier-fast-place", "");
+    no.type = "button";
+    no.dataset.listen = "0";
+    no.append(element("strong", "", "No, just rank them"), element("span", "small", "No listens are logged"));
+    options.replaceChildren(yes, no);
+    dialog.querySelector("[data-keys]").textContent = "A or ←, D or →";
+    dialog.focus();
+  }
+
+  function start(listen) {
+    if (!run || run.listen !== null) return;
+    run.listen = listen;
+    nextSong(boardNow());
+  }
+
+  // Logs a listen of the song in view, once, when you said you would listen to each one.
+  function logListen() {
+    const { song } = run;
+    if (!run.listen || run.listened.has(song.id)) return;
+    run.listened.add(song.id);
+    fetch(`/api/songs/${encodeURIComponent(song.id)}/plays`, { method: "POST" }).then((response) => {
+      if (!response.ok) throw new Error(response.statusText);
+    }).catch(() => {
+      // Said once, by the song's next question (or at the end); it is not tried again.
+      if (run) run.note = `Could not log a listen of ${song.title}.`;
+    });
   }
 
   function draw() {
@@ -539,7 +606,9 @@
     const options = dialog.querySelector("[data-options]");
     const note = dialog.querySelector("[data-note]");
     dialog.querySelector("[data-progress]").textContent =
-      `Song ${run.placed + 1} of ${run.total}` + (run.answers.length ? ` · ${run.answers.length} answered` : "");
+      `Song ${run.placed + 1} of ${run.total}` +
+      (run.listen ? " · listening" : "") +
+      (run.answers.length ? ` · ${run.answers.length} answered` : "");
     dialog.querySelector("[data-undo]").disabled = run.busy || !run.answers.length;
     dialog.querySelector("[data-skip]").disabled = run.busy;
     note.hidden = !run.note;
@@ -551,6 +620,7 @@
       return;
     }
     const ask = next.value;
+    logListen();
     options.classList.toggle("versus", ask.kind === "match");
     if (ask.kind === "match") {
       question.textContent = "Which is better?";
@@ -560,8 +630,18 @@
       const against = songOption(other, badge(level, where));
       song.dataset.answer = "1";
       against.dataset.answer = "0";
-      options.append(song, element("span", "tier-fast-vs", "vs"), against);
-      dialog.querySelector("[data-keys]").textContent = "← or 1, → or 2";
+      // Between them: "vs", and the "idk" for when you are not sure.
+      const middle = element("div", "tier-fast-middle");
+      const idk = element("button", "secondary tier-fast-idk", "idk ↓");
+      idk.type = "button";
+      idk.dataset.idk = "";
+      idk.disabled = !ask.canIdk;
+      idk.title = ask.canIdk
+        ? "Not sure: compare it with another song close by first (S or ↓)"
+        : "This is the last song that can decide it: pick one";
+      middle.append(element("span", "tier-fast-vs", "vs"), idk);
+      options.append(song, middle, against);
+      dialog.querySelector("[data-keys]").textContent = ask.canIdk ? "A or ←, S or ↓, D or →" : "A or ←, D or →";
     } else {
       question.textContent = "";
       question.append(`Where does `, element("strong", "", run.song.title), ` go?`);
@@ -571,28 +651,29 @@
         options.append(button);
       });
       dialog.querySelector("[data-keys]").textContent =
-        ask.options.length === 2 ? "← or 1, → or 2" : `1 to ${ask.options.length}`;
+        ask.options.length === 2 ? "A or ←, D or →" : "A/← and D/→ to move, Enter to pick";
     }
     dialog.focus();
   }
 
   function answer(value) {
-    if (!run || run.busy) return;
+    if (!run || run.busy || run.listen === null) return;
     const next = step();
     if (next.done) return;
-    run.answers.push(next.value.kind === "match" ? value === 1 : value);
+    if (value === "idk" && (next.value.kind !== "match" || !next.value.canIdk)) return;
+    run.answers.push(next.value.kind === "match" && value !== "idk" ? value === 1 : value);
     run.note = null;
     draw();
   }
 
   function undo() {
-    if (!run || run.busy || !run.answers.length) return;
+    if (!run || run.busy || run.listen === null || !run.answers.length) return;
     run.answers.pop();
     draw();
   }
 
   function skip() {
-    if (!run || run.busy) return;
+    if (!run || run.busy || run.listen === null) return;
     run.skipped.add(run.song.id);
     run.total -= 1;
     run.note = null;
@@ -683,8 +764,8 @@
       return;
     }
     if (!dialog) build();
-    run = { skipped: new Set(), placed: 0, total: 0, busy: false, note: null };
+    run = { listen: null, listened: new Set(), skipped: new Set(), placed: 0, total: 0, busy: false, note: null };
     dialog.showModal();
-    nextSong(board);
+    askListen();
   });
 })();
