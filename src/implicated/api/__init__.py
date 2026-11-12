@@ -13,6 +13,7 @@ from implicated.api import (
     artists,
     budget,
     data,
+    folders,
     members,
     pictures,
     playlists,
@@ -44,6 +45,12 @@ TAGS = [
         "they hold exactly the songs with that mark, and adding or removing songs sets the mark.",
     },
     {
+        "name": "Folders",
+        "description": "Folders of playlists: each playlist is in exactly one. Default (with "
+        "Favorites, Listen Later and any playlist put in no other) and Setlists (exactly the "
+        "concerts' setlists) are built in.",
+    },
+    {
         "name": "Plays",
         "description": "Listening history; a play clears the song's listen later mark.",
     },
@@ -69,6 +76,7 @@ for module in (
     songs,
     videos,
     playlists,
+    folders,
     plays,
     budget,
     stats,

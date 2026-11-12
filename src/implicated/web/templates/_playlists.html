@@ -1,17 +1,60 @@
 {% from "_icons.html" import icon %}
-<table class="sortable">
-  <thead><tr><th>Name</th><th data-type="number">Songs</th><th data-type="number">Length</th><th></th></tr></thead>
-  <tbody>
-  {% for p in playlists %}
-    <tr>
-      <td><a href="/playlists/{{ p.playlist.id }}">{{ p.playlist.name }}</a>{% if p.playlist.kind %} <span class="tag">built in</span>{% endif %}</td>
-      <td>{{ p.song_count }}</td>
-      <td data-sort="{{ p.total_seconds or '' }}">{{ p.total_seconds | duration }}</td>
-      <td><button type="button" class="icon" hx-get="/fragments/playlists/{{ p.playlist.id }}/copy"
-                  hx-target="#playlist-new" hx-swap="outerHTML"
-                  title="Copy {{ p.playlist.name }}" aria-label="Copy {{ p.playlist.name }}">{{ icon('copy') }}</button></td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
+{# Every folder with its playlists. A playlist is in exactly one folder: Default and Setlists are
+   built in, and Setlists holds exactly the concerts' setlists. #}
+{% if folder_errors.get('playlist') %}<p class="error">{{ folder_errors['playlist'] }}</p>{% endif %}
+{% for f in folders %}
+<div class="folder" id="folder-{{ f.folder.id }}">
+  <div class="row">
+    <h2>📁 {{ f.folder.name }}</h2>
+    {% if f.folder.kind %}<span class="tag">built in</span>{% endif %}
+    <span class="muted small">{{ f.playlists | length }} {{ 'playlist' if f.playlists | length == 1 else 'playlists' }}</span>
+    <span class="spacer"></span>
+    {% if not f.folder.kind %}
+    <details class="folder-rename"{% if folder_errors.get(f.folder.id) %} open{% endif %}>
+      <summary class="small">Rename</summary>
+      <form class="row" hx-post="/folders/{{ f.folder.id }}" hx-target="#playlists" hx-swap="innerHTML">
+        <input name="name" required value="{{ f.folder.name }}" aria-label="New name of {{ f.folder.name }}">
+        <button type="submit">Save</button>
+      </form>
+    </details>
+    <button type="button" class="icon" hx-post="/folders/{{ f.folder.id }}/delete" hx-target="#playlists" hx-swap="innerHTML"
+            hx-confirm="Delete the folder {{ f.folder.name }}? Its playlists go to Default."
+            title="Delete {{ f.folder.name }}" aria-label="Delete {{ f.folder.name }}">{{ icon('delete') }}</button>
+    {% endif %}
+  </div>
+  {% if folder_errors.get(f.folder.id) %}<p class="error">{{ folder_errors[f.folder.id] }}</p>{% endif %}
+  {% if f.folder.kind == 'setlists' %}
+  <p class="small">The playlists that are a concert's setlist, and only those. Pick a setlist on the <a href="/concerts">Concerts</a> page; taken off, it goes back to Default.</p>
+  {% endif %}
+  {% if f.playlists %}
+  <table class="sortable">
+    <thead><tr><th>Name</th><th data-type="number">Songs</th><th data-type="number">Length</th><th>Folder</th><th></th></tr></thead>
+    <tbody>
+    {% for p in f.playlists %}
+      <tr>
+        <td><a href="/playlists/{{ p.playlist.id }}">{{ p.playlist.name }}</a>{% if p.playlist.kind %} <span class="tag">built in</span>{% endif %}</td>
+        <td>{{ p.song_count }}</td>
+        <td data-sort="{{ p.total_seconds or '' }}">{{ p.total_seconds | duration }}</td>
+        <td>
+          {% if p.playlist.kind %}<span class="muted small" title="Favorites and Listen Later stay in Default">Default</span>
+          {% elif f.folder.kind == 'setlists' %}<span class="muted small" title="A setlist stays in Setlists while it is one">Setlists</span>
+          {% else %}
+          <select name="folder_id" hx-post="/playlists/{{ p.playlist.id }}/folder" hx-trigger="change"
+                  hx-target="#playlists" hx-swap="innerHTML" aria-label="Folder of {{ p.playlist.name }}">
+            {% with selected=f.folder.id %}{% include "_folder_options.html" %}{% endwith %}
+          </select>
+          {% endif %}
+        </td>
+        <td><button type="button" class="icon" hx-get="/fragments/playlists/{{ p.playlist.id }}/copy"
+                    hx-target="#playlist-new" hx-swap="outerHTML"
+                    title="Copy {{ p.playlist.name }}" aria-label="Copy {{ p.playlist.name }}">{{ icon('copy') }}</button></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted small">No playlists in it.</p>
+  {% endif %}
+</div>
+{% endfor %}
 <p class="small">Add songs to a playlist from a song's page, or a whole album from the album's page.</p>

@@ -9,6 +9,9 @@
            hx-trigger="playlists-changed from:body" hx-swap="innerHTML">
     {% include "_playlists.html" %}
   </section>
-  {% with form={} %}{% include "_playlist_form.html" %}{% endwith %}
+  <div>
+    {% with form={} %}{% include "_playlist_form.html" %}{% endwith %}
+    {% with form={} %}{% include "_folder_form.html" %}{% endwith %}
+  </div>
 </div>
 {% endblock %}

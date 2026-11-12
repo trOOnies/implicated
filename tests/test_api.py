@@ -156,11 +156,37 @@ def test_stats_route_clamps_days(client: TestClient, web_sample: Sample):
     assert stats["songs_per_artist"] == [{"label": "Portishead", "value": 2}]
 
 
+def test_folder_routes(client: TestClient):
+    default, setlists = client.get("/api/folders").json()
+    assert (default["folder"]["kind"], setlists["folder"]["kind"]) == ("default", "setlists")
+    assert [p["playlist"]["name"] for p in default["playlists"]] == ["Favorites", "Listen Later"]
+    created = client.post("/api/folders", json={"name": "Road"})
+    assert created.status_code == 201
+    fid = created.json()["id"]
+    assert client.post("/api/folders", json={"name": "road"}).status_code == 422
+    assert client.put(f"/api/folders/{fid}", json={"name": "Trips"}).json()["name"] == "Trips"
+    assert client.get(f"/api/folders/{fid}").json()["name"] == "Trips"
+
+    pid = client.post("/api/playlists", json={"name": "Mix"}).json()["id"]
+    moved = client.put(f"/api/playlists/{pid}/folder", json={"folder_id": fid})
+    assert moved.json()["folder_id"] == fid
+    into_setlists = {"folder_id": setlists["folder"]["id"]}
+    assert client.put(f"/api/playlists/{pid}/folder", json=into_setlists).status_code == 422
+    assert client.put(f"/api/playlists/{pid}/folder", json={"folder_id": 99}).status_code == 404
+
+    assert client.delete(f"/api/folders/{default['folder']['id']}").status_code == 422
+    assert client.delete(f"/api/folders/{fid}").status_code == 204
+    assert (
+        client.get(f"/api/playlists/{pid}").json()["playlist"]["folder_id"]
+        == (default["folder"]["id"])
+    )
+
+
 def test_routes_are_grouped_by_tag(client: TestClient):
     schema = client.get("/openapi.json").json()
     assert [t["name"] for t in schema["tags"]] == [
-        "Artists", "Pictures", "Members", "Albums", "Songs", "Song videos", "Playlists", "Plays",
-        "Budget", "Stats", "Your data",
+        "Artists", "Pictures", "Members", "Albums", "Songs", "Song videos", "Playlists", "Folders",
+        "Plays", "Budget", "Stats", "Your data",
     ]  # fmt: skip
     tags = {
         (method, path): op["tags"]

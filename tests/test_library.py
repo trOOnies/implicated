@@ -14,6 +14,7 @@ from implicated.models import (
     BudgetIn,
     Cart,
     CartItemIn,
+    FolderIn,
     MemberIn,
     PictureIn,
     PlaylistIn,
@@ -723,6 +724,98 @@ def test_playlist_crud(lib: Library, sample: Sample):
     assert len(lib.list_songs()) == 2  # the songs stay
     with pytest.raises(NotFound):
         lib.delete_playlist(playlist.id)
+
+
+def _folders(lib: Library) -> dict[str, list[str]]:
+    return {f.folder.name: [p.playlist.name for p in f.playlists] for f in lib.list_folders()}
+
+
+def test_every_playlist_is_in_one_folder(lib: Library):
+    default, setlists = lib.special_folder("default"), lib.special_folder("setlists")
+    assert (default.name, setlists.name) == ("Default", "Setlists")
+    mix = lib.create_playlist(PlaylistIn("Mix"))
+    assert mix.folder_id == default.id
+    rock = lib.create_folder(FolderIn("  Rock  n roll "))
+    assert rock.name == "Rock n roll" and rock.kind is None
+    lib.create_playlist(PlaylistIn("Loud"), folder_id=rock.id)
+    lib.copy_playlist(mix.id, PlaylistIn("Mix copy"), folder_id=rock.id)
+    assert _folders(lib) == {  # Default, Setlists, then yours A–Z
+        "Default": ["Favorites", "Listen Later", "Mix"],
+        "Setlists": [],
+        "Rock n roll": ["Loud", "Mix copy"],
+    }
+
+    assert lib.move_playlist(mix.id, rock.id).folder_id == rock.id
+    assert lib.move_playlist(mix.id, default.id).folder_id == default.id
+    with pytest.raises(ValueError, match="Setlists only holds the concerts' setlists"):
+        lib.move_playlist(mix.id, setlists.id)
+    with pytest.raises(ValueError, match="Setlists only holds"):
+        lib.create_playlist(PlaylistIn("Gig"), folder_id=setlists.id)
+    with pytest.raises(ValueError, match="built-in playlist and cannot be moved"):
+        lib.move_playlist(lib.special_playlist("favorites").id, rock.id)
+    with pytest.raises(NotFound):
+        lib.move_playlist(mix.id, 99)
+
+    with pytest.raises(ValueError, match="already a folder called Rock n roll"):
+        lib.create_folder(FolderIn("ROCK N ROLL"))
+    with pytest.raises(ValueError, match="Setlists is the name of a built-in folder"):
+        lib.create_folder(FolderIn("setlists"))
+    with pytest.raises(ValueError, match="name is required"):
+        lib.create_folder(FolderIn(" "))
+    assert lib.update_folder(rock.id, FolderIn("rock n roll")).name == "rock n roll"
+    for change in (lib.delete_folder, lambda fid: lib.update_folder(fid, FolderIn("X"))):
+        for built_in in (default, setlists):
+            with pytest.raises(ValueError, match="built-in folder"):
+                change(built_in.id)
+
+    lib.delete_folder(rock.id)  # its playlists go to Default
+    assert _folders(lib) == {
+        "Default": ["Favorites", "Listen Later", "Loud", "Mix", "Mix copy"],
+        "Setlists": [],
+    }
+    with pytest.raises(NotFound):
+        lib.get_folder(rock.id)
+
+
+def test_setlists_folder_holds_exactly_the_concerts_setlists(tmp_path):
+    lib = Library(tmp_path / "implicated.db", media_dir=tmp_path)
+    rock = lib.create_folder(FolderIn("Rock"))
+    gig = lib.create_playlist(PlaylistIn("Gig"), folder_id=rock.id)
+    lib.create_playlist(PlaylistIn("gig"))  # the newer one of that name is not the setlist
+    concerts = tmp_path / "concerts.csv"
+    concerts.write_text(
+        "date;band;Want to go;Going;Setlist\n"
+        "2026-12-09;Portishead;true;true;GIG\n"
+        "2026-12-10;Portishead;true;true;Nobody's\n"
+    )
+    assert _folders(lib)["Setlists"] == ["Gig"]
+    assert _folders(lib)["Default"] == ["Favorites", "Listen Later", "gig"]
+    with pytest.raises(ValueError, match="concert's setlist, so it stays in Setlists"):
+        lib.move_playlist(gig.id, rock.id)
+
+    # Taken off as a setlist (here by hand in the file), it goes to Default, not back to Rock.
+    concerts.write_text("date;band;Want to go;Going;Setlist\n2026-12-09;Portishead;true;true;\n")
+    assert _folders(lib) == {
+        "Default": ["Favorites", "Listen Later", "Gig", "gig"],
+        "Setlists": [],
+        "Rock": [],
+    }
+    lib.sync_setlists([])  # without the file's concerts: none is a setlist
+    assert lib.get_playlist(gig.id).folder_id == lib.special_folder("default").id
+    concerts.write_bytes(b"\xff\xfe broken")  # an unreadable file changes nothing
+    lib.move_playlist(gig.id, rock.id)
+    assert lib.get_playlist(gig.id).folder_id == rock.id
+
+
+def test_old_playlists_go_to_default(tmp_path):
+    path = tmp_path / "implicated.db"
+    Library(path).create_playlist(PlaylistIn("Old"))
+    with sqlite3.connect(path) as conn:
+        conn.execute("UPDATE playlists SET folder_id = NULL")
+    conn.close()
+    lib = Library(path)
+    default = lib.special_folder("default").id
+    assert {p.playlist.folder_id for p in lib.list_playlists()} == {default}
 
 
 def test_playlist_songs(lib: Library, sample: Sample):

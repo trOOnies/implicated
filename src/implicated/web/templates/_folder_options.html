@@ -1,0 +1,5 @@
+{# The options of a folder select: the folders a playlist can be put in by hand (`fillable_folders`,
+   never Setlists), with the one whose id is `selected` picked (Default when none is). #}
+{% for f in fillable_folders %}
+<option value="{{ f.id }}"{% if (selected and f.id == selected) or (not selected and f.kind == 'default') %} selected{% endif %}>{{ f.name }}</option>
+{% endfor %}

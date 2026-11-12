@@ -1,7 +1,7 @@
 """Domain models.
 
 Persisted records (``Artist``, ``Member``, ``Album``, ``Song``, ``SongVideo``, ``Play``,
-``Playlist``, ``Tier``, ``Picture``) carry their database id.
+``Playlist``, ``Folder``, ``Tier``, ``Picture``) carry their database id.
 The ``*In`` variants are the writable fields, used as API request bodies and for form input.
 """
 
@@ -30,6 +30,14 @@ YOUTUBE_TIME = re.compile(r"(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?")
 SPECIAL_PLAYLISTS = {
     "favorites": ("Favorites", "favorite"),
     "listen_later": ("Listen Later", "listen_later"),
+}
+
+# Built-in folders of playlists, which cannot be renamed or deleted: ``kind`` -> name. Every
+# playlist is in exactly one folder: Default holds the built-in playlists and the ones put in no
+# other, and Setlists holds exactly the playlists that are a concert's setlist.
+SPECIAL_FOLDERS = {
+    "default": "Default",
+    "setlists": "Setlists",
 }
 
 # What a tier list can rank the songs of; a playlist, album or artist has at most one.
@@ -226,6 +234,24 @@ class Playlist(PlaylistIn):
     # One of ``SPECIAL_PLAYLISTS`` for the built-in playlists, which cannot be renamed or
     # deleted; ``None`` for your own.
     kind: str | None = None
+    # The folder it is in; see ``Folder``.
+    folder_id: int = 0
+
+
+@dataclass
+class FolderIn:
+    name: str
+
+
+@dataclass
+class Folder(FolderIn):
+    """A folder of playlists. Each playlist is in exactly one."""
+
+    id: int = 0
+    created_at: str = ""
+    # One of ``SPECIAL_FOLDERS`` for the built-in folders, which cannot be renamed or deleted;
+    # ``None`` for your own.
+    kind: str | None = None
 
 
 @dataclass
@@ -401,6 +427,14 @@ class PlaylistSummary:
     playlist: Playlist
     song_count: int = 0
     total_seconds: int = 0
+
+
+@dataclass
+class FolderDetail:
+    """A folder with its playlists, A–Z (the built-in ones first)."""
+
+    folder: Folder
+    playlists: list[PlaylistSummary] = field(default_factory=list)
 
 
 @dataclass

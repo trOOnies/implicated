@@ -18,6 +18,7 @@ from implicated.models import (
     ArtistIn,
     BudgetIn,
     CartItemIn,
+    FolderIn,
     Member,
     MemberIn,
     PictureIn,
@@ -1995,6 +1996,83 @@ def test_copying_a_concert_fills_add_concert(client: TestClient, client_lib: Lib
         assert f'value="{value}"' in form
     assert f'value="{date.today() + timedelta(days=5)}"' in form
     assert 'name="status"' not in form
+
+
+def test_playlist_folders(client: TestClient, client_lib: Library):
+    default, setlists = client_lib.special_folder("default"), client_lib.special_folder("setlists")
+    listing = client.get("/playlists").text
+    assert "📁 Default</h2>" in listing and "📁 Setlists</h2>" in listing
+    assert "New folder" in listing and 'name="folder_id"' in listing
+
+    created = client.post("/folders", data={"name": "Road"})
+    assert "Added the folder Road." in created.text
+    triggers = set(created.headers["hx-trigger"].split(", "))
+    assert {"playlists-changed", "folders-changed"} <= triggers
+    road = client_lib.find_folder("Road")
+    assert "already a folder called Road" in client.post("/folders", data={"name": "road"}).text
+    options = client.get("/fragments/folders/options", params={"folder_id": road.id}).text
+    assert f'<option value="{road.id}" selected>Road</option>' in options
+    assert f'value="{setlists.id}"' not in options  # nothing is put in Setlists by hand
+
+    # New playlist goes in the folder picked, which stays picked for the next one.
+    made = client.post("/playlists", data={"name": "Drive", "folder_id": road.id})
+    assert f'<option value="{road.id}" selected>Road</option>' in made.text
+    drive = client_lib.list_folders()[2].playlists[0].playlist
+    assert (drive.name, drive.folder_id) == ("Drive", road.id)
+    refused = client.post("/playlists", data={"name": "Gig", "folder_id": setlists.id})
+    assert refused.status_code == 422 and "Setlists only holds" in refused.text
+
+    # Moving, from the Playlists page and from the playlist's own page.
+    moved = client.post(f"/playlists/{drive.id}/folder", data={"folder_id": default.id})
+    assert moved.status_code == 200 and "📁 Road</h2>" in moved.text
+    assert client_lib.get_playlist(drive.id).folder_id == default.id
+    target = {"HX-Target": "playlist-info"}
+    moved = client.post(
+        f"/playlists/{drive.id}/folder", data={"folder_id": road.id}, headers=target
+    )
+    assert 'id="playlist-info"' in moved.text
+    assert f'<option value="{road.id}" selected>Road</option>' in moved.text
+    bad = client.post(f"/playlists/{drive.id}/folder", data={"folder_id": setlists.id})
+    assert bad.status_code == 422 and "Setlists only holds" in bad.text
+    favorites = client_lib.special_playlist("favorites")
+    page = client.get(f"/playlists/{favorites.id}").text
+    assert f'📁 In <a href="/playlists#folder-{default.id}">Default</a>' in page
+
+    renamed = client.post(f"/folders/{road.id}", data={"name": "Road trips"})
+    assert "📁 Road trips</h2>" in renamed.text
+    assert "folders-changed" in renamed.headers["hx-trigger"]
+    taken = client.post(f"/folders/{road.id}", data={"name": "Default"})
+    assert taken.status_code == 422 and "name of a built-in folder" in taken.text
+    assert client.post(f"/folders/{default.id}/delete").status_code == 422
+    assert client.post("/folders/99/delete").status_code == 404
+    gone = client.post(f"/folders/{road.id}/delete")
+    assert gone.status_code == 200 and "Road trips" not in gone.text
+    assert client_lib.get_playlist(drive.id).folder_id == default.id
+
+
+def test_setlists_folder_follows_the_concerts(client: TestClient, client_lib: Library):
+    concerts = client_lib.media_dir / "concerts.csv"
+    soon = date.today() + timedelta(days=5)
+    concerts.write_text(f"date;band;tour;country;city;Want to go;Going\n{soon};Air;Moon;;;;\n")
+    road = client_lib.create_folder(FolderIn("Road"))
+    gig = client_lib.create_playlist(PlaylistIn("Gig"), folder_id=road.id)
+    setlists, default = client_lib.special_folder("setlists"), client_lib.special_folder("default")
+    htmx, air = {"HX-Request": "true"}, {"date": str(soon), "band": "Air"}
+
+    client.post("/concerts/2/setlist", data=air | {"playlist_id": gig.id}, headers=htmx)
+    assert client_lib.get_playlist(gig.id).folder_id == setlists.id
+    page = client.get(f"/playlists/{gig.id}").text
+    assert "Setlists</a>, while it is a concert's setlist" in page
+    stuck = client.post(f"/playlists/{gig.id}/folder", data={"folder_id": road.id})
+    assert stuck.status_code == 422 and "stays in Setlists" in stuck.text
+
+    client.post("/concerts/2/setlist", data=air | {"playlist_id": ""}, headers=htmx)
+    assert client_lib.get_playlist(gig.id).folder_id == default.id  # not back to Road
+
+    # A setlist written in the file by hand counts too, once a page reads it.
+    concerts.write_text(f"date;band;Setlist\n{soon};Air;gig\n")
+    assert "📁 Setlists" in client.get("/playlists").text
+    assert client_lib.get_playlist(gig.id).folder_id == setlists.id
 
 
 def test_concert_setlists(client: TestClient, client_lib: Library, web_sample: Sample):

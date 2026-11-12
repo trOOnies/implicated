@@ -15,6 +15,17 @@
     {% endif %}
   </div>
   <p class="muted">{{ songs | length }} songs · {{ total_seconds | duration }}</p>
+  {% if playlist.kind or folder.kind == 'setlists' %}
+  <p class="small">📁 In <a href="/playlists#folder-{{ folder.id }}">{{ folder.name }}</a>{% if folder.kind == 'setlists' %}, while it is a concert's setlist{% endif %}.</p>
+  {% else %}
+  <form class="row small" hx-post="/playlists/{{ playlist.id }}/folder" hx-trigger="change"
+        hx-target="#playlist-info" hx-swap="outerHTML">
+    <label>📁 Folder
+      <select name="folder_id">{% with selected=folder.id %}{% include "_folder_options.html" %}{% endwith %}</select>
+    </label>
+  </form>
+  {% endif %}
+  {% if folder_error %}<p class="error">{{ folder_error }}</p>{% endif %}
   {% if setlist_of %}
   <p class="small">🎟️ Setlist of {% for c in setlist_of %}<a href="/concerts">{{ c.band }}, {{ c.date }}{% if c.city %} in {{ c.city }}{% endif %}</a>{{ ', ' if not loop.last }}{% endfor %}.</p>
   {% endif %}

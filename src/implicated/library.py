@@ -14,6 +14,7 @@ from dataclasses import asdict, fields, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from implicated.concerts import CONCERTS_FILE, read_concerts
 from implicated.explicit import is_explicit
 from implicated.imagesize import is_square
 from implicated.lrc import TimedLine, plain_lyrics, read_lrc
@@ -21,6 +22,7 @@ from implicated.models import (
     FORMATS,
     MAX_TIERS,
     MIN_TIERS,
+    SPECIAL_FOLDERS,
     SPECIAL_PLAYLISTS,
     TIER_LETTERS,
     TIER_NAME_LENGTH,
@@ -42,6 +44,10 @@ from implicated.models import (
     CartItemIn,
     CartLine,
     CartOption,
+    Concert,
+    Folder,
+    FolderDetail,
+    FolderIn,
     LibraryStats,
     Member,
     MemberIn,
@@ -157,6 +163,14 @@ CREATE TABLE IF NOT EXISTS plays (
     id        INTEGER PRIMARY KEY,
     song_id   INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
     played_at TEXT NOT NULL
+);
+-- Folders of playlists: each playlist is in exactly one (its ``folder_id``). The built-in ones
+-- have a ``kind`` (``SPECIAL_FOLDERS``).
+CREATE TABLE IF NOT EXISTS folders (
+    id         INTEGER PRIMARY KEY,
+    name       TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    kind       TEXT UNIQUE
 );
 CREATE TABLE IF NOT EXISTS playlists (
     id         INTEGER PRIMARY KEY,
@@ -293,6 +307,7 @@ MIGRATIONS = [
     ("songs", "main_id", "INTEGER REFERENCES songs(id) ON DELETE SET NULL"),
     ("albums", "main_id", "INTEGER REFERENCES albums(id) ON DELETE SET NULL"),
     ("songs", "explicit", "INTEGER NOT NULL DEFAULT 0"),
+    ("playlists", "folder_id", "INTEGER REFERENCES folders(id)"),
 ]
 # Tables whose records have a ``uid``: a stable id that survives renames, which exports and
 # inbox files use to point at a record (integer ids stay internal to one database).
@@ -636,6 +651,18 @@ class Library:
                         WHERE NOT EXISTS (SELECT 1 FROM playlists WHERE kind = ?)""",
                     (name, _now(), kind, new_uid(), kind),
                 )
+            for kind, name in SPECIAL_FOLDERS.items():
+                conn.execute(
+                    "INSERT OR IGNORE INTO folders (name, created_at, kind) VALUES (?, ?, ?)",
+                    (name, _now(), kind),
+                )
+            # Playlists from before folders, or whose folder went missing, are in Default.
+            conn.execute(
+                """UPDATE playlists SET folder_id = (SELECT id FROM folders WHERE kind = 'default')
+                    WHERE folder_id IS NULL OR folder_id NOT IN (SELECT id FROM folders)
+                       OR kind IS NOT NULL"""
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_playlists_folder ON playlists(folder_id)")
             conn.execute("INSERT OR IGNORE INTO cart (id) VALUES (1)")
         self._sync_marks()
 
@@ -2269,20 +2296,28 @@ class Library:
         playlist = self.get_playlist(playlist_id)
         return PlaylistDetail(playlist, self.list_songs(playlist_id=playlist_id, order="playlist"))
 
-    def create_playlist(self, data: PlaylistIn, uid: str | None = None) -> Playlist:
+    def create_playlist(
+        self, data: PlaylistIn, uid: str | None = None, folder_id: int | None = None
+    ) -> Playlist:
+        """A new playlist in ``folder_id`` (one of yours, or Default, which it is in without
+        one)."""
         name = self._playlist_name(data)
+        folder = self._folder_to_fill(folder_id)
         with self.connect() as conn:
             cur = conn.execute(
-                "INSERT INTO playlists (name, created_at, uid) VALUES (?, ?, ?)",
-                (name, _now(), uid or new_uid()),
+                "INSERT INTO playlists (name, created_at, uid, folder_id) VALUES (?, ?, ?, ?)",
+                (name, _now(), uid or new_uid(), folder.id),
             )
         return self.get_playlist(cur.lastrowid)
 
-    def copy_playlist(self, playlist_id: int, data: PlaylistIn) -> Playlist:
+    def copy_playlist(
+        self, playlist_id: int, data: PlaylistIn, folder_id: int | None = None
+    ) -> Playlist:
         """A new playlist named as in ``data`` with the songs of ``playlist_id``, in its order
-        (a built-in one's too: the copy is a playlist of your own, which keeps them)."""
+        (a built-in one's too: the copy is a playlist of your own, which keeps them), in
+        ``folder_id`` as in ``create_playlist``."""
         songs = [s.song.id for s in self.get_playlist_detail(playlist_id).songs]
-        copy = self.create_playlist(data)
+        copy = self.create_playlist(data, folder_id=folder_id)
         self._write_playlist(copy.id, songs)
         return copy
 
@@ -2297,6 +2332,74 @@ class Library:
         self._own_playlist(playlist_id, "deleted")
         self._delete("playlists", playlist_id)
 
+    def move_playlist(self, playlist_id: int, folder_id: int) -> Playlist:
+        """Put one of your playlists in another folder: one of yours, or Default. The Setlists
+        folder holds exactly the concerts' setlists (see ``sync_setlists``), so a setlist cannot
+        leave it and no other playlist can go in."""
+        self._own_playlist(playlist_id, "moved")
+        self.sync_setlists()
+        playlist = self.get_playlist(playlist_id)
+        if playlist.folder_id == self.special_folder("setlists").id:
+            raise ValueError(
+                f"{playlist.name} is a concert's setlist, so it stays in Setlists while it is one"
+            )
+        folder = self._folder_to_fill(folder_id)
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE playlists SET folder_id = ? WHERE id = ?", (folder.id, playlist_id)
+            )
+        return self.get_playlist(playlist_id)
+
+    def setlist_playlists(self) -> dict[str, Playlist]:
+        """The playlist each setlist name stands for, by its name folded to ignore case: the
+        oldest of your playlists called that."""
+        by_name: dict[str, Playlist] = {}
+        with self.connect() as conn:
+            rows = conn.execute("SELECT * FROM playlists WHERE kind IS NULL ORDER BY id").fetchall()
+        for row in rows:
+            by_name.setdefault(row["name"].casefold(), Playlist(**dict(row)))
+        return by_name
+
+    def sync_setlists(self, concerts: list[Concert] | None = None) -> None:
+        """Make the Setlists folder hold exactly the playlists that are the setlist of one of
+        ``concerts`` (by default, those in the library folder's ``concerts.csv``, which can be
+        edited by hand): they go into it from any folder, and the others in it go back to
+        Default. Without a library folder, no playlist is a setlist; when the file cannot be
+        read, the folders stay as they are."""
+        if concerts is None:
+            concerts = []
+            if self.media_dir is not None:
+                try:
+                    concerts, _warnings = read_concerts(self.media_dir / CONCERTS_FILE)
+                except (OSError, UnicodeDecodeError):
+                    return
+        by_name = self.setlist_playlists()
+        ids = {
+            by_name[c.setlist.casefold()].id
+            for c in concerts
+            if c.setlist and c.setlist.casefold() in by_name
+        }
+        self._fill_setlists(ids)
+
+    def _fill_setlists(self, playlist_ids: set[int]) -> None:
+        """Make the Setlists folder hold exactly ``playlist_ids``; see ``sync_setlists``."""
+        setlists = self.special_folder("setlists").id
+        default = self.special_folder("default").id
+        ids = sorted(playlist_ids)
+        marks = ", ".join("?" * len(ids))
+        with self.connect() as conn:
+            conn.execute(
+                f"""UPDATE playlists SET folder_id = ?
+                     WHERE folder_id = ? AND id NOT IN ({marks})""",
+                (default, setlists, *ids),
+            )
+            if ids:
+                conn.execute(
+                    f"""UPDATE playlists SET folder_id = ?
+                         WHERE kind IS NULL AND id IN ({marks})""",
+                    (setlists, *ids),
+                )
+
     def special_playlist(self, kind: str) -> Playlist:
         """The built-in playlist of one of ``SPECIAL_PLAYLISTS``."""
         with self.connect() as conn:
@@ -2308,6 +2411,98 @@ class Library:
         if playlist.kind:
             raise ValueError(f"{playlist.name} is a built-in playlist and cannot be {change}")
         return playlist
+
+    # Folders of playlists
+
+    def list_folders(self) -> list[FolderDetail]:
+        """Every folder with its playlists: Default, Setlists, then yours A–Z. The Setlists
+        folder is brought up to date with ``concerts.csv`` first."""
+        self.sync_setlists()
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT * FROM folders
+                    ORDER BY kind IS NULL, kind = 'setlists', name COLLATE NOCASE, id"""
+            ).fetchall()
+        folders = {row["id"]: FolderDetail(Folder(**dict(row))) for row in rows}
+        for summary in self.list_playlists():
+            folders[summary.playlist.folder_id].playlists.append(summary)
+        return list(folders.values())
+
+    def get_folder(self, folder_id: int) -> Folder:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM folders WHERE id = ?", (folder_id,)).fetchone()
+        if row is None:
+            raise NotFound(f"folder {folder_id} not found")
+        return Folder(**dict(row))
+
+    def special_folder(self, kind: str) -> Folder:
+        """The built-in folder of one of ``SPECIAL_FOLDERS``."""
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM folders WHERE kind = ?", (kind,)).fetchone()
+        return Folder(**dict(row))
+
+    def find_folder(self, name: str) -> Folder | None:
+        """The folder called ``name``, ignoring case."""
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM folders WHERE name = ? COLLATE NOCASE ORDER BY id", (name.strip(),)
+            ).fetchone()
+        return Folder(**dict(row)) if row else None
+
+    def create_folder(self, data: FolderIn) -> Folder:
+        name = self._folder_name(data)
+        with self.connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO folders (name, created_at) VALUES (?, ?)", (name, _now())
+            )
+        return self.get_folder(cur.lastrowid)
+
+    def update_folder(self, folder_id: int, data: FolderIn) -> Folder:
+        self._own_folder(folder_id, "renamed")
+        name = self._folder_name(data, folder_id)
+        with self.connect() as conn:
+            conn.execute("UPDATE folders SET name = ? WHERE id = ?", (name, folder_id))
+        return self.get_folder(folder_id)
+
+    def delete_folder(self, folder_id: int) -> None:
+        """Delete one of your folders; its playlists go to Default."""
+        self._own_folder(folder_id, "deleted")
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE playlists SET folder_id = ? WHERE folder_id = ?",
+                (self.special_folder("default").id, folder_id),
+            )
+            conn.execute("DELETE FROM folders WHERE id = ?", (folder_id,))
+
+    def _own_folder(self, folder_id: int, change: str) -> Folder:
+        folder = self.get_folder(folder_id)
+        if folder.kind:
+            raise ValueError(f"{folder.name} is a built-in folder and cannot be {change}")
+        return folder
+
+    def _folder_to_fill(self, folder_id: int | None) -> Folder:
+        """The folder a playlist may be put in by hand: Default when ``folder_id`` is ``None``,
+        never Setlists."""
+        if folder_id is None:
+            return self.special_folder("default")
+        folder = self.get_folder(folder_id)
+        if folder.kind == "setlists":
+            raise ValueError(
+                "Setlists only holds the concerts' setlists; make the playlist a concert's "
+                "setlist on the Concerts page instead"
+            )
+        return folder
+
+    def _folder_name(self, data: FolderIn, folder_id: int | None = None) -> str:
+        name = " ".join(data.name.split())
+        if not name:
+            raise ValueError("name is required")
+        same = self.find_folder(name)
+        if same is not None and same.id != folder_id:
+            if same.kind:
+                raise ValueError(f"{same.name} is the name of a built-in folder")
+            raise ValueError(f"there is already a folder called {same.name}")
+        return name
 
     def playlist_song_ids(self, playlist_id: int) -> list[int]:
         with self.connect() as conn:

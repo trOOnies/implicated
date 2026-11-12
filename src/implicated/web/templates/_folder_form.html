@@ -1,0 +1,10 @@
+{# The Playlists page's New folder card. #}
+<aside id="folder-new" class="card">
+  <h2>New folder</h2>
+  <form class="stack" hx-post="/folders" hx-target="#folder-new" hx-swap="outerHTML">
+    {% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <label>Name <input name="name" required value="{{ form.get('name', '') }}"></label>
+    <button type="submit">Create folder</button>
+  </form>
+</aside>

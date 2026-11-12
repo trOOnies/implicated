@@ -5,7 +5,7 @@ import pytest
 from conftest import Sample, add_sample
 
 from implicated.library import Library
-from implicated.models import AlbumIn, ArtistIn, PlaylistIn, SongIn, SongVideoIn
+from implicated.models import AlbumIn, ArtistIn, FolderIn, PlaylistIn, SongIn, SongVideoIn
 from implicated.userdata import (
     FORMAT,
     VERSION,
@@ -112,6 +112,27 @@ def test_importing_twice_adds_plays_once_and_replaces_playlists(lib, sample):
     assert report.playlists_created == 0 and report.playlists_updated == 1
     assert len(export_data(lib)["songs"][0]["plays"]) == 2
     assert len(lib.list_videos(sample.song_ids[0])) == 1
+
+
+def test_playlists_keep_their_folder(lib, sample):
+    road = lib.create_folder(FolderIn("Road"))
+    lib.create_playlist(PlaylistIn("Drive"), folder_id=road.id)
+    lib.create_playlist(PlaylistIn("Loose"))
+    playlists = export_data(lib)["playlists"]
+    assert playlists == [{"name": "Drive", "folder": "Road", "songs": []},
+                         {"name": "Loose", "songs": []}]  # fmt: skip
+
+    other = Library(lib.path.with_name("other.db"))
+    add_sample(other)
+    report = import_data(other, export_data(lib) | {"playlists": playlists + [
+        {"name": "Odd", "folder": "Setlists", "songs": []}]})  # fmt: skip
+    assert report.warnings == [
+        "playlist 'Odd': Setlists is a built-in folder; it stays where it is"
+    ]
+    folders = {f.folder.name: [p.playlist.name for p in f.playlists] for f in other.list_folders()}
+    assert folders["Road"] == ["Drive"] and {"Loose", "Odd"} <= set(folders["Default"])
+    with pytest.raises(ValueError, match="folder must be a name"):
+        import_data(other, export_data(lib) | {"playlists": [{"name": "X", "folder": 3}]})
 
 
 def test_import_sets_marks_the_file_leaves_out(lib, sample):

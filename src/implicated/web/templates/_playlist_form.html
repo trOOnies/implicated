@@ -10,6 +10,12 @@
       ({{ copy_of.song_count }} {{ 'song' if copy_of.song_count == 1 else 'songs' }}) into a new playlist, in its order.</p>
     {% endif %}
     <label>Name <input name="name" required value="{{ form.get('name', '') }}"></label>
+    <label>Folder
+      <select name="folder_id" hx-get="/fragments/folders/options" hx-trigger="folders-changed from:body"
+              hx-swap="innerHTML">
+        {% with selected=(form.get('folder_id') or '') | int %}{% include "_folder_options.html" %}{% endwith %}
+      </select>
+    </label>
     <button type="submit">Create playlist</button>
     {% if copy_of %}<button type="button" class="link" hx-get="/fragments/playlists/new"
             hx-target="#playlist-new" hx-swap="outerHTML">Cancel</button>{% endif %}

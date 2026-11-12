@@ -41,7 +41,7 @@ Then open **<http://127.0.0.1:8000>** and enjoy! The JSON API docs are at **`/do
 | 🎤 **Artists** | Browse artist cards and filter them by origin, genre, language, favorites or listen later |
 | 💿 **Albums** | Browse covers, filter by CD or vinyl, and spot missing lyrics or covers |
 | 🎵 **Songs** | Search every song, sort it, open its lyrics, tab and videos, and merge the same song on several albums (a deluxe edition, say) so it counts as one |
-| 📜 **Playlists** | Build your own, next to the built-in **Favorites** and **Listen Later**, and rank any of them (or an album's or artist's songs) in a **tier list**, then make a playlist of its top levels |
+| 📜 **Playlists** | Build your own, next to the built-in **Favorites** and **Listen Later**, sort them into **folders**, and rank any of them (or an album's or artist's songs) in a **tier list**, then make a playlist of its top levels |
 | 🛒 **Budget** | Fill a cart of CDs and vinyls, see what it costs, and save or buy it |
 | 🎟️ **Concerts** | Track the shows you want to see and the ones you went to |
 | 🔴 **Live Play** | Follow an album or playlist as you listen, lyrics included |
@@ -265,7 +265,8 @@ date;band;tour;country;city;Want to go;Going
 - 🎶 **Setlists** link a concert to a playlist of the songs played there, picked in its row or in
   Add concert. The `Setlist` column is added at the end of the file the first time one is set.
   Renaming the playlist renames it in the file; a name no playlist has any more is flagged on the
-  page, and the playlist page lists the concerts it is the setlist of.
+  page, and the playlist page lists the concerts it is the setlist of. A setlist is always in the
+  built-in **Setlists** folder of playlists, and goes back to Default once it no longer is one.
 - 🖼️ **Bands in your library** show their picture and link to their page.
 - ⚠️ **Rows that cannot be read** are listed on the page.
 
@@ -308,6 +309,12 @@ Besides what the import brings, the app keeps:
   album page. A song is in a playlist at most once.
 - 💖 **Favorites** and ⧖ **Listen Later** are built-in playlists that cannot be renamed or deleted:
   they always hold the songs with that mark, and adding or removing songs sets or clears it.
+- 📁 **Folders** sort the playlists: each playlist is in exactly one. Two are built in and cannot be
+  renamed or deleted: **Default**, with Favorites, Listen Later and any playlist you put in no
+  other, and **Setlists**, which holds exactly the playlists that are a concert's setlist (they go
+  in when picked as one, even by hand in `concerts.csv`, and back to Default when taken off).
+  Make your own on the Playlists page, pick one for a new playlist or move a playlist from its row
+  or its page. Deleting a folder puts its playlists in Default.
 - ⧖ **Listen later** marks on artists, albums and songs. A song's mark goes away whenever you log a
   play of it, and an album's when you press its ▶ Played button or Live Play reaches its last song.
   An artist's mark only goes away by hand.
@@ -346,7 +353,8 @@ make import-data FILE=my-data.json
   YAML, so importing an export just works).
 - 🔁 **Each record in the file is the full picture** of it: its marks, rating, notes, ownership,
   music video, featured artists and videos become the file's. Plays are **added** (never twice
-  at the same moment), and playlists are created, or have their songs replaced, by name.
+  at the same moment), and playlists are created, or have their songs replaced, by name, and go
+  in their folder (one of your own, created if missing).
 - ⚠️ **Records the library does not have are skipped** and listed after the import, and the ones
   the file does not name stay as they are. A broken file imports nothing.
 - 👥 **Made to be compared**: every artist, album and song of the library is in the file, with its
@@ -384,7 +392,7 @@ file under the same name replaces the old one, and *Forget* removes it.
 
 | Path | What's there |
 | --- | --- |
-| `src/implicated/models.py` | Dataclass models (`Artist`, `Member`, `Album`, `Song`, `SongVideo`, `Play`, `Playlist`, `Picture`, and their `*In` inputs) |
+| `src/implicated/models.py` | Dataclass models (`Artist`, `Member`, `Album`, `Song`, `SongVideo`, `Play`, `Playlist`, `Folder`, `Picture`, and their `*In` inputs) |
 | `src/implicated/library.py` | SQLite storage and stats |
 | `src/implicated/importer.py` | Inbox importer (with preview) for artists, members, albums, songs, covers, lyrics, tabs and CSVs |
 | `src/implicated/inbox.py` | The inbox: uploads, archives of accepted imports |

@@ -879,3 +879,10 @@ a.help-link:hover, a.help-link:focus-visible { color: var(--accent); text-decora
   .tier-fast-head h2 { white-space: nowrap; }
   .tier-fast-foot [data-keys] { display: none; }
 }
+
+/* Folders of playlists on the Playlists page */
+.folder + .folder { border-top: 1px solid var(--border); margin-top: 1rem; padding-top: .75rem; }
+.folder h2 { margin: 0; }
+.folder-rename > summary { cursor: pointer; color: var(--accent); }
+.folder-rename[open] > summary { margin-bottom: .35rem; }
+.folder-rename > form input { min-width: 0; width: 12rem; }

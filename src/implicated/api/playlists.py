@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Body, Response
 
 from implicated.api.deps import Lib, call
 from implicated.models import Playlist, PlaylistDetail, PlaylistIn, PlaylistSummary
@@ -32,6 +32,13 @@ def update_playlist(lib: Lib, playlist_id: int, data: PlaylistIn) -> Playlist:
 def delete_playlist(lib: Lib, playlist_id: int) -> Response:
     call(lib.delete_playlist, playlist_id)
     return Response(status_code=204)
+
+
+@router.put("/{playlist_id}/folder")
+def move_playlist(lib: Lib, playlist_id: int, folder_id: int = Body(embed=True)) -> Playlist:
+    """Put one of your playlists in another folder: one of yours, or Default. Setlists holds
+    exactly the concerts' setlists, so a setlist stays in it and no other playlist goes in."""
+    return call(lib.move_playlist, playlist_id, folder_id)
 
 
 @router.put("/{playlist_id}/songs")

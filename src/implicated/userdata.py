@@ -27,7 +27,7 @@ says whose taste it is::
                 {"artist": "Lunes Rotos", "album": "Lunes (Deluxe)", "title": "Ruido Blanco",
                  "favorite": true,
                  "same_as": {"artist": "Lunes Rotos", "album": "Lunes", "title": "Ruido Blanco"}}],
-      "playlists": [{"name": "Road trip",
+      "playlists": [{"name": "Road trip", "folder": "Summer",
                      "songs": [{"artist": "Lunes Rotos", "album": "Lunes", "title": "Lunes"}]}]
     }
 
@@ -37,16 +37,19 @@ empty lists) are left out to keep the file small. A song's ``album`` is ``null``
 a single without an album. ``same_as`` names the main version of the songs a song is merged with
 (they count as one: see ``Library.merge_songs``), and of an album the main edition of the albums
 it is merged with (see ``Library.merge_albums``). The built-in Favorites and Listen Later
-playlists are not listed: they follow the songs' marks.
+playlists are not listed: they follow the songs' marks. A playlist's ``folder`` is one of your
+own folders; it is left out for the built-in Default and Setlists (which follows the concerts'
+setlists).
 
 Importing a file treats each record in it as the full picture of that record: its favorite and
 listen later marks, rating, notes, CD and vinyl ownership, music video, featured artists and
 videos become the file's (a mark missing from the file is taken away), and so does what it is
 merged with (merged songs then take their main version's marks and rating). Plays are added to the
 history, except those already in it at the same moment, and playlists are created, or have
-their songs replaced, by name. Records of the file the library does not have are skipped and
-reported, and records of the library the file does not mention stay as they are. Everything is
-imported together, or nothing is when the file is broken.
+their songs replaced, by name, and put in their folder (created if missing; without one, a new
+playlist is in Default and an existing one stays where it is). Records of the file the library
+does not have are skipped and reported, and records of the library the file does not mention stay
+as they are. Everything is imported together, or nothing is when the file is broken.
 """
 
 from __future__ import annotations
@@ -62,7 +65,9 @@ from pathlib import Path
 from implicated.library import Library, NotFound, _dashless
 from implicated.models import (
     OWNERSHIP,
+    SPECIAL_FOLDERS,
     SPECIAL_PLAYLISTS,
+    FolderIn,
     PlaylistIn,
     SongVideoIn,
     validate_ownership,
@@ -142,7 +147,9 @@ def export_data(lib: Library, owner: str | None = None) -> dict:
         for row in conn.execute("SELECT song_id, played_at FROM plays ORDER BY played_at, id"):
             plays.setdefault(row["song_id"], []).append(row["played_at"])
         playlists = conn.execute(
-            "SELECT * FROM playlists WHERE kind IS NULL ORDER BY name COLLATE NOCASE, id"
+            """SELECT pl.*, f.name AS folder FROM playlists pl
+                 LEFT JOIN folders f ON f.id = pl.folder_id AND f.kind IS NULL
+                WHERE pl.kind IS NULL ORDER BY pl.name COLLATE NOCASE, pl.id"""
         ).fetchall()
         playlist_songs: dict[int, list[dict]] = {}
         for row in conn.execute(
@@ -220,7 +227,12 @@ def export_data(lib: Library, owner: str | None = None) -> dict:
             for s in songs
         ],
         "playlists": [
-            {"name": p["name"], "songs": playlist_songs.get(p["id"], [])} for p in playlists
+            {
+                "name": p["name"],
+                **({"folder": p["folder"]} if p["folder"] else {}),
+                "songs": playlist_songs.get(p["id"], []),
+            }
+            for p in playlists
         ],
     }
 
@@ -606,6 +618,21 @@ def _import_playlist(lib: Library, record: dict, report: ImportReport) -> None:
     else:
         report.playlists_updated += 1
     lib.set_playlist_songs(existing.id, song_ids)
+    folder_name = record.get("folder")
+    if folder_name is None:
+        return
+    if not isinstance(folder_name, str) or not folder_name.strip():
+        raise ValueError(f"playlist {name!r}: folder must be a name")
+    if key(folder_name) in {key(n) for n in SPECIAL_FOLDERS.values()}:
+        report.warnings.append(
+            f"playlist {name!r}: {folder_name} is a built-in folder; it stays where it is"
+        )
+        return
+    folder = lib.find_folder(folder_name) or lib.create_folder(FolderIn(folder_name))
+    try:
+        lib.move_playlist(existing.id, folder.id)
+    except ValueError as exc:
+        report.warnings.append(f"playlist {name!r}: {exc}")
 
 
 # Command line

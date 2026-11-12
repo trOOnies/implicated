@@ -74,6 +74,7 @@ from implicated.models import (
     BudgetOverlap,
     CartItemIn,
     Concert,
+    FolderIn,
     Member,
     PictureIn,
     Playlist,
@@ -572,6 +573,7 @@ HELP_GROUPS = (
                 "Playlists",
                 (
                     ("making", "Making a playlist"),
+                    ("folders", "Folders"),
                     ("adding", "Adding songs"),
                     ("arranging", "Arranging"),
                     ("built-in", "Favorites and Listen Later"),
@@ -2250,14 +2252,34 @@ def toggle_favorite(request: Request, lib: Lib, kind: str, record_id: int):
 # Playlists
 
 
+def _folders_context(lib: Library, **extra) -> dict:
+    """The folders with their playlists, and the ones a playlist can be put in by hand (all but
+    Setlists)."""
+    folders = lib.list_folders()
+    return {
+        "folders": folders,
+        "fillable_folders": [f.folder for f in folders if f.folder.kind != "setlists"],
+        "folder_errors": {},
+        **extra,
+    }
+
+
 @router.get("/playlists")
 def playlists_page(request: Request, lib: Lib):
-    return render(request, "playlists.html", playlists=lib.list_playlists(), form={})
+    return render(request, "playlists.html", form={}, **_folders_context(lib))
 
 
 @router.get("/fragments/playlists")
 def playlists_fragment(request: Request, lib: Lib):
-    return render(request, "_playlists.html", playlists=lib.list_playlists())
+    return render(request, "_playlists.html", **_folders_context(lib))
+
+
+@router.get("/fragments/folders/options")
+def folder_options(request: Request, lib: Lib):
+    """The folders a playlist can be put in, as the options of a select, keeping the one in
+    the query picked."""
+    context = _folders_context(lib, selected=_int(request.query_params, "folder_id"))
+    return render(request, "_folder_options.html", **context)
 
 
 def _playlist_summary(lib: Library, playlist_id: int) -> PlaylistSummary:
@@ -2266,26 +2288,31 @@ def _playlist_summary(lib: Library, playlist_id: int) -> PlaylistSummary:
 
 
 @router.get("/fragments/playlists/new")
-def new_playlist_form(request: Request):
-    return render(request, "_playlist_form.html", form={})
+def new_playlist_form(request: Request, lib: Lib):
+    return render(request, "_playlist_form.html", form={}, **_folders_context(lib))
 
 
 @router.get("/fragments/playlists/{playlist_id}/copy")
 def copy_playlist_form(request: Request, lib: Lib, playlist_id: int):
     """New playlist turned into Copy playlist, for ``playlist_id``."""
     copy_of = _playlist_summary(lib, playlist_id)
-    return render(request, "_playlist_form.html", copy_of=copy_of, form={})
+    return render(request, "_playlist_form.html", copy_of=copy_of, form={}, **_folders_context(lib))
 
 
 @router.post("/playlists")
 async def create_playlist(request: Request, lib: Lib):
-    """A new playlist, or with ``copy_of`` in the form a copy of that one."""
+    """A new playlist, or with ``copy_of`` in the form a copy of that one, in the form's
+    ``folder_id`` (Default without one)."""
     form = await request.form()
     copy_of = _int(form, "copy_of")
     source = _playlist_summary(lib, copy_of) if copy_of is not None else None
     data = PlaylistIn(_text(form, "name") or "")
+    folder_id = _int(form, "folder_id")
     try:
-        lib.copy_playlist(copy_of, data) if source else lib.create_playlist(data)
+        if source:
+            lib.copy_playlist(copy_of, data, folder_id=folder_id)
+        else:
+            found(lib.create_playlist, data, folder_id=folder_id)
     except ValueError as exc:
         return render(
             request,
@@ -2294,14 +2321,85 @@ async def create_playlist(request: Request, lib: Lib):
             error=str(exc),
             form=form,
             copy_of=source,
+            **_folders_context(lib),
         )
-    return render(request, "_playlist_form.html", trigger=("playlists-changed",), form={})
+    return render(
+        request,
+        "_playlist_form.html",
+        trigger=("playlists-changed",),
+        form={"folder_id": str(folder_id or "")},
+        **_folders_context(lib),
+    )
+
+
+@router.post("/playlists/{playlist_id}/folder")
+async def move_playlist(request: Request, lib: Lib, playlist_id: int):
+    """Put one of your playlists in another folder. From the playlist's own page, its info card
+    comes back; from the Playlists page, the folders."""
+    form = await request.form()
+    try:
+        found(lib.move_playlist, playlist_id, _int(form, "folder_id") or 0)
+        error = None
+    except ValueError as exc:
+        error = str(exc)
+    status_code = 422 if error else 200
+    if request.headers.get("hx-target") == "playlist-info":
+        context = _playlist_context(lib, playlist_id) | {"folder_error": error}
+        return render(request, "_playlist_info.html", status_code=status_code, **context)
+    errors = {"playlist": error} if error else {}
+    context = _folders_context(lib, folder_errors=errors)
+    return render(request, "_playlists.html", status_code=status_code, **context)
+
+
+@router.post("/folders")
+async def create_folder(request: Request, lib: Lib):
+    form = await request.form()
+    try:
+        folder = lib.create_folder(FolderIn(_text(form, "name") or ""))
+    except ValueError as exc:
+        return render(request, "_folder_form.html", status_code=422, error=str(exc), form=form)
+    return render(
+        request,
+        "_folder_form.html",
+        trigger=("playlists-changed", "folders-changed"),
+        form={},
+        message=f"Added the folder {folder.name}.",
+    )
+
+
+@router.post("/folders/{folder_id}")
+async def rename_folder(request: Request, lib: Lib, folder_id: int):
+    form = await request.form()
+    try:
+        found(lib.update_folder, folder_id, FolderIn(_text(form, "name") or ""))
+    except ValueError as exc:
+        context = _folders_context(lib, folder_errors={folder_id: str(exc)})
+        return render(request, "_playlists.html", status_code=422, **context)
+    return render(request, "_playlists.html", trigger=("folders-changed",), **_folders_context(lib))
+
+
+@router.post("/folders/{folder_id}/delete")
+def delete_folder(request: Request, lib: Lib, folder_id: int):
+    """Delete one of your folders; its playlists go to Default."""
+    try:
+        found(lib.delete_folder, folder_id)
+    except ValueError as exc:
+        context = _folders_context(lib, folder_errors={folder_id: str(exc)})
+        return render(request, "_playlists.html", status_code=422, **context)
+    return render(request, "_playlists.html", trigger=("folders-changed",), **_folders_context(lib))
 
 
 def _playlist_context(lib: Library, playlist_id: int) -> dict:
-    detail = found(lib.get_playlist_detail, playlist_id)
+    found(lib.get_playlist, playlist_id)
+    folders = _folders_context(lib)  # first, as it brings the Setlists folder up to date
+    detail = lib.get_playlist_detail(playlist_id)
     return {
         "playlist": detail.playlist,
+        "folder": next(
+            f.folder for f in folders["folders"] if f.folder.id == detail.playlist.folder_id
+        ),
+        "fillable_folders": folders["fillable_folders"],
+        "folder_error": None,
         "setlist_of": _setlist_of(lib, detail.playlist),
         "songs": detail.songs,
         "total_seconds": sum(s.song.duration_seconds or 0 for s in detail.songs),
@@ -3091,10 +3189,7 @@ def _own_playlists(lib: Library) -> list[Playlist]:
 def _setlist_playlists(lib: Library) -> dict[str, Playlist]:
     """The playlist each setlist name stands for: the oldest of your playlists called that,
     ignoring case."""
-    by_name: dict[str, Playlist] = {}
-    for playlist in sorted(_own_playlists(lib), key=lambda p: p.id):
-        by_name.setdefault(playlist.name.casefold(), playlist)
-    return by_name
+    return lib.setlist_playlists()
 
 
 def _setlist_warnings(lib: Library, concerts: list[Concert]) -> list[str]:
@@ -3123,17 +3218,22 @@ def _concert_setlist(lib: Library, form: FormData) -> str | None:
 def _concerts_context(lib: Library, **extra) -> dict:
     """The concerts in the library folder's ``concerts.csv``, read again every time."""
     path = lib.media_dir / CONCERTS_FILE if lib.media_dir else None
-    concerts, warnings, added_tours = [], [], []
+    concerts, warnings, added_tours, read = [], [], [], True
     if path:
         try:
             concerts, warnings = read_concerts(path)
         except (OSError, UnicodeDecodeError) as exc:
             warnings.append(f"Could not read {path}: {exc}")
+            read = False
         try:
             added_tours = read_tours(path.with_name(TOURS_FILE))
         except (OSError, UnicodeDecodeError) as exc:
             warnings.append(f"Could not read {path.with_name(TOURS_FILE)}: {exc}")
     named_tours = [(c.band, c.tour) for c in concerts if c.tour]
+    if read:
+        # A setlist is in the Setlists folder, and only setlists are: the file just read says
+        # which playlists are, set here or edited by hand.
+        lib.sync_setlists(concerts)
     warnings += _setlist_warnings(lib, concerts)
     today = date.today()
     return {
@@ -3279,7 +3379,11 @@ def _setlist_of(lib: Library, playlist: Playlist) -> list[Concert]:
     except (OSError, UnicodeDecodeError):
         return []
     setlists = _setlist_playlists(lib)
-    return [c for c in concerts if c.setlist and setlists.get(c.setlist.casefold()) == playlist]
+    return [
+        c
+        for c in concerts
+        if c.setlist and (match := setlists.get(c.setlist.casefold())) and match.id == playlist.id
+    ]
 
 
 # Import: the inbox, its preview, and taking the library with you
