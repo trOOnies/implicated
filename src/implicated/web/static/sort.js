@@ -20,7 +20,16 @@
     return (cell.dataset.sort ?? cell.textContent).trim();
   };
 
-  function sort(table, index, ascending) {
+  // Clicked sorts are read out by a screen reader, like "Sorted by Title, ascending, 42 rows".
+  function announce(table, header, ascending) {
+    const status = table.nextElementSibling;
+    if (!status || !status.matches(".sort-status")) return;
+    const direction = ascending ? "ascending" : "descending";
+    const rows = table.tBodies[0].rows.length;
+    status.textContent = `Sorted by ${header.textContent.trim()}, ${direction}, ${rows} row${rows === 1 ? "" : "s"}`;
+  }
+
+  function sort(table, index, ascending, clicked = false) {
     const header = table.tHead.rows[0].cells[index];
     if (!header) return;
     const numeric = header.dataset.type === "number";
@@ -36,12 +45,19 @@
     for (const th of table.tHead.rows[0].cells) th.removeAttribute("aria-sort");
     header.setAttribute("aria-sort", ascending ? "ascending" : "descending");
     remembered.set(keyOf(table), { index, ascending });
+    if (clicked) announce(table, header, ascending);
   }
 
   function setUp(root) {
     for (const table of root.querySelectorAll("table.sortable")) {
       if (!table.tHead || table.dataset.sortReady) continue;
       table.dataset.sortReady = "1";
+      if (!table.nextElementSibling?.matches(".sort-status")) {
+        const status = document.createElement("p");
+        status.className = "sort-status visually-hidden";
+        status.setAttribute("role", "status");
+        table.after(status);
+      }
       for (const th of table.tHead.rows[0].cells) {
         if (!th.textContent.trim()) continue;
         const button = document.createElement("button");
@@ -65,7 +81,7 @@
     const ascending = th.hasAttribute("aria-sort")
       ? th.getAttribute("aria-sort") !== "ascending"
       : th.dataset.type !== "number";
-    sort(table, th.cellIndex, ascending);
+    sort(table, th.cellIndex, ascending, true);
   });
 
   document.addEventListener("change", (event) => {

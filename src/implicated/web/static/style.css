@@ -1,33 +1,46 @@
 :root {
-  --bg: #faf8f3;
-  --surface: #ffffff;
-  --text: #1f1d1a;
-  --muted: #6f6a60;
-  --border: #e4dfd3;
-  --accent: #7d6607;
-  --accent-soft: #f1e7bf;
-  --danger: #b3261e;
-  --warn: #9a5b00;
-  --fav: #c2185b;
+  --bg: light-dark(#faf8f3, #161512);
+  --surface: light-dark(#ffffff, #211f1b);
+  --text: light-dark(#1f1d1a, #ece8df);
+  --muted: light-dark(#6f6a60, #a39d90);
+  --border: light-dark(#e4dfd3, #36322b);
+  --accent: light-dark(#7d6607, #e0c04a);
+  --accent-soft: light-dark(#f1e7bf, #3d3412);
+  --danger: light-dark(#b3261e, #f2827a);
+  --warn: light-dark(#9a5b00, #f0b45a);
+  --fav: light-dark(#c2185b, #f48fb1);
   --artist-bg: .13;
   --radius: 10px;
-  color-scheme: light;
+  /* Follows the computer's setting, unless base.html's <meta name="color-scheme"> pins one (the
+     header's moon/sun button sets it). */
+  color-scheme: light dark;
+  &:has(> head > meta[name="color-scheme"][content="dark"]) { color-scheme: dark; }
+  &:has(> head > meta[name="color-scheme"][content="light"]) { color-scheme: light; }
 }
 
-/* Dark mode, the default: base.html sets it, and the header's moon/sun button switches. */
-:root[data-theme="dark"] {
-  --bg: #161512;
-  --surface: #211f1b;
-  --text: #ece8df;
-  --muted: #a39d90;
-  --border: #36322b;
-  --accent: #e0c04a;
-  --accent-soft: #3d3412;
-  --danger: #f2827a;
-  --warn: #f0b45a;
-  --fav: #f48fb1;
+/* Dark mode values that are not colors (light-dark() takes only colors): once for the
+   computer's dark setting, and again for a dark pick. */
+@media (prefers-color-scheme: dark) {
+  :root:not(:has(> head > meta[name="color-scheme"][content="light"])) {
+    --artist-bg: .2;
+    .site-header .theme .moon { display: block; }
+    .site-header .theme .sun { display: none; }
+  }
+}
+:root:has(> head > meta[name="color-scheme"][content="dark"]) {
   --artist-bg: .2;
-  color-scheme: dark;
+  .site-header .theme .moon { display: block; }
+  .site-header .theme .sun { display: none; }
+}
+
+/* Read by screen readers, but not shown. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 * { box-sizing: border-box; }
@@ -82,8 +95,10 @@ p { margin: .25rem 0; }
 .site-header .theme:hover, .site-header .theme:focus-visible { color: var(--text); border-color: var(--muted); }
 /* Left of Exit: the moon in dark mode, the sun in light mode. */
 .site-header .theme { right: 3.5rem; }
-.site-header .theme .sun, :root[data-theme="dark"] .site-header .theme .moon { display: block; }
-.site-header .theme .moon, :root[data-theme="dark"] .site-header .theme .sun { display: none; }
+/* Light mode shows the sun; dark mode swaps it for the moon (see the top of this file). */
+.site-header .theme .sun { display: block; }
+.site-header .theme .moon { display: none; }
+.site-header .theme svg { display: block; }
 .goodbye { max-width: 32rem; margin: 4rem auto; text-align: center; }
 
 main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 2rem; }
@@ -820,7 +835,9 @@ a.help-link:hover, a.help-link:focus-visible { color: var(--accent); text-decora
   background: var(--surface);
   color: var(--text);
 }
-.tier-fast::backdrop { background: rgb(0 0 0 / .45); }
+/* Scrolling over the dialog or its backdrop doesn't scroll the tier list behind it. */
+.tier-fast:modal { overscroll-behavior: contain; }
+.tier-fast::backdrop { background: rgb(0 0 0 / .45); overflow: hidden; overscroll-behavior: contain; }
 .tier-fast:focus { outline: none; }
 .tier-fast-head { align-items: baseline; gap: .75rem; }
 .tier-fast-head h2 { margin: 0; }

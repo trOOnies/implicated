@@ -318,8 +318,8 @@ Besides what the import brings, the app keeps:
 - ⧖ **Listen later** marks on artists, albums and songs. A song's mark goes away whenever you log a
   play of it, and an album's when you press its ▶ Played button or Live Play reaches its last song.
   An artist's mark only goes away by hand.
-- 🌙 **Dark mode** by default; the moon button left of Exit switches to light mode (a sun), and the
-  browser remembers your pick.
+- 🌙 **Dark mode** follows your computer's light/dark setting; the moon/sun button left of Exit
+  switches, the browser remembers your pick, and switching back follows your computer again.
 
 <details>
 <summary>🔗 <strong>Which YouTube links work?</strong></summary>

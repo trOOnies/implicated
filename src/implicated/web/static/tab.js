@@ -50,7 +50,7 @@
       const strings = staff && !staff.isPercussion ? staff.tuning : [];
       tuning.hidden = !strings.length;
       if (!strings.length) return;
-      const notes = [...strings].reverse().map((midi) => NOTE_NAMES[midi % 12]);
+      const notes = strings.toReversed().map((midi) => NOTE_NAMES[midi % 12]);
       const standard = STANDARD.includes(strings.join(" "));
       tuning.textContent = `Tuning: ${notes.join(" ")}${standard ? " (standard)" : ""}`;
     }

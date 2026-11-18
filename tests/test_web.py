@@ -585,7 +585,7 @@ def test_help_page_and_layout(client: TestClient):
     assert "does not host, upload or ship any copyrighted" in page.text
     assert 'class="help-logo" src="http://testserver/static/favicon.svg"' in page.text
     assert 'href="/help" aria-current="page"' in page.text
-    assert 'href="/docs">API</a>' in page.text
+    assert 'href="/docs" target="_blank" rel="noopener">API</a>' in page.text
     assert "© 2026 Implicated by trOOnies" in page.text
     assert "Made with Claude Code" in page.text
     assert client.get("/docs").status_code == 200
@@ -715,10 +715,11 @@ def test_album_play_button_clears_its_listen_later(
     assert not client_lib.get_album(web_sample.album_id).listen_later
 
 
-def test_dark_mode_is_the_default_with_a_switch_by_exit(client: TestClient):
+def test_dark_mode_follows_the_system_with_a_switch_by_exit(client: TestClient):
     page = client.get("/").text
-    assert '<html lang="en" data-theme="dark">' in page
-    assert 'localStorage.getItem("theme") === "light"' in page
+    assert '<html lang="en">' in page and "data-theme" not in page
+    assert '<meta name="color-scheme" content="light dark">' in page
+    assert 'localStorage.getItem("theme") ?? "light dark"' in page
     theme = page.index('class="theme"')
     assert theme < page.index('class="exit"')  # to the left of Exit
     assert 'class="moon"' in page and 'class="sun"' in page

@@ -502,6 +502,7 @@
   function build() {
     dialog = element("dialog", "tier-fast");
     dialog.setAttribute("aria-labelledby", "tier-fast-title");
+    dialog.setAttribute("closedby", "any"); // a click on the backdrop closes it, like Escape
     dialog.tabIndex = -1;
     dialog.innerHTML = `
       <div class="row tier-fast-head">
@@ -521,7 +522,7 @@
       </div>`;
     dialog.addEventListener("close", () => (run = null));
     dialog.addEventListener("click", (event) => {
-      if (event.target === dialog || event.target.closest("[data-close]")) dialog.close(); // the backdrop too
+      if (event.target.closest("[data-close]")) dialog.close();
       else if (event.target.closest("[data-undo]")) undo();
       else if (event.target.closest("[data-skip]")) skip();
       else if (event.target.closest("[data-listen]")) start(event.target.closest("[data-listen]").dataset.listen === "1");
@@ -531,6 +532,19 @@
         if (option) answer(Number(option.dataset.answer));
       }
     });
+    // Browsers without closedby (Safari): close when a press starts and ends outside the dialog's
+    // box. Not by event.target, which is the dialog itself for clicks on its padding too.
+    if (!("closedBy" in HTMLDialogElement.prototype)) {
+      const outside = (event) => {
+        const box = dialog.getBoundingClientRect();
+        return event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom;
+      };
+      let pressedOutside = false;
+      dialog.addEventListener("pointerdown", (event) => (pressedOutside = outside(event)));
+      dialog.addEventListener("pointerup", (event) => {
+        if (pressedOutside && outside(event)) dialog.close();
+      });
+    }
     // Keys: A or ← for the left one, D or → for the right one, S or ↓ for "idk", Backspace to undo.
     // With more than two places to pick from, ←/→ (A/D) move between them and Enter picks.
     dialog.addEventListener("keydown", (event) => {
