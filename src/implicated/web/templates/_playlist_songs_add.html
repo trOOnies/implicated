@@ -7,9 +7,19 @@
   {% if message %}<p class="notice" role="status">{{ message }}</p>{% endif %}
   <form id="playlist-song-search" class="stack" hx-get="/fragments/playlists/{{ playlist.id }}/add-songs/results"
         hx-target="#playlist-song-results" hx-include="#playlist-pending">
-    <label>Find songs <input type="search" name="q" value="{{ q }}" autocomplete="off"
-           placeholder="Title, artist or album, then Enter"></label>
+    <label for="playlist-song-q">Find songs</label>
+    {# Filters typed in the box, like "artist:abba ", turn into the tags in front of it (song-search.js). #}
+    <div class="search-field">
+      {% for key, value in chips or [] %}{% include "_search_chip.html" %}{% endfor %}
+      <input id="playlist-song-q" type="search" name="q" value="{{ q }}" autocomplete="off"
+             placeholder="Title, artist or album, then Enter" aria-describedby="playlist-song-filters">
+    </div>
+    <p id="playlist-song-filters" class="muted small">Filters: <code>artist:</code> <code>album:</code>
+      <code>from:</code> <code>to:</code> <code>language:</code> <code>genre:</code> <code>stars:</code>
+      <code>fav:</code> <code>later:</code> · quote values with spaces, like <code>artist:"the cure"</code></p>
   </form>
+  {# Copied by song-search.js for each tag it makes. #}
+  <template id="search-chip">{% with key='', value='' %}{% include "_search_chip.html" %}{% endwith %}</template>
   <div id="playlist-song-results">{% include "_playlist_song_results.html" %}</div>
   <form id="playlist-pending" class="stack" hx-post="/playlists/{{ playlist.id }}/songs"
         hx-target="#playlist-songs-add" hx-swap="outerHTML">
@@ -18,10 +28,15 @@
     {% if pending %}
     <ol class="pending-songs">
       {% for s in pending %}
-      <li>
+      <li class="song-result">
         <input type="hidden" name="song_id" value="{{ s.song.id }}">
-        <span>{{ s.song.title }} <span class="muted small">· {{ s.artist_name }}{% if s.album_title %} · {{ s.album_title }}{% endif %}</span></span>
-        <button type="button" class="link danger" {{ refresh }} hx-vals='{"drop": "{{ s.song.id }}"}'
+        <span class="song-result-num muted small" aria-hidden="true">{{ loop.index }}</span>
+        {% with album={'id': s.song.album_id, 'cover': s.album_cover, 'title': s.album_title}, size='thumb' %}{% include "_cover.html" %}{% endwith %}
+        <span class="song-result-text">
+          <span class="song-result-title">{{ s.song.title }}</span>
+          <span class="song-result-sub">{{ s.artist_name }}{% if s.album_title %} · {{ s.album_title }}{% endif %}</span>
+        </span>
+        <button type="button" class="song-result-drop" {{ refresh }} hx-vals='{"drop": "{{ s.song.id }}"}'
                 title="Take it off the list" aria-label="Take {{ s.song.title }} off the list">✕</button>
       </li>
       {% endfor %}

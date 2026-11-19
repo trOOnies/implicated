@@ -1976,3 +1976,49 @@ def test_locks_of_songs_that_leave(lib: Library, sample: Sample):
         conn.execute("DELETE FROM tier_lists")
     tier_list = lib.set_locked("playlist", playlist, [second], True)
     assert tier_list.locking and tier_list.locked == {second}
+
+
+def test_playlist_cover(lib: Library, sample: Sample):
+    playlist = lib.create_playlist(PlaylistIn("Mix"))
+    with pytest.raises(ValueError, match="must be square"):
+        lib.set_playlist_cover_data(playlist.id, png(800, 400), "wide.png")
+    with pytest.raises(ValueError, match="at most 2 MB"):
+        lib.set_playlist_cover_data(playlist.id, png(10, 10) + b"\0" * (2 * 1024 * 1024), "big.png")
+    with pytest.raises(ValueError, match="cover must be one of"):
+        lib.set_playlist_cover_data(playlist.id, png(10, 10), "anim.gif")
+    cover = lib.set_playlist_cover_data(playlist.id, png(400, 400), "front.png").cover
+    assert cover.endswith(".png") and lib.playlist_cover_path(playlist.id).is_file()
+
+    replaced = lib.set_playlist_cover_data(playlist.id, png(500, 500), "other.png").cover
+    assert replaced != cover and not (lib.playlist_covers_dir / cover).exists()
+    assert lib.remove_playlist_cover(playlist.id).cover is None
+    assert not (lib.playlist_covers_dir / replaced).exists()
+    with pytest.raises(NotFound):
+        lib.playlist_cover_path(playlist.id)
+
+    lib.set_playlist_cover_data(playlist.id, png(400, 400), "front.png")
+    lib.delete_playlist(playlist.id)
+    assert not any(lib.playlist_covers_dir.iterdir())
+
+
+def test_playlist_default_albums(lib: Library, sample: Sample):
+    empty = lib.create_playlist(PlaylistIn("Empty"))
+    mix = lib.create_playlist(PlaylistIn("Mix"))
+    other = lib.create_album(AlbumIn(sample.artist_id, "Portishead", 1997))
+    extra = [
+        lib.create_song(SongIn(sample.artist_id, title, other.id, n)).id
+        for n, title in enumerate(["Cowboys", "Undenied"], 1)
+    ]
+    # Albums without a cover are skipped.
+    lib.set_playlist_songs(mix.id, [extra[0], sample.song_ids[0], extra[1]])
+    assert lib.playlist_default_albums() == {}
+
+    lib.set_cover_data(sample.album_id, b"dummy", "dummy.jpg")
+    assert lib.playlist_default_albums()[mix.id].id == sample.album_id
+    lib.set_cover_data(other.id, b"portishead", "p.jpg")
+    defaults = lib.playlist_default_albums()
+    assert defaults[mix.id].id == other.id and empty.id not in defaults  # 2 songs against 1
+
+    # On a tie, the album whose song comes first.
+    lib.set_playlist_songs(mix.id, [sample.song_ids[0], extra[0]])
+    assert lib.playlist_default_albums(mix.id)[mix.id].id == sample.album_id

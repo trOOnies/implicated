@@ -1001,6 +1001,23 @@ def test_playlist_pages(client: TestClient, client_lib: Library, web_sample: Sam
     )
     row = client.post(f"/songs/{first}/play", data={"ctx": "playlist", "playlist_id": pid}).text
     assert f"/playlists/{pid}/songs/{first}/remove" in row
+    assert 'class="grip-cell" data-sort="1"' in row  # its place, for sorting by #
+
+    # Dragging songs by their grips: the arrows are gone.
+    songs = client.get(f"/fragments/playlists/{pid}/songs").text
+    assert f'data-playlist="{pid}"' in songs and 'class="grip"' in songs and "Move up" not in songs
+    assert 'data-sort="2"' in songs
+    url = f"/playlists/{pid}/songs/reorder"
+    moved = client.post(url, data={"song_id": [first]})  # no before: to the end
+    assert "playlists-changed" in moved.headers["hx-trigger"]
+    assert client_lib.playlist_song_ids(pid) == [second, first]
+    client.post(url, data={"song_id": [first], "before": second})
+    assert client_lib.playlist_song_ids(pid) == [first, second]
+    assert client.post(url, data={}).status_code == 422
+    assert client.post(url, data={"song_id": [first], "before": first}).status_code == 422
+    assert client.post(url, data={"song_id": ["x"]}).status_code == 422
+    assert client.post(url, data={"song_id": [99]}).status_code == 404
+    assert client.post("/playlists/99/songs/reorder", data={"song_id": [first]}).status_code == 404
     client.post(f"/playlists/{pid}/songs/{first}/remove")
     assert client_lib.playlist_song_ids(pid) == [second]
     assert client.post(f"/playlists/{pid}/songs/{first}/remove").status_code == 404
@@ -1673,6 +1690,16 @@ def test_add_songs_to_a_playlist(client: TestClient, client_lib: Library, web_sa
         assert "Type at least 3 characters" in hint and "Mysterons" not in hint
     assert "Mysterons" in client.get(f"{url}/results", params={"q": " mys "}).text
 
+    # Filters, as tags (f) or typed: alone they are a search, and they make short text enough.
+    assert "Mysterons" in client.get(f"{url}/results", params={"f": "artist:portis"}).text
+    assert "Mysterons" in client.get(f"{url}/results", params={"q": "from:1990 my"}).text
+    assert "No other songs match" in client.get(f"{url}/results", params={"q": "from:1995"}).text
+    bad = client.get(f"{url}/results", params={"q": "stars:7"}).text
+    assert "stars: needs a number of stars from 1 to 5." in bad
+    tagged = client.get(url, params={"q": "artist:portishead mys"}).text
+    assert 'name="f" value="artist:portishead"' in tagged and 'value="mys"' in tagged
+    assert 'id="search-chip"' in tagged
+
     single = client_lib.create_song(SongIn(web_sample.artist_id, "Single"))
     listed = client.get(url, params={"q": "portishead", "add": first}).text
     assert f'name="song_id" value="{first}"' in listed and "To add (1)" in listed
@@ -1751,7 +1778,8 @@ def test_exit_button_stops_the_server(client: TestClient, monkeypatch: pytest.Mo
     stopped = []
     monkeypatch.setattr(shutdown, "stop", lambda: stopped.append(True))
     page = client.get("/").text
-    assert 'hx-post="/exit"' in page and 'hx-confirm="Save and exit?' in page
+    assert 'hx-post="/exit"' in page and 'data-confirm-title="Save and exit?"' in page
+    assert 'id="confirm-dialog"' in page and "confirm.js" in page  # the app's own dialog
     assert client.post("/exit").status_code == 403 and not stopped  # only from the page
     bye = client.post("/exit", headers={"HX-Request": "true"})
     assert "implicated has stopped" in bye.text and "window.close()" in bye.text
@@ -2837,3 +2865,58 @@ def test_reloaded_lyrics_mark_the_song_explicit(
     assert client_lib.get_song(song_id).explicit
     assert 'class="explicit"' in client.get(f"/fragments/songs/{song_id}/info").text
     assert "HX-Trigger" not in client.get(url).headers  # already marked
+
+
+def test_playlist_cover_on_the_playlist_page(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    playlist = client_lib.create_playlist(PlaylistIn("Mix"))
+    url = f"/playlists/{playlist.id}"
+    page = client.get(url).text
+    assert "Set cover" in page and 'class="cover big none"' in page  # empty: the placeholder
+
+    # With songs, the cover of the album it has the most songs of.
+    client_lib.add_to_playlist(playlist.id, web_sample.song_ids)
+    album = client_lib.set_cover_data(web_sample.album_id, b"dummy", "dummy.jpg")
+    page = client.get(url).text
+    assert f"/api/albums/{album.id}/cover?v={album.cover}" in page
+    assert "From the album it has the most songs of" in page
+    listing = client.get("/playlists").text
+    assert f"/api/albums/{album.id}/cover?v={album.cover}" in listing
+
+    wide = client.post(f"{url}/cover", files={"cover": ("wide.png", png(800, 400))})
+    assert wide.status_code == 422 and "must be square" in wide.text
+    nothing = client.post(f"{url}/cover", files={"cover": ("", b"")})
+    assert nothing.status_code == 422 and "Pick an image first." in nothing.text
+
+    done = client.post(f"{url}/cover", files={"cover": ("front.png", png(400, 400))})
+    cover = client_lib.get_playlist(playlist.id).cover
+    assert done.status_code == 200 and f"/api/playlists/{playlist.id}/cover?v={cover}" in done.text
+    assert "Change cover" in done.text and "Remove cover" in done.text
+    served = client.get(f"/api/playlists/{playlist.id}/cover")
+    assert served.status_code == 200 and served.content == png(400, 400)
+
+    removed = client.post(f"{url}/cover/delete")
+    assert removed.status_code == 200 and client_lib.get_playlist(playlist.id).cover is None
+    assert f"/api/albums/{album.id}/cover" in removed.text
+    assert client.get(f"/api/playlists/{playlist.id}/cover").status_code == 404
+
+
+def test_setlist_cover_is_the_bands_picture(
+    client: TestClient, client_lib: Library, web_sample: Sample
+):
+    soon = date.today() + timedelta(days=5)
+    concerts = client_lib.media_dir / "concerts.csv"
+    concerts.write_text(f"date;band;Setlist\n{soon};portishead;Gig\n")
+    gig = client_lib.create_playlist(PlaylistIn("Gig"))
+    client_lib.add_to_playlist(gig.id, web_sample.song_ids)
+    client_lib.set_cover_data(web_sample.album_id, b"dummy", "dummy.jpg")
+
+    # Without a picture of the band, the album's cover.
+    assert f"/api/albums/{web_sample.album_id}/cover" in client.get(f"/playlists/{gig.id}").text
+
+    artist = client_lib.set_image_data(web_sample.artist_id, png(300, 300), "band.png")
+    picture = f"/api/artists/{artist.id}/image?v={artist.image}"
+    page = client.get(f"/playlists/{gig.id}").text
+    assert picture in page and "The band's picture, as it is a setlist" in page
+    assert picture in client.get("/playlists").text

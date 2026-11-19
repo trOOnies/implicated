@@ -1,20 +1,29 @@
-{# The songs matching the Add songs search `q`, leaving out those listed or already in the
-   playlist; nothing for an empty search, and a hint for one too short to run. #}
+{# The songs matching the Add songs search (the text `q` and the filters `chips`), leaving out
+   those listed or already in the playlist; nothing for an empty search, and a hint for one too
+   short to run. #}
+{% for error in search_errors or [] %}<p class="error">{{ error }}</p>{% endfor %}
 {% if too_short %}
 <p class="empty">Type at least {{ min_search }} characters to search.</p>
-{% elif q %}
+{% elif searched %}
 {% if results %}
+<p class="song-results-count muted small">{% if result_total > results | length %}The first {{ results | length }} of {{ result_total }} matches{% else %}{{ result_total }} match{{ '' if result_total == 1 else 'es' }}{% endif %}</p>
 <ul class="song-results">
   {% for s in results %}
   <li>
-    <button type="button" class="link" hx-get="/fragments/playlists/{{ playlist.id }}/add-songs" hx-target="#playlist-songs-add"
+    <button type="button" class="song-result" hx-get="/fragments/playlists/{{ playlist.id }}/add-songs" hx-target="#playlist-songs-add"
             hx-swap="outerHTML" hx-include="#playlist-pending, #playlist-song-search" hx-vals='{"add": "{{ s.song.id }}"}'
-            title="Put it on the list to add" aria-label="Put {{ s.song.title }} on the list to add">+</button>
-    <span>{{ s.song.title }} <span class="muted small">· {{ s.artist_name }}{% if s.album_title %} · {{ s.album_title }}{% endif %}</span></span>
+            title="Put it on the list to add" aria-label="Put {{ s.song.title }} on the list to add">
+      {% with album={'id': s.song.album_id, 'cover': s.album_cover, 'title': s.album_title}, size='thumb' %}{% include "_cover.html" %}{% endwith %}
+      <span class="song-result-text">
+        <span class="song-result-title">{{ s.song.title }}</span>
+        <span class="song-result-sub">{{ s.artist_name }}{% if s.album_title %} · {{ s.album_title }}{% endif %}</span>
+      </span>
+      <span class="song-result-add" aria-hidden="true">+</span>
+    </button>
   </li>
   {% endfor %}
 </ul>
 {% else %}
-<p class="empty">No other songs match “{{ q }}”.</p>
+<p class="empty">No other songs match{% if q %} “{{ q }}”{% endif %}{% if chips %} {{ 'with' if q else '' }} these filters{% endif %}.</p>
 {% endif %}
 {% endif %}

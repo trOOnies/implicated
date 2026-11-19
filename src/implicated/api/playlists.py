@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Body, Response
+from fastapi.responses import FileResponse
 
-from implicated.api.deps import Lib, call
+from implicated.api.deps import Lib, call, image
 from implicated.models import Playlist, PlaylistDetail, PlaylistIn, PlaylistSummary
 
 router = APIRouter(prefix="/playlists", tags=["Playlists"])
@@ -58,3 +59,10 @@ def add_song(lib: Lib, playlist_id: int, song_id: int) -> PlaylistDetail:
 def remove_song(lib: Lib, playlist_id: int, song_id: int) -> PlaylistDetail:
     call(lib.remove_from_playlist, playlist_id, song_id)
     return lib.get_playlist_detail(playlist_id)
+
+
+@router.get("/{playlist_id}/cover", response_class=FileResponse)
+def playlist_cover(lib: Lib, playlist_id: int) -> FileResponse:
+    """The playlist's own cover (not its default one, which is an album cover or, for a
+    setlist, the band's picture)."""
+    return image(call(lib.playlist_cover_path, playlist_id))

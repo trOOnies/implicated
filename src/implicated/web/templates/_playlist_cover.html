@@ -1,0 +1,7 @@
+{# A playlist's cover, or the ♪ placeholder when it has none. Needs `cover` (one of
+   `_playlist_covers`' values, or none) and `size` ("thumb" or "big"). #}
+{% if cover %}
+<img class="cover {{ size }}" src="{{ cover.src }}" alt="{{ cover.alt }}" loading="lazy">
+{% else %}
+<span class="cover {{ size }} none" aria-hidden="true">♪</span>
+{% endif %}

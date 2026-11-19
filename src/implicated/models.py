@@ -236,6 +236,9 @@ class Playlist(PlaylistIn):
     kind: str | None = None
     # The folder it is in; see ``Folder``.
     folder_id: int = 0
+    # The file name of its own cover image, in the playlist covers directory; ``None`` when it
+    # has none (it then shows a default one, see ``Library.playlist_default_albums``).
+    cover: str | None = None
 
 
 @dataclass

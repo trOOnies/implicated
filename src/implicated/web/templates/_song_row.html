@@ -1,8 +1,15 @@
 {# A song's lyrics are there, missing, or not needed ("no lyrics": an instrumental). #}
 {% set missing_tag %}<span class="tag missing" title="This song has no lyrics yet">missing lyrics</span>{% endset %}
 {% set none_tag %}<span class="tag none" title="This song has no words">no lyrics</span>{% endset %}
-<tr id="song-{{ s.song.id }}">
+<tr id="song-{{ s.song.id }}"{% if ctx == 'playlist' %} data-song-id="{{ s.song.id }}"{% endif %}>
   {% if ctx == 'album' %}<td class="muted">{{ s.song.track_number or '' }}</td>{% endif %}
+  {% if ctx == 'playlist' %}
+  {% set position = position if position is defined else '' %}
+  {# Click the grip to select the song (Shift and Ctrl as in a file list), drag it to move the
+     selection; playlist-order.js. #}
+  <td class="grip-cell" data-sort="{{ position }}"><button type="button" class="grip" aria-pressed="false"
+      title="Click to select, drag to move" aria-label="{{ position }}. {{ s.song.title }}: select, or drag to move (Alt+↑ or Alt+↓ moves it)"><svg viewBox="0 0 10 16" width="10" height="16" aria-hidden="true"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></svg></button></td>
+  {% endif %}
   <td><button type="button" class="play" title="Log a listen" hx-post="/songs/{{ s.song.id }}/play"
               hx-target="closest tr" hx-swap="outerHTML">▶</button></td>
   <td{% if ctx == 'all' %} class="song-title"{% endif %} data-sort="{{ s.song.title }}"><a href="/songs/{{ s.song.id }}">{{ s.song.title }}</a>{% if s.song.explicit %} <abbr class="explicit" title="Explicit">E</abbr>{% endif %}{% if ctx == 'album' %}{% if s.song.no_lyrics %} {{ none_tag }}{% elif not s.song.lyrics %} {{ missing_tag }}{% endif %}{% endif %}{% if s.song.main_id %} <span class="tag none" title="Merged: counts as one song with its main version">merged</span>{% endif %}{% if s.song.notes %} <small class="muted" title="{{ s.song.notes }}">✎</small>{% endif %}{% if s.song.mv %} <small class="muted" title="Has a music video">MV</small>{% endif %}{% if s.video_count %} <small class="muted" title="{{ s.video_count }} {{ 'video' if s.video_count == 1 else 'videos' }}">▷{{ s.video_count }}</small>{% endif %}</td>
@@ -17,10 +24,6 @@
     {% with kind='song', record_id=s.song.id, favorite=s.song.favorite %}{% include "_fav.html" %}{% endwith %}
     {% with kind='song', record_id=s.song.id, later=s.song.listen_later %}{% include "_later.html" %}{% endwith %}
     {% if ctx == 'playlist' %}
-    <button type="button" class="link" hx-post="/playlists/{{ playlist_id }}/songs/{{ s.song.id }}/move"
-            hx-vals='{"offset": -1}' hx-swap="none" title="Move up" aria-label="Move up">↑</button>
-    <button type="button" class="link" hx-post="/playlists/{{ playlist_id }}/songs/{{ s.song.id }}/move"
-            hx-vals='{"offset": 1}' hx-swap="none" title="Move down" aria-label="Move down">↓</button>
     <button type="button" class="link danger" hx-post="/playlists/{{ playlist_id }}/songs/{{ s.song.id }}/remove"
             hx-swap="none" title="Take it out of this playlist; it stays in the library">Remove</button>
     {% elif ctx != 'featured' %}

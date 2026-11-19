@@ -28,6 +28,19 @@
     <p class="help-tip">💡 You never move a playlist into or out of Setlists yourself. Pick it as a
     concert's setlist and it goes in; take it off every concert and it goes back to Default.</p>
 
+    <h3 id="cover">🖼️ Cover</h3>
+    <p>Press <em>Set cover</em> on a playlist's page to give it an image of its own: square, up
+    to 2 MB, as AVIF, JPG, PNG or WebP. <em>Remove cover</em> goes back to the default one.</p>
+    <table class="help-table">
+      <thead><tr><th>Without a cover of its own</th><th>It shows</th></tr></thead>
+      <tbody>
+        <tr><td>A setlist</td><td>The band's picture</td></tr>
+        <tr><td>Any other playlist with songs</td><td>The cover of the album it has the most songs
+        of (on a tie, the one whose song comes first)</td></tr>
+        <tr><td>No songs</td><td>The ♪ placeholder</td></tr>
+      </tbody>
+    </table>
+
     <h3 id="adding">🎶 Adding songs</h3>
     <ul>
       <li>From a <strong>song's page</strong>, one at a time.</li>
@@ -41,9 +54,36 @@
       <li>Press <em>Add songs</em>, or <em>Drop songs</em> to empty the list instead.</li>
     </ol>
 
+    <h3 id="filters">🔎 Search filters</h3>
+    <p>Type a filter before or after the words you search, ending it with a space: it turns into a
+    tag in the box. Press ✕ on a tag to remove it, or Backspace at the start of the box to edit
+    the last one.</p>
+    <table class="help-table">
+      <tr><td><code>artist:abba</code></td><td>Songs by an artist whose name has “abba” in it</td></tr>
+      <tr><td><code>album:arrival</code></td><td>Songs on an album whose title has “arrival”</td></tr>
+      <tr><td><code>from:1975</code> <code>to:1979</code></td><td>Songs on an album from that year on, or up to it</td></tr>
+      <tr><td><code>language:spanish</code></td><td>Songs by an artist who sings in that language</td></tr>
+      <tr><td><code>genre:pop</code></td><td>Songs by an artist of that genre</td></tr>
+      <tr><td><code>stars:5</code></td><td>Songs rated that many stars, 1 to 5</td></tr>
+      <tr><td><code>fav:</code></td><td>Favorite songs (♥)</td></tr>
+      <tr><td><code>later:</code></td><td>Songs to listen to later (⧗)</td></tr>
+    </table>
+    <p>Put a value with spaces in quotes, like <code>artist:"the cure"</code>. Filters alone are a
+    search too: <code>fav: stars:5</code> lists your five-star favorites.</p>
+
     <h3 id="arranging">↕️ Arranging</h3>
-    <p>On a playlist, move songs with ↑ and ↓, or take them out with <em>Remove</em>. They stay
-    in your library.</p>
+    <p>On a playlist, drag a song by the grip ⠿ at its left to move it, or take it out with
+    <em>Remove</em>; it stays in your library.</p>
+    <ul>
+      <li>Click a grip to select its song, Ctrl + click (⌘ on a Mac) to add or drop one, and
+      Shift + click to select every song from the last one clicked.</li>
+      <li>Drag any selected grip to move all the selected songs together. Escape clears the
+      selection.</li>
+      <li>With the keyboard: ↑ and ↓ go from grip to grip (Shift selects as you go), and
+      Alt + ↑ or Alt + ↓ moves the selection one place.</li>
+    </ul>
+    <p class="help-tip">💡 Dragging works in the playlist's own order. If you sorted the table by
+    another column, sort it by <strong>#</strong> to get that order back.</p>
     <p class="help-tip">💡 For a ranking of a playlist's songs, make it a
     <a href="/help/tier-lists">tier list</a>. A playlist can also be a concert's
     <a href="/help/concerts#setlists">setlist</a>.</p>

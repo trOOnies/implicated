@@ -28,10 +28,11 @@
   {% endif %}
   {% if f.playlists %}
   <table class="sortable">
-    <thead><tr><th>Name</th><th data-type="number">Songs</th><th data-type="number">Length</th><th>Folder</th><th></th></tr></thead>
+    <thead><tr><th></th><th>Name</th><th data-type="number">Songs</th><th data-type="number">Length</th><th>Folder</th><th></th></tr></thead>
     <tbody>
     {% for p in f.playlists %}
       <tr>
+        <td class="cover-cell"><a href="/playlists/{{ p.playlist.id }}" tabindex="-1">{% with cover=covers.get(p.playlist.id), size='thumb' %}{% include "_playlist_cover.html" %}{% endwith %}</a></td>
         <td><a href="/playlists/{{ p.playlist.id }}">{{ p.playlist.name }}</a>{% if p.playlist.kind %} <span class="tag">built in</span>{% endif %}</td>
         <td>{{ p.song_count }}</td>
         <td data-sort="{{ p.total_seconds or '' }}">{{ p.total_seconds | duration }}</td>

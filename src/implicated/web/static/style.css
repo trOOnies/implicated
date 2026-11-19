@@ -397,6 +397,8 @@ td .pickers { flex-direction: column; align-items: flex-start; gap: .25rem; marg
 .media-head > .cover-pick { flex: none; display: flex; flex-direction: column; align-items: center; gap: .5rem; max-width: 11rem; }
 .cover-pick form { display: contents; }
 .cover-pick .error { margin: 0; text-align: center; }
+/* Where a playlist's default cover comes from, under it. */
+.cover-pick .cover-note { margin: 0; text-align: center; }
 /* A file picker that looks like a secondary button (the input itself stays focusable). */
 label.file-button {
   display: inline-block;
@@ -516,6 +518,39 @@ th[aria-sort="descending"] button.sort::after { content: " ▼"; opacity: 1; }
 tr.editing td { background: var(--accent-soft); }
 td.song-title > a { font-weight: 700; }
 
+/* A playlist's songs: a grip at the left of each to select it and drag (playlist-order.js) */
+th.grip-col, td.grip-cell { width: 1.75rem; padding-right: 0; }
+td.grip-cell { padding-left: .25rem; }
+button.grip { display: grid; place-items: center; width: 1.6rem; height: 2rem; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: grab; touch-action: none; opacity: .55; transition: opacity .12s, background-color .12s, color .12s; }
+button.grip svg { fill: currentColor; }
+tr:hover button.grip, button.grip:focus-visible, tr.selected button.grip { opacity: 1; }
+button.grip:hover { background: var(--border); color: var(--text); }
+button.grip:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+tr.selected td { background: var(--accent-soft); }
+tr.selected button.grip { color: var(--accent); }
+tr.dragging td { opacity: .4; }
+tr.drop-before td { box-shadow: inset 0 3px 0 var(--accent); }
+tr.drop-after td { box-shadow: inset 0 -3px 0 var(--accent); }
+.dragging-songs, .dragging-songs * { cursor: grabbing !important; user-select: none; }
+.drag-badge { position: fixed; top: 0; left: 0; z-index: 50; max-width: 18rem; padding: .35rem .7rem; border-radius: 999px; background: var(--accent); color: var(--surface); font-weight: 600; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 6px 18px rgb(0 0 0 / .25); pointer-events: none; }
+.order-status { min-height: 1.2em; margin: .5rem 0 0; color: var(--muted); font-size: .9rem; }
+.order-status:empty { margin: 0; min-height: 0; }
+@media (prefers-reduced-motion: reduce) { button.grip { transition: none; } }
+
+/* A song search box with its filters as tags in front of the text (song-search.js) */
+.search-field { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; padding: .25rem .35rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); cursor: text; }
+.search-field:focus-within { outline: 2px solid var(--accent); }
+.search-field input[name=q] { flex: 1; min-width: 12rem; border: 0; padding: .2rem .25rem; background: transparent; }
+.search-field input[name=q]:focus { outline: none; }
+.search-chip { display: inline-flex; align-items: center; gap: .3rem; max-width: 100%; padding: .1rem .15rem .1rem .55rem; border-radius: 999px; background: var(--accent-soft); color: var(--text); font-size: .88rem; cursor: default; }
+.search-chip-key { color: var(--accent); font-weight: 600; }
+.search-chip-key::after { content: ":"; }
+.search-chip-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.search-chip-x { display: grid; place-items: center; width: 1.3rem; height: 1.3rem; padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-size: .7rem; line-height: 1; }
+button.search-chip-x:hover, button.search-chip-x:focus-visible { background: var(--accent); color: var(--surface); }
+#playlist-song-filters { margin: 0; }
+#playlist-song-filters code { font-size: .85em; }
+
 /* Charts */
 .chart { margin: 0; }
 .chart figcaption { font-weight: 600; margin-bottom: .5rem; }
@@ -560,11 +595,25 @@ details.budget > .row { margin-top: .5rem; }
 .help-logo { float: right; margin: 0 0 .5rem 1rem; }
 
 /* A playlist's Add songs form */
-.song-results, .pending-songs { margin: 0; padding-left: 1.4rem; display: flex; flex-direction: column; gap: .3rem; }
-.song-results { list-style: none; padding-left: 0; }
-.song-results li, .pending-songs li { display: flex; align-items: center; gap: .5rem; }
-.pending-songs li { display: list-item; }
-.pending-songs li button { margin-left: .4rem; }
+.song-results-count { margin: 0 0 .35rem; }
+.song-results, .pending-songs { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: .25rem; list-style: none; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); max-height: 26rem; overflow-y: auto; }
+.pending-songs li.song-result { cursor: default; }
+.song-result-num { flex: none; width: 1.4rem; text-align: right; font-variant-numeric: tabular-nums; }
+.song-result-drop { flex: none; display: grid; place-items: center; width: 2rem; height: 2rem; padding: 0; border-radius: 999px; border: 1px solid transparent; background: transparent; color: var(--muted); font-size: .95rem; line-height: 1; transition: background-color .12s, color .12s, border-color .12s; }
+.song-result:hover .song-result-drop { border-color: var(--border); }
+.song-result-drop:hover, .song-result-drop:focus-visible { background: var(--danger); border-color: var(--danger); color: var(--surface); }
+.song-result-drop:focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; }
+.song-result { display: flex; align-items: center; gap: .75rem; width: 100%; padding: .4rem .5rem; border: 0; border-radius: calc(var(--radius) - 3px); background: transparent; color: var(--text); text-align: left; transition: background-color .12s; }
+.song-result:hover { background: var(--surface); }
+.song-result:focus-visible { background: var(--surface); outline: 2px solid var(--accent); outline-offset: -2px; }
+.song-result .cover { flex: none; }
+.song-result-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.song-result-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.song-result-sub { color: var(--muted); font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.song-result-add { flex: none; display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 999px; border: 1px solid var(--border); color: var(--accent); font-size: 1.2rem; line-height: 1; transition: background-color .12s, color .12s, border-color .12s, transform .12s; }
+.song-result:hover .song-result-add, .song-result:focus-visible .song-result-add { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.song-result:active .song-result-add { transform: scale(.92); }
+@media (prefers-reduced-motion: reduce) { .song-result, .song-result-add { transition: none; } }
 
 /* Live Play */
 .live-song { font-size: 1.4rem; margin: 0; min-width: 0; overflow-wrap: anywhere; }
@@ -903,3 +952,25 @@ a.help-link:hover, a.help-link:focus-visible { color: var(--accent); text-decora
 .folder-rename > summary { cursor: pointer; color: var(--accent); }
 .folder-rename[open] > summary { margin-bottom: .35rem; }
 .folder-rename > form input { min-width: 0; width: 12rem; }
+
+/* The app's own confirm dialog for hx-confirm questions (see confirm.js), like a small card */
+.confirm-dialog {
+  width: min(26rem, calc(100vw - 2rem));
+  padding: 1.25rem 1.25rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 12px 40px rgb(0 0 0 / .25);
+}
+/* Scrolling over the dialog or its backdrop doesn't scroll the page behind it. */
+.confirm-dialog:modal { overscroll-behavior: contain; }
+.confirm-dialog::backdrop { background: rgb(0 0 0 / .45); overflow: hidden; overscroll-behavior: contain; }
+.confirm-dialog[open] { animation: confirm-in .14s ease-out; }
+.confirm-dialog .confirm-title { margin: 0 0 .35rem; font-size: 1.1rem; }
+.confirm-dialog .confirm-text { margin: 0; color: var(--muted); }
+.confirm-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1.25rem; }
+.confirm-actions button.danger { background: var(--danger); border-color: var(--danger); color: var(--surface); }
+.confirm-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@keyframes confirm-in { from { opacity: 0; transform: translateY(.5rem) scale(.98); } }
+@media (prefers-reduced-motion: reduce) { .confirm-dialog[open] { animation: none; } }

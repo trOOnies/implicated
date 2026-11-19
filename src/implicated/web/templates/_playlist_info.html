@@ -1,4 +1,24 @@
-<section id="playlist-info" class="card info">
+<section id="playlist-info" class="card info media-head">
+  <div class="cover-pick">
+    {% with size='big' %}{% include "_playlist_cover.html" %}{% endwith %}
+    {# Picking a file uploads it right away; the new cover replaces the old one. #}
+    <form hx-post="/playlists/{{ playlist.id }}/cover" hx-encoding="multipart/form-data" hx-trigger="change"
+          hx-target="#playlist-info" hx-swap="outerHTML">
+      <label class="file-button" title="Upload a square image, up to {{ cover_max_mb }} MB, as this playlist's cover">
+        {{ 'Change cover' if playlist.cover else 'Set cover' }}
+        <input type="file" name="cover" accept="{{ cover_accept }}">
+      </label>
+    </form>
+    {% if playlist.cover %}
+    <button type="button" class="link small" hx-post="/playlists/{{ playlist.id }}/cover/delete"
+            hx-target="#playlist-info" hx-swap="outerHTML"
+            title="Go back to the default cover">Remove cover</button>
+    {% elif cover %}
+    <p class="muted small cover-note">{% if cover.kind == 'artist' %}The band's picture, as it is a setlist{% else %}From the album it has the most songs of{% endif %}</p>
+    {% endif %}
+    {% if cover_error %}<p class="error small" role="alert">{{ cover_error }}</p>{% endif %}
+  </div>
+  <div>
   <div class="row">
     <h1>{{ playlist.name }}</h1>
     {% if playlist.kind %}<span class="tag">built in</span>{% endif %}
@@ -36,4 +56,5 @@
   {% elif not songs %}
   <p class="small">Add songs with the form below, from a song's page, or all of an album's songs from the album's page.</p>
   {% endif %}
+  </div>
 </section>

@@ -4,10 +4,12 @@
 {% if pager %}{% with noun='songs', target='songs', place='top' %}{% include "_pager.html" %}{% endwith %}{% endif %}
 {% if songs %}
 <div class="table-scroll">
-<table class="songs sortable">
+<table class="songs sortable"{% if ctx == 'playlist' %} data-playlist="{{ playlist_id }}"{% endif %}>
   <thead>
     <tr>
       {% if ctx == 'album' %}<th data-type="number">#</th>{% endif %}
+      {# Sorting by # puts a playlist back in its own order, the one its songs are dragged in. #}
+      {% if ctx == 'playlist' %}<th class="grip-col" data-type="number" title="Playlist order">#</th>{% endif %}
       <th></th><th>Title</th>
       {% if ctx in ('all', 'playlist', 'featured') %}<th>Artist</th>{% endif %}
       {% if ctx != 'album' %}<th>Album</th>{% endif %}
@@ -17,7 +19,7 @@
     </tr>
   </thead>
   <tbody hx-vals='{"ctx": "{{ ctx }}"{% if ctx == 'playlist' %}, "playlist_id": {{ playlist_id }}{% endif %}}'>
-    {% for s in songs %}{% include "_song_row.html" %}{% endfor %}
+    {% for s in songs %}{% with position = loop.index %}{% include "_song_row.html" %}{% endwith %}{% endfor %}
   </tbody>
 </table>
 </div>

@@ -53,6 +53,7 @@ from implicated.importer import accept, import_dir
 from implicated.library import (
     COVER_TYPES,
     IMAGE_TYPES,
+    PLAYLIST_COVER_MAX_BYTES,
     Library,
     NotFound,
     check_cover_name,
@@ -68,6 +69,7 @@ from implicated.models import (
     TIER_OWNERS,
     Album,
     AlbumIn,
+    Artist,
     ArtistIn,
     Budget,
     BudgetIn,
@@ -86,6 +88,7 @@ from implicated.models import (
     SongVideoIn,
     TierList,
 )
+from implicated.songquery import parse_song_query
 from implicated.userdata import ImportReport, export_data, import_data, read_file
 from implicated.web import editor, shutdown
 
@@ -574,6 +577,7 @@ HELP_GROUPS = (
                 (
                     ("making", "Making a playlist"),
                     ("folders", "Folders"),
+                    ("cover", "Cover"),
                     ("adding", "Adding songs"),
                     ("arranging", "Arranging"),
                     ("built-in", "Favorites and Listen Later"),
@@ -2177,8 +2181,17 @@ async def play_song(request: Request, lib: Lib, song_id: int):
         trigger=PLAY_TRIGGER,
         s=lib.get_song_summary(song_id),
         ctx=ctx,
-        playlist_id=_int(form, "playlist_id"),
+        **_row_place(lib, ctx, _int(form, "playlist_id"), song_id),
     )
+
+
+def _row_place(lib: Library, ctx: str, playlist_id: int | None, song_id: int) -> dict:
+    """The playlist of a song row on a playlist page, and the song's place in it."""
+    if ctx != "playlist" or playlist_id is None:
+        return {"playlist_id": playlist_id}
+    song_ids = lib.playlist_song_ids(playlist_id)
+    position = song_ids.index(song_id) + 1 if song_id in song_ids else ""
+    return {"playlist_id": playlist_id, "position": position}
 
 
 @router.post("/songs/{song_id}/delete")
@@ -2254,14 +2267,75 @@ def toggle_favorite(request: Request, lib: Lib, kind: str, record_id: int):
 
 def _folders_context(lib: Library, **extra) -> dict:
     """The folders with their playlists, and the ones a playlist can be put in by hand (all but
-    Setlists)."""
+    Setlists), with each playlist's cover (see ``_playlist_covers``)."""
     folders = lib.list_folders()
+    playlists = [p.playlist for f in folders for p in f.playlists]
     return {
         "folders": folders,
         "fillable_folders": [f.folder for f in folders if f.folder.kind != "setlists"],
         "folder_errors": {},
+        "covers": _playlist_covers(lib, playlists),
         **extra,
     }
+
+
+def _setlist_bands(lib: Library) -> dict[int, str]:
+    """The band of the concert each setlist playlist is of, by the playlist's id (the latest
+    concert's, when it is the setlist of more than one)."""
+    if lib.media_dir is None:
+        return {}
+    try:
+        concerts, _warnings = read_concerts(lib.media_dir / CONCERTS_FILE)
+    except (OSError, UnicodeDecodeError):
+        return {}
+    setlists = _setlist_playlists(lib)
+    return {
+        setlists[c.setlist.casefold()].id: c.band
+        for c in concerts  # by date, so the latest one wins
+        if c.setlist and c.setlist.casefold() in setlists
+    }
+
+
+def _playlist_covers(lib: Library, playlists: list[Playlist]) -> dict[int, dict]:
+    """What each playlist shows as its cover, by id: ``src``, ``alt`` and ``kind``, one of
+    "own" (an image of its own), "artist" (a setlist's band's picture) or "album" (the album it
+    has the most songs of). Playlists with none of them are left out, for the ♪ placeholder."""
+    if not playlists:
+        return {}
+    only = playlists[0].id if len(playlists) == 1 else None
+    albums = lib.playlist_default_albums(only)
+    bands = _setlist_bands(lib) if any(not p.cover and not p.kind for p in playlists) else {}
+    artists: dict[str, Artist | None] = {}
+    covers: dict[int, dict] = {}
+    for p in playlists:
+        if p.cover:
+            covers[p.id] = {
+                "src": f"/api/playlists/{p.id}/cover?v={p.cover}",
+                "alt": f"Cover of {p.name}",
+                "kind": "own",
+            }
+            continue
+        band = bands.get(p.id)
+        if band is not None:
+            key = band.casefold()
+            if key not in artists:
+                artists[key] = lib.find_artist(band)
+            artist = artists[key]
+            if artist is not None and artist.image:
+                covers[p.id] = {
+                    "src": f"/api/artists/{artist.id}/image?v={artist.image}",
+                    "alt": f"Picture of {artist.name}",
+                    "kind": "artist",
+                }
+                continue
+        album = albums.get(p.id)
+        if album is not None:
+            covers[p.id] = {
+                "src": f"/api/albums/{album.id}/cover?v={album.cover}",
+                "alt": f"Cover of {album.title}",
+                "kind": "album",
+            }
+    return covers
 
 
 @router.get("/playlists")
@@ -2404,7 +2478,34 @@ def _playlist_context(lib: Library, playlist_id: int) -> dict:
         "songs": detail.songs,
         "total_seconds": sum(s.song.duration_seconds or 0 for s in detail.songs),
         "has_tier_list": lib.has_tier_list("playlist", playlist_id),
+        "cover": _playlist_covers(lib, [detail.playlist]).get(playlist_id),
+        "cover_error": None,
+        "cover_max_mb": PLAYLIST_COVER_MAX_BYTES // (1024 * 1024),
     }
+
+
+@router.post("/playlists/{playlist_id}/cover")
+async def set_playlist_cover(request: Request, lib: Lib, playlist_id: int):
+    """Upload a square image as the playlist's own cover; it replaces its current one."""
+    form = await request.form()
+    found(lib.get_playlist, playlist_id)
+    try:
+        cover = await _cover_upload(form)
+        if cover is None:
+            raise ValueError("Pick an image first.")
+        lib.set_playlist_cover_data(playlist_id, *cover)
+        error = None
+    except ValueError as exc:
+        error = str(exc)
+    context = _playlist_context(lib, playlist_id) | {"cover_error": error}
+    return render(request, "_playlist_info.html", status_code=422 if error else 200, **context)
+
+
+@router.post("/playlists/{playlist_id}/cover/delete")
+def remove_playlist_cover(request: Request, lib: Lib, playlist_id: int):
+    """Take the playlist's own cover off: it shows its default one again."""
+    found(lib.remove_playlist_cover, playlist_id)
+    return render(request, "_playlist_info.html", **_playlist_context(lib, playlist_id))
 
 
 @router.get("/playlists/{playlist_id}")
@@ -2710,20 +2811,26 @@ def _add_songs_context(lib: Library, playlist_id: int, params: ImmutableMultiDic
                 pending.append(lib.get_song_summary(song_id))
             except NotFound:
                 pass  # deleted since it was listed
-    q = _text(params, "q")
-    # Spaces do not count: "a b" is too short.
-    too_short = bool(q) and len("".join(q.split())) < MIN_SEARCH
-    results = []
-    if q and not too_short:
+    # Filters are tags in the search box (``f``, one each) or typed in it, like "artist:abba".
+    search = parse_song_query(params.getlist("f"), _text(params, "q"))
+    q = search.text
+    # Spaces do not count: "a b" is too short. Filters make any text long enough.
+    too_short = bool(q) and not search.filtered and len("".join(q.split())) < MIN_SEARCH
+    found_songs = []
+    if (q or search.filtered) and not too_short:
         skip = {s.song.id for s in pending} | set(lib.playlist_song_ids(playlist_id))
-        results = [s for s in lib.list_songs(q=q) if s.song.id not in skip][:SONG_RESULTS]
+        found_songs = [s for s in lib.list_songs(q=q, search=search) if s.song.id not in skip]
     return {
         "playlist": playlist,
         "pending": pending,
         "q": q or "",
+        "chips": search.chips,
+        "search_errors": search.errors,
+        "searched": bool(q or search.filtered),
         "too_short": too_short,
         "min_search": MIN_SEARCH,
-        "results": results,
+        "results": found_songs[:SONG_RESULTS],
+        "result_total": len(found_songs),
         **extra,
     }
 
@@ -2777,6 +2884,22 @@ async def move_in_playlist(request: Request, lib: Lib, playlist_id: int, song_id
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     found(lib.move_in_playlist, playlist_id, song_id, offset)
+    return Response(headers={"HX-Trigger": "playlists-changed"})
+
+
+@router.post("/playlists/{playlist_id}/songs/reorder")
+async def reorder_playlist(request: Request, lib: Lib, playlist_id: int):
+    """Move the selected songs (``song_id``, any number) to just before ``before``, or to the
+    end without it; this is what dragging songs by their grip does."""
+    form = await request.form()
+    try:
+        song_ids = [int(value) for value in form.getlist("song_id")]
+        before = _int(form, "before")
+        if not song_ids:
+            raise ValueError("pick the songs to move")
+        found(lib.move_songs_in_playlist, playlist_id, song_ids, before)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     return Response(headers={"HX-Trigger": "playlists-changed"})
 
 

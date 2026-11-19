@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% set active = 'playlists' %}
 {% block title %}{{ playlist.name }}{% endblock %}
+{% block scripts %}
+<script src="{{ asset('playlist-order.js') }}" defer></script>
+<script src="{{ asset('song-search.js') }}" defer></script>
+{% endblock %}
 {% block content %}
 <p class="crumbs"><a href="/playlists">Playlists</a> /</p>
 <div id="playlist-info-slot" hx-get="/fragments/playlists/{{ playlist.id }}/info"

@@ -79,6 +79,7 @@ from implicated.models import (
     youtube_id,
     youtube_start,
 )
+from implicated.songquery import SongQuery
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS artists (
@@ -308,6 +309,7 @@ MIGRATIONS = [
     ("albums", "main_id", "INTEGER REFERENCES albums(id) ON DELETE SET NULL"),
     ("songs", "explicit", "INTEGER NOT NULL DEFAULT 0"),
     ("playlists", "folder_id", "INTEGER REFERENCES folders(id)"),
+    ("playlists", "cover", "TEXT"),
 ]
 # Tables whose records have a ``uid``: a stable id that survives renames, which exports and
 # inbox files use to point at a record (integer ids stay internal to one database).
@@ -352,6 +354,15 @@ SONGS_WHERE = """
      AND (:q IS NULL OR s.title LIKE '%' || :q || '%'
           OR ar.name LIKE '%' || :q || '%'
           OR al.title LIKE '%' || :q || '%')
+     AND (:f_artist IS NULL OR ar.name LIKE '%' || :f_artist || '%')
+     AND (:f_album IS NULL OR al.title LIKE '%' || :f_album || '%')
+     AND (:from_year IS NULL OR al.year >= :from_year)
+     AND (:to_year IS NULL OR al.year <= :to_year)
+     AND (:f_language IS NULL OR EXISTS (SELECT 1 FROM json_each(ar.languages)
+                                          WHERE value LIKE '%' || :f_language || '%'))
+     AND (:f_genre IS NULL OR EXISTS (SELECT 1 FROM json_each(ar.genres)
+                                       WHERE value LIKE '%' || :f_genre || '%'))
+     AND (:stars IS NULL OR s.rating = :stars)
 """
 
 # The ids of the songs merged with ``s`` (``s`` included): they count as one song.
@@ -443,6 +454,10 @@ def check_image_name(
     if suffix not in types:
         raise ValueError(f"{what} must be one of {', '.join(types)}")
     return suffix
+
+
+# A playlist's own cover: square, and no bigger than this.
+PLAYLIST_COVER_MAX_BYTES = 2 * 1024 * 1024
 
 
 def check_cover_name(file_name: str) -> str:
@@ -616,6 +631,7 @@ class Library:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.covers_dir = self.path.parent / "covers"
+        self.playlist_covers_dir = self.path.parent / "playlist-covers"
         self.images_dir = self.path.parent / "artists"
         self.pictures_dir = self.path.parent / "pictures"
         # Where the library keeps the files you edit by hand: lyrics, timed lyrics and tabs in
@@ -1511,6 +1527,7 @@ class Library:
         song_ids: list[int] | None = None,
         featuring: int | None = None,
         mains_only: bool = False,
+        search: SongQuery | None = None,
         order: str = "title",
         favorites_first: bool = False,
         limit: int | None = None,
@@ -1521,7 +1538,7 @@ class Library:
         songs merged into a main version), and only ``limit`` of them after the first
         ``offset``; ``order="playlist"`` keeps the order of the songs in ``playlist_id``, and
         ``favorites_first`` goes before it. Merged songs count as one: each has the plays of
-        them all."""
+        them all. ``search`` adds the filters of a search like ``artist:abba from:1975``."""
         order_by = {
             "title": "s.title COLLATE NOCASE",
             "track": "s.track_number IS NULL, s.track_number, s.title COLLATE NOCASE",
@@ -1554,6 +1571,7 @@ class Library:
                 song_ids,
                 featuring,
                 mains_only,
+                search,
             ),
             "limit": -1 if limit is None else limit,
             "offset": offset,
@@ -1601,18 +1619,27 @@ class Library:
         song_ids: list[int] | None = None,
         featuring: int | None = None,
         mains_only: bool = False,
+        search: SongQuery | None = None,
     ) -> dict:
+        search = search or SongQuery()
         return {
             "artist_id": artist_id,
             "album_id": album_id,
             "playlist_id": playlist_id,
             "song_ids": None if song_ids is None else json.dumps(song_ids),
             "featuring": featuring,
-            "favorites": int(favorites),
-            "listen_later": int(listen_later),
+            "favorites": int(favorites or search.favorites),
+            "listen_later": int(listen_later or search.listen_later),
             "missing_lyrics": int(missing_lyrics),
             "mains_only": int(mains_only),
             "q": q or None,
+            "f_artist": search.artist,
+            "f_album": search.album,
+            "from_year": search.from_year,
+            "to_year": search.to_year,
+            "f_language": search.language,
+            "f_genre": search.genre,
+            "stars": search.stars,
         }
 
     def get_song(self, song_id: int) -> Song:
@@ -2329,8 +2356,74 @@ class Library:
         return self.get_playlist(playlist_id)
 
     def delete_playlist(self, playlist_id: int) -> None:
-        self._own_playlist(playlist_id, "deleted")
+        cover = self._own_playlist(playlist_id, "deleted").cover
         self._delete("playlists", playlist_id)
+        self._remove_files(self.playlist_covers_dir, [cover])
+
+    def set_playlist_cover_data(self, playlist_id: int, data: bytes, file_name: str) -> Playlist:
+        """Make the image ``data`` (say, an upload) the playlist's own cover, its type coming
+        from ``file_name`` (one of ``COVER_TYPES``). It must be square and at most
+        ``PLAYLIST_COVER_MAX_BYTES``."""
+        playlist = self.get_playlist(playlist_id)
+        check_cover_name(file_name)
+        if len(data) > PLAYLIST_COVER_MAX_BYTES:
+            limit = PLAYLIST_COVER_MAX_BYTES // (1024 * 1024)
+            raise ValueError(f"A playlist cover can be at most {limit} MB.")
+        if data and not is_square(data):
+            raise ValueError("A playlist cover must be square.")
+        name = self._store_image(
+            self.playlist_covers_dir,
+            playlist_id,
+            data,
+            file_name,
+            playlist.cover,
+            "cover",
+            COVER_TYPES,
+        )
+        if name != playlist.cover:
+            with self.connect() as conn:
+                conn.execute("UPDATE playlists SET cover = ? WHERE id = ?", (name, playlist_id))
+            self._remove_files(self.playlist_covers_dir, [playlist.cover])
+        return self.get_playlist(playlist_id)
+
+    def remove_playlist_cover(self, playlist_id: int) -> Playlist:
+        """Take the playlist's own cover off, so it shows its default one again."""
+        playlist = self.get_playlist(playlist_id)
+        if playlist.cover:
+            with self.connect() as conn:
+                conn.execute("UPDATE playlists SET cover = NULL WHERE id = ?", (playlist_id,))
+            self._remove_files(self.playlist_covers_dir, [playlist.cover])
+        return self.get_playlist(playlist_id)
+
+    def playlist_cover_path(self, playlist_id: int) -> Path:
+        playlist = self.get_playlist(playlist_id)
+        path = self.playlist_covers_dir / playlist.cover if playlist.cover else None
+        if path is None or not path.is_file():
+            raise NotFound(f"playlist {playlist_id} has no cover")
+        return path
+
+    def playlist_default_albums(self, playlist_id: int | None = None) -> dict[int, Album]:
+        """For each playlist (or just ``playlist_id``), the album with a cover that it has the
+        most songs of: its default cover. On a tie, the album whose song comes first wins.
+        Playlists with no song from an album with a cover are left out."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT ps.playlist_id AS x_playlist_id, COUNT(*) AS x_songs,
+                          MIN(ps.position) AS x_first, al.*
+                     FROM playlist_songs ps
+                     JOIN songs s ON s.id = ps.song_id
+                     JOIN albums al ON al.id = s.album_id
+                    WHERE al.cover IS NOT NULL AND al.cover != ''
+                      AND (:playlist_id IS NULL OR ps.playlist_id = :playlist_id)
+                    GROUP BY ps.playlist_id, al.id
+                    ORDER BY ps.playlist_id, x_songs DESC, x_first""",
+                {"playlist_id": playlist_id},
+            ).fetchall()
+        out: dict[int, Album] = {}
+        for row in rows:
+            own, extra = _split(row, "x_")
+            out.setdefault(extra["playlist_id"], _album(own))
+        return out
 
     def move_playlist(self, playlist_id: int, folder_id: int) -> Playlist:
         """Put one of your playlists in another folder: one of yours, or Default. The Setlists
@@ -2570,6 +2663,27 @@ class Library:
         index = song_ids.index(song_id)
         song_ids.insert(max(0, min(index + offset, len(song_ids) - 1)), song_ids.pop(index))
         self._write_playlist(playlist_id, song_ids)
+
+    def move_songs_in_playlist(
+        self, playlist_id: int, song_ids: list[int], before: int | None
+    ) -> None:
+        """Move the songs, keeping their order in the playlist, to just before the song
+        ``before``, or to the end when it is ``None``."""
+        self.get_playlist(playlist_id)
+        current = self.playlist_song_ids(playlist_id)
+        moving = set(song_ids)
+        for song_id in moving:
+            if song_id not in current:
+                raise NotFound(f"song {song_id} is not in playlist {playlist_id}")
+        if before is not None:
+            if before not in current:
+                raise NotFound(f"song {before} is not in playlist {playlist_id}")
+            if before in moving:
+                raise ValueError("a song cannot be moved before itself")
+        moved = [i for i in current if i in moving]
+        rest = [i for i in current if i not in moving]
+        at = len(rest) if before is None else rest.index(before)
+        self._write_playlist(playlist_id, rest[:at] + moved + rest[at:])
 
     def _write_playlist(self, playlist_id: int, song_ids: list[int]) -> None:
         if self.get_playlist(playlist_id).kind:

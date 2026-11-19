@@ -1,0 +1,7 @@
+{# A filter of a song search, as a tag in its search box. Needs `key` and `value` (empty for
+   fav: and later:). The hidden input sends it along with the search. #}
+<span class="search-chip">
+  <input type="hidden" name="f" value="{{ key }}:{{ value }}">
+  <span class="search-chip-key">{{ key }}</span>{% if value or not key %}<span class="search-chip-value">{{ value }}</span>{% endif %}
+  <button type="button" class="search-chip-x" title="Remove this filter" aria-label="Remove the filter {{ key }}{% if value %} {{ value }}{% endif %}">✕</button>
+</span>
